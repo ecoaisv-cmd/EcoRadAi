@@ -1,0 +1,2178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>EcoKimi Pro v9.2 — Informes Radiológicos con IA</title>
+<script src="https://unpkg.com/docx@8.5.0/build/index.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+:root{
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --bg:#fff;--bg-secondary:#f5f5f7;--bg-tertiary:#e8e8ed;
+  --text-primary:#1d1d1f;--text-secondary:#6e6e73;--text-tertiary:#86868b;
+  --accent:#0071e3;--accent-light:#e8f4fd;--accent-dark:#0051a3;
+  --danger:#ff3b30;--positive:#34c759;--warning:#ff9500;
+  --border:#d2d2d7;--radius-md:12px;--radius-lg:16px;
+  --report-blue:#1a3a5c;--report-accent:#0071e3;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#000;--bg-secondary:#1c1c1e;--bg-tertiary:#2c2c2e;--text-primary:#fff;--text-secondary:#98989d;--text-tertiary:#636366;--border:#38383a;--accent-light:#1a3a5c}
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:var(--font-sans);background:var(--bg);color:var(--text-primary);line-height:1.5;padding-bottom:100px;-webkit-font-smoothing:antialiased}
+.container{max-width:720px;margin:0 auto;padding:16px}
+.header{position:sticky;top:0;z-index:100;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:12px 16px}
+.header-inner{max-width:720px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:20px;font-weight:600;letter-spacing:-0.5px}
+.header .badge{font-size:11px;font-weight:500;padding:4px 10px;background:var(--accent-light);color:var(--accent);border-radius:100px;text-transform:uppercase;letter-spacing:0.5px}
+.steps{display:flex;gap:6px;margin:16px 0 12px;overflow-x:auto;padding-bottom:4px}
+.step{flex:1;min-width:54px;text-align:center;padding:8px 4px;border-radius:8px;font-size:10px;font-weight:500;background:var(--bg-secondary);color:var(--text-secondary);border:1.5px solid transparent;cursor:pointer;transition:all .2s;white-space:nowrap}
+.step.active{background:var(--accent-light);color:var(--accent);border-color:var(--accent)}
+.step.done{background:var(--positive);color:white}
+.card{background:var(--bg-secondary);border-radius:var(--radius-lg);padding:16px;margin-bottom:14px;border:1px solid var(--border)}
+.card-title{font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card-title .num{width:24px;height:24px;border-radius:50%;background:var(--accent);color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
+.form-group{margin-bottom:12px}
+label{display:block;font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:4px}
+input,select,textarea{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-md);background:var(--bg);color:var(--text-primary);font-size:14px;font-family:var(--font-sans);transition:border-color .2s;-webkit-appearance:none}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-light)}
+textarea{min-height:60px;resize:vertical}
+select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236e6e73' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+.capture-zone{border:2px dashed var(--border);border-radius:var(--radius-lg);padding:24px 16px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
+.capture-zone:active{border-color:var(--accent);background:var(--accent-light)}
+.capture-zone .icon{font-size:32px;margin-bottom:4px}
+.capture-zone p{font-size:13px;color:var(--text-secondary);font-weight:500;margin:0}
+.capture-zone .sub{font-size:11px;color:var(--text-tertiary);margin-top:2px}
+input[type="file"]{display:none}
+.gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.gallery-item{position:relative;aspect-ratio:1;border-radius:var(--radius-md);overflow:hidden;background:var(--bg-tertiary);border:1px solid var(--border)}
+.gallery-item img{width:100%;height:100%;object-fit:cover}
+.gallery-item .del{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:var(--danger);color:white;border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.gallery-item .size{position:absolute;bottom:3px;left:3px;background:rgba(0,0,0,0.6);color:#fff;font-size:8px;padding:2px 5px;border-radius:4px}
+.protocol-box{background:var(--bg);border-radius:var(--radius-md);padding:12px;border:1.5px solid var(--border)}
+.protocol-box h4{font-size:12px;font-weight:600;margin-bottom:6px;color:var(--accent)}
+.protocol-box ul{list-style:none}
+.protocol-box li{padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;display:flex;align-items:flex-start;gap:6px}
+.protocol-box li:last-child{border-bottom:none}
+.protocol-box li .chk{width:16px;height:16px;border-radius:4px;border:2px solid var(--border);flex-shrink:0;margin-top:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:9px;color:white}
+.protocol-box li .chk.checked{background:var(--positive);border-color:var(--positive)}
+.prompt-card{background:var(--bg);border:1.5px solid var(--border);border-radius:var(--radius-md);padding:12px;margin-bottom:8px;cursor:pointer;transition:all .2s}
+.prompt-card:hover{border-color:var(--accent)}
+.prompt-card.selected{border-color:var(--accent);background:var(--accent-light)}
+.prompt-card h4{font-size:13px;font-weight:600;margin-bottom:2px}
+.prompt-card p{font-size:11px;color:var(--text-secondary);line-height:1.4;margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 18px;border-radius:var(--radius-md);border:none;font-size:14px;font-weight:600;font-family:var(--font-sans);cursor:pointer;transition:all .2s;width:100%}
+.btn-primary{background:var(--accent);color:white}
+.btn-primary:active{opacity:.85;transform:scale(0.98)}
+.btn-primary:disabled{background:var(--text-tertiary);cursor:not-allowed}
+.btn-secondary{background:var(--bg-tertiary);color:var(--text-primary)}
+.btn-success{background:var(--positive);color:white}
+.btn-warning{background:var(--warning);color:white}
+.btn-row{display:flex;gap:8px;margin-top:12px}
+.btn-row .btn{flex:1}
+.analysis-output{background:var(--bg);border:1.5px solid var(--border);border-radius:var(--radius-md);padding:12px;font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow-y:auto;font-family:var(--font-sans)}
+.nav-footer{position:fixed;bottom:0;left:0;right:0;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--border);padding:10px 16px 20px;z-index:200}
+.nav-footer-inner{max-width:720px;margin:0 auto;display:flex;gap:8px}
+.section{display:none}
+.section.active{display:block;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.empty-state{text-align:center;padding:24px 16px;color:var(--text-tertiary)}
+.empty-state .icon{font-size:32px;margin-bottom:4px}
+.config-box{background:var(--accent-light);border:1.5px solid var(--accent);border-radius:var(--radius-md);padding:12px;margin-bottom:12px}
+.config-box h4{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+.config-box p{font-size:11px;color:var(--text-secondary);margin-bottom:6px;line-height:1.4}
+.api-mode-tabs{display:flex;gap:6px;margin-bottom:10px}
+.api-mode-tab{flex:1;padding:8px;border-radius:var(--radius-md);border:1.5px solid var(--border);background:var(--bg);font-size:12px;font-weight:600;text-align:center;cursor:pointer;transition:all .2s}
+.api-mode-tab.active{border-color:var(--accent);background:var(--accent-light);color:var(--accent)}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.cost-estimate{font-size:10px;color:var(--text-tertiary);text-align:center;margin-top:4px}
+
+/* ===== REPORTE ===== */
+.report-preview{background:#fff;color:#1d1d1f;border-radius:var(--radius-md);padding:0;border:1px solid var(--border);overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,0.06)}
+.report-header{background:linear-gradient(135deg,var(--report-blue) 0%,var(--report-accent) 100%);color:#fff;padding:16px 20px;text-align:center}
+.report-header .clinic-name{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85}
+.report-header h2{font-size:17px;font-weight:700;margin:4px 0;letter-spacing:-0.3px}
+.report-header .meta{font-size:11px;opacity:0.9}
+.report-body{padding:16px 20px}
+.report-section{margin-bottom:12px}
+.report-section h4{font-size:10px;color:var(--report-accent);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:3px}
+.report-section p,.report-section li{font-size:11px;line-height:1.5;color:#333;margin-bottom:3px}
+.report-section ul{margin-left:16px}
+.report-section h5{font-size:11px;color:var(--report-blue);font-weight:700;margin:8px 0 3px;text-transform:uppercase;letter-spacing:0.3px}
+.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.report-grid .col{padding:6px 8px;background:#f8f9fa;border-radius:6px;border-left:3px solid var(--report-accent)}
+.report-grid .col-label{font-size:8px;color:#86868b;text-transform:uppercase;letter-spacing:0.4px;font-weight:600}
+.report-grid .col-value{font-size:11px;color:#1d1d1f;font-weight:500}
+.report-table{width:100%;border-collapse:collapse;margin:6px 0;font-size:10px}
+.report-table th{background:#f0f4f8;color:var(--report-blue);font-weight:600;padding:6px 8px;text-align:left;border-bottom:1.5px solid var(--report-accent);text-transform:uppercase;font-size:8px;letter-spacing:0.4px}
+.report-table td{padding:5px 8px;border-bottom:0.5px solid #e8e8ed;color:#333}
+.report-table tr:nth-child(even){background:#fafbfc}
+.report-table .interp-normal{color:#34c759;font-weight:600}
+.report-table .interp-abnormal{color:#ff3b30;font-weight:600}
+.report-diagnosis{background:#f0f7ff;border-left:4px solid var(--report-accent);padding:10px 12px;border-radius:0 6px 6px 0;margin:8px 0}
+.report-diagnosis ol{padding-left:16px;margin:0}
+.report-diagnosis ol li{font-size:11px;color:#1d3a5c;font-weight:500;margin-bottom:4px;line-height:1.4}
+.report-differential{background:#fff8f0;border-left:4px solid #ff9500;padding:8px 12px;border-radius:0 6px 6px 0;margin:6px 0}
+.report-differential ul{padding-left:16px;margin:4px 0 0}
+.report-differential ul li{font-size:10px;color:#5c3d1a;margin-bottom:2px}
+.report-recommendations{background:#f0fff4;border-left:4px solid #34c759;padding:8px 12px;border-radius:0 6px 6px 0;margin:6px 0}
+.report-recommendations ul{padding-left:16px;margin:4px 0 0}
+.report-recommendations ul li{font-size:10px;color:#1a4a2a;margin-bottom:2px}
+.report-clinical{background:#fafbfc;border-left:3px solid #c8d0d8;padding:8px 10px;border-radius:0 4px 4px 0;margin:4px 0}
+.report-clinical ul{padding-left:16px;margin:0}
+.report-clinical ul li{font-size:10px;color:#333;margin-bottom:2px}
+.report-organs h5{margin-top:8px}
+.report-organs ul{padding-left:16px;margin:0 0 6px}
+.report-organs ul li{font-size:10px;color:#333;margin-bottom:2px;line-height:1.4}
+.report-signoff{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid #e8e8ed}
+.report-signoff .date{font-size:9px;color:#86868b}
+.report-signoff .reg{font-size:9px;color:#86868b;font-family:var(--font-mono)}
+.reference-box{background:#f0f7ff;border:1px solid var(--accent);border-radius:4px;padding:6px 10px;margin:4px 0;font-size:9px;color:#1a3a5c}
+
+.alert-banner{background:#fff3f3;border-left:4px solid #ff3b30;padding:10px 12px;border-radius:6px;margin-bottom:10px}
+.alert-banner .title{font-size:12px;font-weight:700;color:#ff3b30;margin-bottom:4px}
+.alert-item{background:rgba(255,0,0,0.05);border:1px solid rgba(255,0,0,0.2);border-radius:4px;padding:6px 8px;margin-bottom:4px}
+.alert-item .priority{font-weight:600;font-size:11px}
+.alert-item .msg{font-size:10px;color:#333;margin:2px 0}
+.alert-item .action{font-size:9px;color:#666}
+
+@media print{
+  @page{size:A4;margin:10mm}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  body{background:#fff!important;color:#000!important;padding:0!important}
+  .header,.steps,.nav-footer,.btn,.no-print,.card{display:none!important}
+  .container{max-width:100%!important;padding:0!important}
+  .section{display:block!important}
+  #sec-6{display:block!important}
+  .report-preview{border:none!important;border-radius:0!important;box-shadow:none!important;overflow:hidden!important}
+  .report-header{padding:12px 16px!important}
+  .report-header h2{font-size:15px!important}
+  .report-body{padding:12px 16px!important}
+  .report-section h4{font-size:9px!important}
+  .report-section p,.report-section li{font-size:9px!important}
+  .report-grid{gap:4px!important}
+  .report-grid .col{padding:4px 6px!important}
+  .report-table{font-size:8px!important}
+  .report-table th,.report-table td{padding:4px 6px!important}
+  /* Evitar cortes feos en salto de página */
+  .report-section{page-break-inside:avoid}
+  .report-diagnosis,.report-differential,.report-recommendations,.report-clinical,.report-organs{page-break-inside:avoid}
+  .report-table{page-break-inside:avoid}
+  .report-signoff{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div id="global-toast" style="position:fixed;top:10px;left:50%;transform:translateX(-50%) translateY(-120%);z-index:9999;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:500;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);box-shadow:0 4px 16px rgba(0,0,0,0.12);transition:transform .3s ease;max-width:90%;text-align:center;backdrop-filter:blur(10px)"></div>
+<div class="header"><div class="header-inner"><h1>📡 EcoRad Ai by Dr. Eduardo Mazzini</h1><span class="badge">Radiológico</span></div></div>
+<div class="container">
+<div class="steps no-print">
+  <div class="step active" data-step="0">Config</div>
+  <div class="step" data-step="1">Paciente</div>
+  <div class="step" data-step="2">Estudio</div>
+  <div class="step" data-step="3">Protocolo</div>
+  <div class="step" data-step="4">Imágenes</div>
+  <div class="step" data-step="5">Análisis</div>
+  <div class="step" data-step="6">Reporte</div>
+</div>
+
+<!-- ===== SECCION 0: CONFIG ===== -->
+<div class="section active" id="sec-0">
+<div class="card">
+  <div class="card-title"><span class="num">0</span>Configuración</div>
+  <div class="api-mode-tabs">
+    <div class="api-mode-tab active" data-mode="proxy">🌐 Proxy Kimi</div>
+    <div class="api-mode-tab" data-mode="manual">📋 Manual</div>
+  </div>
+  <div id="config-proxy">
+    <div class="config-box">
+      <h4>🌐 Proxy Kimi (Cloudflare Workers)</h4>
+      <p>Requiere un proxy gratuito en Cloudflare Workers. Las imágenes y datos se envían automáticamente a Kimi.</p>
+    </div>
+    <div class="form-group"><label>URL de tu Proxy Cloudflare</label><input type="url" id="proxy-url" placeholder="https://tu-proxy.tuusuario.workers.dev" value=""></div>
+    <div class="form-group"><label>Modelo de Kimi</label>
+      <select id="kimi-model">
+        <option value="kimi-k2-5">kimi-k2-5 (recomendado)</option>
+        <option value="kimi-k3">kimi-k3</option>
+        <option value="kimi-k2">kimi-k2</option>
+      </select>
+    </div>
+  </div>
+  <div id="config-manual" style="display:none">
+    <div class="config-box">
+      <h4>📋 Modo Manual</h4>
+      <p>La app genera el prompt completo. Tú lo copias y lo pegas en Kimi junto con las imágenes.</p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== SECCION 1: PACIENTE ===== -->
+<div class="section" id="sec-1">
+<div class="card">
+  <div class="card-title"><span class="num">1</span>Datos del paciente</div>
+  <div class="form-group"><label>Nombre completo *</label><input type="text" id="p-nombre" placeholder="Ej: María González"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div class="form-group"><label>Edad *</label><input type="number" id="p-edad" placeholder="Años"></div>
+    <div class="form-group"><label>Sexo *</label><select id="p-sexo"><option value="">Seleccionar</option><option value="Femenino">Femenino</option><option value="Masculino">Masculino</option></select></div>
+  </div>
+  <div class="form-group"><label>Motivo de consulta</label><textarea id="p-motivo" placeholder="Ej: Dolor en cuadrante superior derecho..."></textarea></div>
+  <div class="form-group"><label>Antecedentes relevantes</label><textarea id="p-antecedentes" placeholder="Ej: Diabetes tipo 2..."></textarea></div>
+</div>
+</div>
+
+<!-- ===== SECCION 2: ESTUDIO ===== -->
+<div class="section" id="sec-2">
+<div class="card">
+  <div class="card-title"><span class="num">2</span>Tipo de estudio</div>
+  <div class="form-group">
+    <select id="e-tipo">
+      <option value="">Seleccionar especialidad</option>
+      <option value="abdomen">Ecografía abdominal completa</option>
+      <option value="obstetrica_ge">Obstétrica - Gestación temprana</option>
+      <option value="obstetrica_t1">Obstétrica - 1er Trimestre</option>
+      <option value="obstetrica_t2">Obstétrica - 2do Trimestre</option>
+      <option value="obstetrica_t3">Obstétrica - 3er Trimestre</option>
+      <option value="cardiaca">Ecocardiograma</option>
+      <option value="renal">Ecografía renal</option>
+      <option value="tiroidea">Ecografía tiroidea</option>
+      <option value="musk">Ecografía musculoesquelética</option>
+      <option value="vascular">Doppler vascular</option>
+      <option value="pelvica">Ecografía pélvica</option>
+      <option value="mama">Ecografía de mama</option>
+      <option value="prostata">Ecografía prostática</option>
+      <option value="genital_masc">Ecografía testicular</option>
+      <option value="pediatrico">Ecografía pediátrica</option>
+      <option value="partes_blandas">Ecografía de partes blandas</option>
+    </select>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div class="form-group"><label>Equipo</label><input type="text" id="e-equipo" placeholder="Ej: Philips EPIQ 7"></div>
+    <div class="form-group"><label>Transductor</label><input type="text" id="e-transductor" placeholder="Ej: C5-1 curvilíneo"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+    <div class="form-group"><label>Frecuencia (MHz)</label><input type="text" id="e-frecuencia" placeholder="Ej: 5-2"></div>
+    <div class="form-group"><label>Profundidad (cm)</label><input type="text" id="e-profundidad" placeholder="Ej: 12"></div>
+    <div class="form-group"><label>Ganancia</label><input type="text" id="e-ganancia" placeholder="Ej: 65%"></div>
+  </div>
+  <div class="form-group"><label>Comentarios técnicos</label><textarea id="e-comentarios" placeholder="Ej: Paciente con gas intestinal moderado..."></textarea></div>
+</div>
+</div>
+
+<!-- ===== SECCION 3: PROTOCOLO ===== -->
+<div class="section" id="sec-3">
+<div class="card">
+  <div class="card-title"><span class="num">3</span>Protocolo de toma</div>
+  <button class="btn btn-success" style="margin-bottom:10px;font-size:12px" onclick="verificarCalidad()">✅ Verificar calidad</button>
+  <div id="protocolo-content"><div class="empty-state"><div class="icon">📋</div><p>Selecciona un tipo de estudio</p></div></div>
+</div>
+</div>
+
+<!-- ===== SECCION 4: IMAGENES ===== -->
+<div class="section" id="sec-4">
+<div class="card">
+  <div class="card-title"><span class="num">4</span>Imágenes</div>
+  <div style="display:flex;gap:8px;margin-bottom:10px;">
+    <button class="btn btn-primary" id="btn-camara" style="flex:1;font-size:12px;">📷 Cámara</button>
+    <button class="btn btn-secondary" id="btn-galeria" style="flex:1;font-size:12px;">🖼️ Galería</button>
+  </div>
+  <input type="file" id="file-input" accept="image/*" multiple style="display:none;">
+  <div class="gallery" id="gallery"></div>
+  <p style="font-size:10px;color:var(--text-tertiary);margin-top:6px;text-align:center">Sube 2-4 imágenes de diferentes planos</p>
+</div>
+</div>
+
+<!-- ===== SECCION 5: ANALISIS ===== -->
+<div class="section" id="sec-5">
+<div class="card">
+  <div class="card-title"><span class="num">5</span>Análisis con IA</div>
+  <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Selecciona el prompt y envía a Kimi</p>
+  <div id="prompts-list"><div class="empty-state"><div class="icon">🤖</div><p>Selecciona un tipo de estudio</p></div></div>
+  <div id="generated-prompt-card" style="display:none;margin-top:10px">
+    <div class="card-title" style="font-size:13px">📝 Prompt <span style="font-size:10px;color:var(--text-tertiary);font-weight:400">(editable)</span></div>
+    <div style="background:var(--bg);border:1.5px solid var(--border);border-radius:var(--radius-md);padding:10px">
+      <textarea id="generated-prompt" style="width:100%;min-height:120px;font-size:11px;line-height:1.5;font-family:var(--font-sans);white-space:pre-wrap;background:transparent;border:none;resize:vertical;padding:0;outline:none;"></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="btn-copy" style="font-size:12px;">📋 Copiar</button>
+      <button class="btn btn-primary" id="btn-send" style="font-size:12px;">🚀 Enviar a IA</button>
+    </div>
+    <p class="cost-estimate" id="cost-estimate"></p>
+  </div>
+  <div id="ai-response-card" style="display:none;margin-top:10px">
+    <div class="card-title" style="font-size:13px">🧠 Respuesta de Kimi</div>
+    <div class="analysis-output" id="ai-response-text"></div>
+    <button class="btn btn-success" style="margin-top:8px;font-size:12px" id="btn-report">✅ Generar reporte</button>
+  </div>
+</div>
+</div>
+
+<!-- ===== SECCION 6: REPORTE ===== -->
+<div class="section" id="sec-6">
+<div class="card no-print">
+  <div class="card-title"><span class="num">6</span>Reporte final</div>
+  <div class="btn-row" style="flex-wrap:wrap">
+    <button class="btn btn-primary" id="btn-pdf" style="font-size:12px;">📄 Descargar PDF</button>
+    <button class="btn btn-secondary" id="btn-word" style="font-size:12px;">📝 Descargar DOCX</button>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-warning" id="btn-img-sheet" style="font-size:12px;">🖼️ Lámina imágenes (6/pág)</button>
+    <button class="btn btn-success" id="btn-print" style="font-size:12px;">🖨️ Imprimir informe</button>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-secondary" id="btn-reset" style="font-size:12px;">🔄 Nuevo estudio</button>
+  </div>
+  <p style="font-size:10px;color:var(--text-tertiary);margin-top:8px;text-align:center">
+    El PDF incluye el informe limpio + una lámina de imágenes (6 por página, A4 horizontal).
+  </p>
+</div>
+<div id="report-container"></div>
+</div>
+
+</div>
+
+<div class="nav-footer no-print">
+  <div class="nav-footer-inner">
+    <button class="btn btn-secondary" id="btn-prev" style="flex:0.3;display:none;font-size:12px;">←</button>
+    <button class="btn btn-primary" id="btn-next" style="flex:0.7;font-size:12px;">Siguiente →</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  PROTOCOLOS DE TOMA (IDÉNTICOS AL ORIGINAL)
+// ============================================================
+const protocolos = {
+  abdomen: {
+    titulo: "Ecografía abdominal completa",
+    items: [
+      "HÍGADO: Vista subcostal derecha e intercostal. Evaluar ecogenicidad vs corteza renal. Medir eje longitudinal (12-15 cm). Evaluar bordes, superficie y lesiones focales. Doppler portal (flujo hepatopetal, velocidad >20 cm/s).",
+      "VESÍCULA BILIAR: Vista longitudinal y transversal. Medir pared (<3 mm). Evaluar litiasis (sombra acústica posterior) y signo de Murphy ecográfico.",
+      "VÍA BILIAR: Medir colédoco en porta hepatis (<6 mm en adultos, o <1 mm por década +1 mm). Evaluar dilatación de vía intrahepática.",
+      "PÁNCREAS: Vista transgástrica o a través del bazo. Medir cabeza (<30 mm), cuerpo (<25 mm), cola (<30 mm). Evaluar ecogenicidad, masas o pseudoquistes.",
+      "BAZO: Vista intercostal izquierda. Medir longitud (<12 cm) y grosor (<4 cm). Evaluar lesiones focales.",
+      "RIÑONES: Vistas longitudinal y transversal. Medir longitud (10-12 cm), cortical (>7 mm). Evaluar morfología, litiasis, hidronefrosis (gradiente SFU), quistes complejos (Bosniak).",
+      "AORTA: Longitudinal y transversal. Medir diámetro máximo (<30 mm). Evaluar aneurisma o trombo mural.",
+      "TGI: Evaluar estómago (pared <5 mm en ayunas), duodeno, asas (pared <3 mm). Descartar invaginación o engrosamiento patológico.",
+      "LÍQUIDO LIBRE: Evaluar espacios de Morrison, esplenorrenal y fondo de saco de Douglas.",
+      "AJUSTES: Ganancia 60-70%, profundidad 12-15 cm. Utilizar armónicos tisulares si disponibles."
+    ]
+  },
+  obstetrica_ge: {
+    titulo: "Gestación temprana (<12 sem)",
+    items: [
+      "SACO GESTACIONAL: Intrauterino. Medir diámetro medio (DMS) para estimar EG (±5 días).",
+      "VESÍCULA VITELINA: Visible 6-7 sem. Diámetro <6 mm en 1er trimestre.",
+      "EMBRIÓN: Medir LCC para datación precisa (5-10 sem). Latido >120 lpm.",
+      "ANEXOS: Evaluar ovarios (descartar cuerpo lúteo hemorrágico) y trompas (descartar ectópico).",
+      "CAVIDAD UTERINA: Descartar hematoma subcoriónico, miomas o malformaciones.",
+      "AJUSTES: TV 7-10 MHz o TA 3.5-5 MHz. Vejiga llena para TA."
+    ]
+  },
+  obstetrica_t1: {
+    titulo: "Primer trimestre (12-14 sem)",
+    items: [
+      "BIOMETRÍA: LCC (45-84 mm), DBP, CC, CA, LF. Percentiles Intergrowth-21st.",
+      "ANATOMÍA FETAL: Cráneo (forma, plexos coroideos), columna (integridad), corazón (4 cámaras), estómago (visible), vejiga (visible).",
+      "PLACENTA: Localización (anterior, posterior, fondo, previa). Evaluar inserción.",
+      "LÍQUIDO AMNIÓTICO: Medir ILA.",
+      "CUELLO UTERINO: Longitud >25 mm.",
+      "TN: Translucencia nucal <3.5 mm (FMF).",
+      "DOPPLER: Evaluar flujo de ductus venoso (onda A positiva) si necesario.",
+      "AJUSTES: Preset obstétrico, ganancia 50-60%."
+    ]
+  },
+  obstetrica_t2: {
+    titulo: "Segundo trimestre (15-24 sem)",
+    items: [
+      "BIOMETRÍA: DBP, CC, CA, LF, peso estimado (EFW). Percentiles Intergrowth-21st.",
+      "ANATOMÍA DETALLADA: Cráneo (ventrículos <10 mm, cisterna magna <10 mm), columna, corazón (4 cámaras + tractos), abdomen (estómago, riñones, pared), extremidades (fémur, tibia, húmero).",
+      "PLACENTA: Localización, grado Grannum 0-I.",
+      "LÍQUIDO: ILA (5-25 cm).",
+      "CUELLO: Longitud cervicouterina.",
+      "AJUSTES: Preset obstétrico."
+    ]
+  },
+  obstetrica_t3: {
+    titulo: "Tercer trimestre (>24 sem)",
+    items: [
+      "BIOMETRÍA: DBP, CC, CA, LF, EFW. Especial atención a discordancia (ej. CA > CC sugiere macrosomía).",
+      "PRESENTACIÓN: Cefálica, podálica, transversa.",
+      "PLACENTA: Grado Grannum I-III. Descartar placenta previa.",
+      "LÍQUIDO: ILA (5-25 cm). Evaluar oligohidramnios o polihidramnios.",
+      "DOPPLER: Umbilical (IR <0.7). ACM (brain-sparing) si RCIU. Arteria uterina (para preeclampsia).",
+      "AJUSTES: Preset obstétrico, profundidad ajustada."
+    ]
+  },
+  cardiaca: {
+    titulo: "Ecocardiograma transtorácico (ASE 2026)",
+    items: [
+      "PLAX: VI (DDVI, DSVI), AO, AI, válvula aórtica y mitral.",
+      "PSAX: Válvulas (mitral, aórtica, tricúspide, pulmonar), tracto salida VI, septum.",
+      "A4C: Cavidades (VI, VD, AI, AD), FEVI (Simpson), función diastólica (flujo mitral + Doppler tisular).",
+      "A2C: VI y AI, pared inferior.",
+      "SUBCOSTAL: Pericardio, septum.",
+      "SUPRAESTERNAL: Arco aórtico.",
+      "DOPPLER: Flujo relleno VI (E/A), tiempo deceleración, válvulas (estenosis/insuficiencia).",
+      "AJUSTES: Preset cardíaco, alta resolución."
+    ]
+  },
+  renal: {
+    titulo: "Ecografía renal y vías urinarias",
+    items: [
+      "RIÑÓN D: Longitudinal y transversal (decúbito lateral izquierdo o supino). Longitud, cortical, ecogenicidad vs hígado.",
+      "RIÑÓN I: Longitudinal y transversal (decúbito lateral derecho). Comparar con D.",
+      "ECOGENICIDAD: Normalmente ligeramente hipoecoica o isoecoica vs hígado.",
+      "PELVIS RENAL: Diámetro AP (<10 mm sin vejiga llena).",
+      "VEJIGA: Suprapúbica. Pared, contenido. Residuo postmiccional (<50 ml).",
+      "DOPPLER: IR (<0.7). Descartar trombosis vena renal.",
+      "AJUSTES: Preset renal, ganancia 55-65%. Doppler color para flujo."
+    ]
+  },
+  tiroidea: {
+    titulo: "Ecografía tiroidea (ACR TI-RADS 2025)",
+    items: [
+      "LÓBULO D: Longitudinal y transversal. Medir AP, T, L. Volumen (<15 ml).",
+      "LÓBULO I: Longitudinal y transversal. Comparar con D.",
+      "ISTMO: Grosor (2-6 mm).",
+      "PARÉNQUIMA: Ecogenicidad (homogénea/heterogénea). Descartar tiroiditis (patrón panal de abejas).",
+      "NÓDULOS: Número, localización, tamaño (3 ejes), bordes (regulares/espiculados/microlobulados), ecogenicidad (anecoico/hipoecoico/isoecoico/hiperecoico), calcificaciones (micro/macro), vascularización (Doppler).",
+      "TI-RADS: Aplicar clasificación ACR 2025 (puntuar y asignar categoría 1-5).",
+      "GANGLIOS: Nivel VI y laterales. Tamaño, morfología (índice forma <2 sugiere patología), vascularización.",
+      "AJUSTES: Lineal 7-15 MHz, ganancia 50-60%."
+    ]
+  },
+  musk: {
+    titulo: "Ecografía musculoesquelética (ESSR 2025)",
+    items: [
+      "TENDONES: Longitudinal y transversal. Evaluar arquitectura, ecogenicidad, roturas (parciales/completas), derrame en vaina.",
+      "MÚSCULOS: Textura (ecogenicidad), hematomas, desgarros.",
+      "LIGAMENTOS: Integridad, engrosamiento, lesiones.",
+      "ARTICULACIÓN/BURSA: Líquido articular, hipertrofia sinovial (Doppler), bursitis (ej. subacromial, trocantérea).",
+      "INSERCIÓN ÓSEA: Entesitis (engrosamiento, hipoecogenicidad, erosiones).",
+      "DINÁMICA: Explorar en neutro y estrés dinámico (hombro, codo, tobillo).",
+      "AJUSTES: Lineal 7-12 MHz alta resolución."
+    ]
+  },
+  vascular: {
+    titulo: "Doppler vascular (SVU 2025)",
+    items: [
+      "CARÓTIDAS COMUNES: IMT (<0.9 mm). Placas ateromatosas (>1.5 mm).",
+      "CARÓTIDAS INTERNAS: Origen. VPS (<125 cm/s), VDF (<40 cm/s).",
+      "CARÓTIDAS EXTERNAS: Origen. Flujo baja resistencia.",
+      "VERTEBRALES: Segmentos V2-V3. Flujo invertido (síndrome subclavia).",
+      "COMPARACIÓN BILATERAL: Comparar siempre ambos lados.",
+      "AJUSTES: Doppler color, ángulo <60°, PRF ajustado (evitar aliasing)."
+    ]
+  },
+  pelvica: {
+    titulo: "Ecografía pélvica/ginecológica",
+    items: [
+      "ÚTERO: Longitudinal y transversal. Posición (anteversoflexión/retroversoflexión), dimensiones (5-8 cm).",
+      "ENDOMETRIO: Grosor sagital (<5 mm postmenopausia, 2-4 mm folicular, 5-7 mm periovulatorio, 7-15 mm lútea).",
+      "OVARIOS: Dimensiones 3 ejes, volumen (2-5 cm). Folículos, quistes (simple/complejo), masas.",
+      "DOUGLAS: Líquido libre (normal en fase ovulatoria).",
+      "VEJIGA: Pared, contenido. Descartar masas o litiasis.",
+      "AJUSTES: Preset ginecológico. Vejiga llena (excepto TV)."
+    ]
+  },
+  mama: {
+    titulo: "Ecografía mamaria (ACR BI-RADS 2025)",
+    items: [
+      "MAMA D: Barrido sistemático por cuadrantes. Ecogenicidad glandular (densidad mamaria).",
+      "MAMA I: Barrido sistemático por cuadrantes. Comparar con contralateral.",
+      "LESIONES: Localización (reloj y distancia pezón). Forma (ovalada/redonda/irregular), orientación (paralela/no paralela), bordes (circunscritos/microlobulados/espiculados), ecogenicidad (anecoico/hipoecoico/isoecoico/hiperecoico), sombra acústica (posterior sugiere malignidad) o refuerzo (benigno).",
+      "CONDUCTOS: Dilatación, contenido (papilomas).",
+      "AXILA: Ganglios (tamaño, morfología, pérdida hilio graso).",
+      "BI-RADS: Clasificación ACR 2025 (categoría 2-6).",
+      "AJUSTES: Lineal 7-15 MHz. Ganancia ajustada para suprimir tejido graso."
+    ]
+  },
+  prostata: {
+    titulo: "Ecografía prostática (AUA/EAU 2025)",
+    items: [
+      "PRÓSTATA: Transversal y longitudinal. AP, T, L. Volumen (0.52 x AP x T x L, 20-30 ml).",
+      "CONTORNOS: Regulares/irregulares (sugiere infiltración).",
+      "ECOGENICIDAD: Homogénea/heterogénea.",
+      "LESIONES: Número, localización (zona periférica/de transición), tamaño, ecogenicidad.",
+      "CÁPSULA: Integridad, rotura.",
+      "VESÍCULAS SEMINALES: Tamaño, contenido.",
+      "VEJIGA: Residuo postmiccional (<50 ml).",
+      "AJUSTES: Convexo 3.5-5 MHz (TA) o transrectal 6-10 MHz."
+    ]
+  },
+  genital_masc: {
+    titulo: "Ecografía testicular y escrotal (AUA/EAU 2025)",
+    items: [
+      "TESTÍCULO D: Longitudinal y transversal. Volumen (15-25 ml).",
+      "TESTÍCULO I: Comparar con D.",
+      "ECOGENICIDAD: Homogénea/heterogénea.",
+      "LESIONES: Masas focales (sugiere neoplasia) o microcalcificaciones.",
+      "EPIDÍDIMO: Cabeza (<12 mm), cuerpo, cola. Descartar inflamación (epididimitis).",
+      "TÚNICA VAGINAL: Hidrocele (líquido anecoico rodeando testículo).",
+      "CORDÓN: Varicocele (>2 mm en reposo, aumenta con Valsalva).",
+      "AJUSTES: Lineal 7-15 MHz. Doppler color PRF bajo."
+    ]
+  },
+  pediatrico: {
+    titulo: "Ecografía pediátrica (ESPR/EFSUMB 2025)",
+    items: [
+      "HÍGADO: Tamaño según percentiles por edad. Descartar lesiones (hemangioma, hepatoblastoma).",
+      "VESÍCULA: Tamaño según edad. Litiasis (poco frecuente).",
+      "BAZO: Tamaño según percentiles.",
+      "RIÑONES: Tamaño según percentiles edad/talla (Rosenbaum). Cortical (>5 mm neonatos, >7 mm niños mayores).",
+      "PÁNCREAS: Descartar pancreatitis (aumento tamaño, ecogenicidad heterogénea).",
+      "INTESTINO: Pared (<3 mm). Descartar invaginación (signo riñón) o EHP (engrosamiento >4 mm, longitud >16 mm).",
+      "AORTA: Descartar dilatación o coartación.",
+      "AJUSTES: Lineal 5-12 MHz (niños mayores) o convexo 3.5-7 MHz (neonatos)."
+    ]
+  },
+  partes_blandas: {
+    titulo: "Ecografía de partes blandas (EFSUMB/AIUM 2025)",
+    items: [
+      "DESCRIPCIÓN: Evaluar lesión en longitudinal y transversal.",
+      "TAMAÑO: Medir 3 dimensiones (AP, T, L).",
+      "MORFOLOGÍA: Bordes (regulares/irregulares/lobulados), ecogenicidad (anecoico/hipoecoico/isoecoico/hiperecoico/mixto), sombra acústica posterior o refuerzo (cola de cometa).",
+      "VASCULARIZACIÓN: Doppler color (hipervascular o avascular).",
+      "ESTRUCTURAS ADYACENTES: Relación con músculos, tendones, vasos, nervios.",
+      "AJUSTES: Lineal 7-15 MHz (superficial) o convexo 3.5-7 MHz (profundo)."
+    ]
+  }
+};
+
+// ============================================================
+//  PROMPTS ROBUSTOS v9.2
+//  IDÉNTICOS + Reglas de ortografía Ñ + Salida estructurada
+// ============================================================
+// --- Bloque común de reglas de ortografía y estructura ---
+const REGLAS_COMUNES = `
+
+REGLAS ESTRICTAS DE ORTOGRAFÍA Y FORMATO (OBLIGATORIO):
+
+ORTOGRAFÍA ESPAÑOLA:
+- Escribe SIEMPRE con ortografía española completa, incluyendo tildes y la letra Ñ.
+- NUNCA reemplaces la Ñ por N. Ejemplos correctos: RIÑÓN (no rinon), NIÑO (no nino), AÑO (no ano), SEÑAL (no senal), MUÑECA (no muneca), PÁNCREAS (no pancreas sin tilde), HÍGADO (no higado sin tilde), LESIÓN (no lesion sin tilde), ECOGRAFÍA (no ecografia sin tilde).
+- Usa tildes en TODAS las palabras que las requieran: á, é, í, ó, ú, Á, É, Í, Ó, Ú.
+- Usa diéresis cuando corresponda: güe, güi.
+- Usa mayúsculas solo en nombres propios y al inicio de oración.
+
+ESTRUCTURA OBLIGATORIA (usa EXACTAMENTE estos marcadores):
+[[DATOS]]
+...
+[[HALLAZGOS]]
+...
+[[TABLA]]
+...
+[[PATRONES]]
+...
+[[ANALISIS]]
+...
+[[DIAGNOSTICO]]
+...
+[[DIFERENCIAL]]
+...
+[[RECOMENDACIONES]]
+...
+
+- NO omitas ninguna sección. Si no aplica, escribe "No aplica".
+- NO agregues texto fuera de los marcadores.
+- NO uses emojis, viñetas especiales, ni caracteres decorativos.
+- Usa guiones simples (-) para listas dentro de cada sección.
+- Para la tabla usa formato Markdown con pipes: | columna1 | columna2 | ...
+
+RAZONAMIENTO:
+- NO incluyas tu proceso de pensamiento, ni texto en inglés, ni justificaciones internas.
+- Responde ÚNICAMENTE con el contenido estructurado entre los marcadores.
+- NO incluyas notas al pie, advertencias técnicas ni descargos de responsabilidad.
+`;
+
+const prompts = {
+  abdomen: `Actúa como radiólogo experto en ecografía abdominal con 15 años de experiencia. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identificación anatómica de cada órgano abdominal con valor de referencia.
+2. Patrones patológicos: HÍGADO (esteatosis, cirrosis, lesiones focales), VESÍCULA (litiasis, colecistitis), VÍA BILIAR (dilatación, colédoco >6 mm), PÁNCREAS (pancreatitis, masas), BAZO (esplenomegalia >12 cm), RIÑONES (hidronefrosis >10 mm, litiasis, masas, quistes), AORTA (aneurisma >30 mm), TGI (engrosamiento parietal >5 mm).
+3. Mediciones con valor de referencia y fuente.
+4. Correlación clínica con el motivo de consulta.
+5. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS CLÍNICOS:
+Paciente: {NOMBRE}, {EDAD} años, {SEXO}.
+Motivo: {MOTIVO}
+Antecedentes: {ANTECEDENTES}
+Equipo: {EQUIPO} | Transductor: {TRANSDUCTOR} | Frecuencia: {FRECUENCIA} MHz
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO POR SECCIÓN:
+[[DATOS]] Análisis del contexto clínico del paciente.
+[[HALLAZGOS]] Por cada órgano: descripción, medición, valor de referencia, interpretación. Usa el formato "ÓRGANO: descripción".
+[[TABLA]] Tabla Markdown con columnas: Parámetro | Valor | Referencia | Interpretación.
+[[PATRONES]] Lista de patrones patológicos identificados.
+[[ANALISIS]] Correlación clínica y diagnóstico principal con evidencia.
+[[DIAGNOSTICO]] Diagnóstico principal en formato de lista ordenada.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje: "Diagnóstico (XX%): sustentado por ..., descartado por ...".
+[[RECOMENDACIONES]] Estudios complementarios, seguimiento y derivación.`,
+
+  obstetrica_ge: `Actúa como especialista en medicina materno-fetal con 15 años de experiencia en gestación temprana. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identifica: saco gestacional intrauterino (5-6 sem), vesícula vitelina (6-7 sem), embrión (7-8 sem), latido (>120 lpm).
+2. Si no ves alguna estructura, indica "No visible a esta edad gestacional".
+3. Patrones: embarazo ectópico, molar (panal de abejas), amenaza de aborto (hematoma subcoriónico), gemelar.
+4. Tres diagnósticos diferenciales con porcentaje.
+5. Calcula fecha probable de parto.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Saco, vesícula vitelina, embrión (LCC), latido, anexos, cavidad uterina.
+[[TABLA]] Parámetro | Valor | Referencia | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal y fecha probable de parto.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] ISUOG 2026, NICE 2026.`,
+
+  obstetrica_t1: `Actúa como especialista en medicina materno-fetal con 15 años de experiencia, primer trimestre (12-14 sem). Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Biometría: LCC (45-84 mm), DBP, CC, CA, LF. Percentiles Intergrowth-21.
+2. Anatomía: cráneo, columna, corazón (4 cámaras), estómago, vejiga.
+3. Placenta, líquido (ILA), cuello (>25 mm), TN (<3.5 mm).
+4. Patrones: aneuploidías (TN aumentada), defectos de tubo neural, cardiopatías.
+5. Tres diagnósticos diferenciales con porcentaje.
+6. Calcula fecha probable de parto.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Biometría, anatomía fetal, placenta, líquido, cuello uterino, TN.
+[[TABLA]] Parámetro | Valor | Percentil | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal y fecha probable de parto.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] ISUOG 2026, FMF 2025.`,
+
+  obstetrica_t2: `Actúa como especialista en medicina materno-fetal con 15 años de experiencia, segundo trimestre (15-24 sem). Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Biometría: DBP, CC, CA, LF, peso estimado. Percentiles Intergrowth-21.
+2. Anatomía completa: cráneo (ventrículos, cisterna magna), columna, corazón (4 cámaras + tractos), abdomen, extremidades.
+3. Placenta (grado 0-I), ILA (5-25 cm), cuello (>25 mm).
+4. Patrones: anomalías estructurales, restricción crecimiento, placenta previa.
+5. Tres diagnósticos diferenciales con porcentaje.
+6. Calcula fecha probable de parto.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Biometría, anatomía, placenta, ILA, cuello uterino.
+[[TABLA]] Parámetro | Valor | Percentil | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal y fecha probable de parto.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] ISUOG 2026, AIUM 2026.`,
+
+  obstetrica_t3: `Actúa como especialista en medicina materno-fetal con 15 años de experiencia, tercer trimestre (>24 sem). Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Biometría: DBP, CC, CA, LF, peso estimado. Percentiles Intergrowth-21.
+2. Presentación (cefálica/podálica/transversa), latido, movimientos.
+3. Placenta (grado I-III), ILA (5-25 cm).
+4. Doppler umbilical: IR <0.7. Doppler cerebral media si indicado.
+5. Patrones: restricción crecimiento (peso <p3), macrosomía (>p97), oligohidramnios (<5 cm), polihidramnios (>25 cm), preeclampsia.
+6. Tres diagnósticos diferenciales con porcentaje.
+7. Calcula fecha probable de parto.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Biometría, presentación, placenta, ILA, Doppler.
+[[TABLA]] Parámetro | Valor | Percentil | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal y fecha probable de parto.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] ISUOG 2026, ACOG 2026.`,
+
+  cardiaca: `Actúa como cardiólogo imagenólogo con 15 años de experiencia, ecocardiografía ASE 2023. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Vistas: PLAX, PSAX, A4C, A2C, subcostal, supraesternal.
+2. Mediciones: DDVI (<57 mm), DSVI (<40 mm), SIV (6-10 mm), PPVI (6-10 mm), FEVI (>55%), TAPSE (>17 mm).
+3. Patrones: disfunción sistólica (FEVI <55%), diastólica, hipertrofia (>10 mm), dilatación, valvulopatías, derrame (>5 mm).
+4. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Vistas, cavidades, válvulas, derrame pericárdico.
+[[TABLA]] Parámetro | Valor | Referencia | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] ASE 2026, ESC 2025.`,
+
+  renal: `Actúa como radiólogo especialista en ecografía renal con 15 años de experiencia. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identifica: riñón D, riñón I, vejiga, uréteres si visibles.
+2. Mide: longitud (10-12 cm), cortical (>7 mm), IR (<0.7).
+3. Patrones: hidronefrosis (>10 mm), litiasis (sombras), masas (>4 cm), quistes (Bosniak), ERC (cortical <7 mm).
+4. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Riñón derecho, riñón izquierdo, vejiga.
+[[TABLA]] Parámetro | Valor | Referencia | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] EFSUMB 2025, KDIGO 2025.`,
+
+  tiroidea: `Actúa como endocrinólogo imagenólogo con 15 años de experiencia, ecografía tiroidea ACR TI-RADS 2023. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identifica: lóbulo D, lóbulo I, istmo, nódulos, ganglios.
+2. Mide: volumen (<15 ml), istmo (2-6 mm).
+3. Patrones TI-RADS: composición, ecogenicidad, forma, bordes, calcificaciones, vascularización.
+4. Clasifica nódulos TI-RADS 1-5. Recomienda PAAF si TI-RADS 4-5.
+5. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Lóbulo derecho, lóbulo izquierdo, istmo, nódulos, ganglios.
+[[TABLA]] Parámetro | Valor | Referencia | Interpretación.
+[[PATRONES]] Clasificación TI-RADS ACR 2025 y patrones identificados.
+[[ANALISIS]] Diagnóstico principal.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] ATA 2025.`,
+
+  musk: `Actúa como radiólogo especialista en ecografía musculoesquelética con 15 años de experiencia. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identifica: tendones, músculos, ligamentos, bursa, inserción ósea.
+2. Mide: tendones (<6 mm), bursa (<2 mm).
+3. Patrones: tendinopatía, rotura, bursitis, entesitis, desgarro muscular.
+4. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Tendones, músculos, ligamentos, articulación, inserción ósea.
+[[TABLA]] Parámetro | Valor | Referencia | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] ESSR 2025.`,
+
+  vascular: `Actúa como angiólogo especialista en Doppler vascular con 15 años de experiencia. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identifica: carótidas comunes, internas, externas, vertebrales.
+2. Mide: IMT (<0.9 mm), VPS (<125 cm/s), VDF (<40 cm/s), IR (<0.7).
+3. Patrones: placa ateromatosa (>1.5 mm), estenosis (>50% si VPS >125 cm/s), oclusión (ausencia de flujo).
+4. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Carótidas, Doppler, vertebrales.
+[[TABLA]] Parámetro | Valor | Referencia | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] SVU 2025.`,
+
+  pelvica: `Actúa como ginecólogo imagenólogo con 15 años de experiencia, ecografía pélvica. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identifica: útero, endometrio, ovarios, vejiga, Douglas.
+2. Mide: útero (5-8 cm), endometrio (2-15 mm según fase), ovarios (2-5 cm).
+3. Patrones: miomas, adenomiosis, pólipos endometriales, quistes de ovario, endometriomas, síndrome de ovario poliquístico (>12 folículos), embarazo ectópico.
+4. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Útero, endometrio, ovarios, vejiga, Douglas.
+[[TABLA]] Parámetro | Valor | Referencia | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] ISUOG 2026, ACOG 2026.`,
+
+  mama: `Actúa como radiólogo especialista en ecografía mamaria con 15 años de experiencia, BI-RADS ACR 2024. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identifica: mama D, mama I, axila, lesiones.
+2. Patrones BI-RADS: forma, orientación, bordes, ecogenicidad, sombra acústica.
+3. Clasifica lesiones BI-RADS 2-6. Recomienda PAAF si BI-RADS 4-5.
+4. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Mama derecha, mama izquierda, axila, lesiones.
+[[TABLA]] Parámetro | Valor | Referencia | Interpretación.
+[[PATRONES]] Clasificación BI-RADS ACR 2025 y patrones identificados.
+[[ANALISIS]] Diagnóstico principal.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] AIUM 2026.`,
+
+  prostata: `Actúa como urólogo imagenólogo con 15 años de experiencia, ecografía prostática. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identifica: próstata, vesículas seminales, vejiga.
+2. Mide: AP, transversal, longitudinal. Volumen (20-30 ml).
+3. Patrones: hiperplasia benigna, cáncer (nódulo hipoecoico en zona periférica, cápsula irregular), prostatitis, cálculos.
+4. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Próstata, vesículas seminales, vejiga.
+[[TABLA]] Parámetro | Valor | Referencia | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] AUA 2025, EAU 2025.`,
+
+  genital_masc: `Actúa como urólogo imagenólogo con 15 años de experiencia, ecografía testicular y escrotal. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identifica: testículo D, testículo I, epidídimo, túnica, cordón.
+2. Mide: testículo (15-25 ml), epidídimo cabeza (<12 mm).
+3. Patrones: tumor testicular, epididimitis, torsión, varicocele (>2 mm en reposo, aumenta con Valsalva), hidrocele.
+4. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Testículo derecho, testículo izquierdo, epidídimo, túnica, cordón.
+[[TABLA]] Parámetro | Valor | Referencia | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] AUA 2025, EAU 2025.`,
+
+  pediatrico: `Actúa como radiólogo pediatra con 15 años de experiencia, ecografía infantil. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identifica: hígado, vesícula, bazo, riñones, páncreas, intestino.
+2. Mide según percentiles pediátricos (ESPR 2023).
+3. Patrones: estenosis hipertrófica de píloro, intususcepción (target sign), nefrocalcinosis, quistes.
+4. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS: {NOMBRE}, {EDAD}a, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR}.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Hígado, vesícula, bazo, riñones, páncreas, intestino.
+[[TABLA]] Parámetro | Valor | Percentil | Interpretación.
+[[PATRONES]] Patrones identificados.
+[[ANALISIS]] Diagnóstico principal.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] ESPR 2025, EFSUMB 2025.`,
+
+  partes_blandas: `Actúa como radiólogo especialista en ecografía de partes blandas con 15 años de experiencia, siguiendo EFSUMB 2025 y AIUM 2026. Genera un informe médico formal estructurado.
+
+INSTRUCCIONES:
+1. Identificación anatómica: localización, planos, relación con estructuras adyacentes.
+2. Caracterización: tamaño (3 dimensiones), morfología, ecogenicidad, retroecogenicidad, vascularización.
+3. Patrones: quiste simple, quiste complejo, lipoma, hemangioma, neurofibroma, tumor desmoide, sarcoma, hematoma, absceso, cuerpo extraño, granuloma.
+4. Clasificación: benigna, intermedia, sospechosa, maligna.
+5. Tres diagnósticos diferenciales con porcentaje.
+
+DATOS: {NOMBRE}, {EDAD} años, {SEXO}. Motivo: {MOTIVO}. Antecedentes: {ANTECEDENTES}. Equipo: {EQUIPO} | {TRANSDUCTOR} | {FRECUENCIA} MHz.
+
+${REGLAS_COMUNES}
+
+CONTENIDO ESPERADO:
+[[DATOS]] Contexto clínico.
+[[HALLAZGOS]] Localización, tamaño, morfología, ecogenicidad, retroecogenicidad, vascularización, estructuras adyacentes.
+[[TABLA]] Parámetro | Valor | Normal | Interpretación.
+[[PATRONES]] Patrones identificados y categoría diagnóstica.
+[[ANALISIS]] Diagnóstico principal.
+[[DIAGNOSTICO]] Diagnóstico principal.
+[[DIFERENCIAL]] Tres diagnósticos con porcentaje.
+[[RECOMENDACIONES]] EFSUMB 2025, AIUM 2026, ESSR 2025.`
+};
+
+const nombresPrompts = {
+  abdomen: "Abdominal",
+  obstetrica_ge: "Obstétrica - Gestación temprana",
+  obstetrica_t1: "Obstétrica - 1er Trimestre",
+  obstetrica_t2: "Obstétrica - 2do Trimestre",
+  obstetrica_t3: "Obstétrica - 3er Trimestre",
+  cardiaca: "Cardíaco",
+  renal: "Renal",
+  tiroidea: "Tiroidea (TI-RADS)",
+  musk: "Musculoesquelética",
+  vascular: "Doppler vascular",
+  pelvica: "Pélvica",
+  mama: "Mama (BI-RADS)",
+  prostata: "Próstata",
+  genital_masc: "Testicular",
+  pediatrico: "Pediátrica",
+  partes_blandas: "Partes blandas (EFSUMB/AIUM)"
+};
+
+const guiasReferencia = {
+  abdomen: "ESR 2025, EFSUMB 2025, AASLD 2025, ACR 2026, SRU 2024",
+  obstetrica_ge: "ISUOG 2026, NICE 2026, ACOG 2026",
+  obstetrica_t1: "ISUOG 2026, FMF 2025, Intergrowth-21 (actualizado 2025)",
+  obstetrica_t2: "ISUOG 2026, Intergrowth-21 (actualizado 2025), AIUM 2026",
+  obstetrica_t3: "ISUOG 2026, Intergrowth-21 (actualizado 2025), ACOG 2026",
+  cardiaca: "ASE 2026, ESC 2025",
+  renal: "EFSUMB 2025, KDIGO 2025, AUA 2025",
+  tiroidea: "ACR TI-RADS 2025, ATA 2025",
+  musk: "ESSR 2025",
+  vascular: "SVU 2025",
+  pelvica: "ISUOG 2026, ACOG 2026",
+  mama: "ACR BI-RADS 2025, AIUM 2026",
+  prostata: "AUA 2025, EAU 2025",
+  genital_masc: "AUA 2025, EAU 2025",
+  pediatrico: "ESPR 2025, EFSUMB 2025",
+  partes_blandas: "EFSUMB 2025, AIUM 2026, ESSR 2025"
+};
+
+// ============================================================
+//  ALERTAS CRITICAS — solo visibles en pantalla, NUNCA en PDF
+// ============================================================
+const alertasCriticas = {
+  "derrame pericárdico": { prioridad: "CRITICO", mensaje: "Ecocardiograma urgente, descartar taponamiento", accion: "Derivar a cardiologia", plazo: "<1 hora" },
+  "aneurisma aórtico": { prioridad: "CRITICO", mensaje: "Aneurisma >55mm. Riesgo de ruptura", accion: "Derivar a cirugia vascular", plazo: "<24 horas" },
+  "embarazo ectópico": { prioridad: "URGENTE", mensaje: "Sospecha de embarazo ectópico. Riesgo de ruptura", accion: "Derivar a emergencia", plazo: "Inmediato" },
+  "masa renal": { prioridad: "ALTA", mensaje: "Masa renal >4cm. Descartar neoplasia", accion: "Derivar a urologia", plazo: "<1 semana" },
+  "hidronefrosis severa": { prioridad: "ALTA", mensaje: "Hidronefrosis con adelgazamiento cortical <5mm", accion: "Derivar a urologia", plazo: "<48 horas" },
+  "quiste complejo": { prioridad: "ALTA", mensaje: "Quiste ovárico complejo con septos. Descartar neoplasia", accion: "Derivar a ginecologia-oncologia", plazo: "<1 semana" },
+  "trombosis venosa profunda": { prioridad: "URGENTE", mensaje: "Trombosis venosa profunda. Iniciar anticoagulacion", accion: "Derivar a angiologia", plazo: "<2 horas" },
+  "rotura esplénica": { prioridad: "CRITICO", mensaje: "Signos de rotura esplénica con hemorragia", accion: "Derivar a cirugia", plazo: "Inmediato" },
+  "colecistitis aguda": { prioridad: "URGENTE", mensaje: "Colecistitis aguda (pared >4mm, Murphy+)", accion: "Derivar a cirugia", plazo: "<24 horas" },
+  "placenta previa": { prioridad: "ALTA", mensaje: "Placenta previa oclusiva total. Riesgo de hemorragia", accion: "Derivar a obstetricia alto riesgo", plazo: "Seguimiento" },
+  "restricción crecimiento fetal": { prioridad: "ALTA", mensaje: "Peso fetal < percentil 3. Doppler alterado", accion: "Derivar a medicina materno-fetal", plazo: "<48 horas" }
+};
+
+function detectarAlertas(texto) {
+  let alertas = [];
+  if (!texto) return alertas;
+  let lower = texto.toLowerCase();
+  for (let [hallazgo, info] of Object.entries(alertasCriticas)) {
+    if (lower.includes(hallazgo.toLowerCase())) {
+      alertas.push({ hallazgo, ...info });
+    }
+  }
+  return alertas;
+}
+
+function generarBannerAlertas(alertas) {
+  if (alertas.length === 0) return '';
+  let html = '<div class="alert-banner"><div class="title">ALERTAS CLINICAS DETECTADAS (solo para el medico tratante)</div>';
+  alertas.forEach(a => {
+    const color = a.prioridad === 'CRITICO' ? '#ff0000' : a.prioridad === 'URGENTE' ? '#ff6600' : '#ff9500';
+    html += `<div class="alert-item" style="border-color:${color}40;">
+      <div class="priority" style="color:${color};">${a.prioridad} - ${a.hallazgo}</div>
+      <div class="msg">${a.mensaje}</div>
+      <div class="action">Accion: ${a.accion} | Plazo: ${a.plazo}</div>
+    </div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+// ============================================================
+//  STATE
+// ============================================================
+let currentStep = 0;
+let capturedImages = [];
+let selectedPromptKey = null;
+let generatedPromptText = "";
+let apiMode = "proxy";
+let aiResponseText = "";
+
+// ============================================================
+//  INIT
+// ============================================================
+document.addEventListener("DOMContentLoaded", function() {
+  setupEventListeners();
+  updateNav();
+  loadSavedConfig();
+});
+
+function setupEventListeners() {
+  document.querySelectorAll(".step").forEach(s => {
+    s.addEventListener("click", function() { goTo(parseInt(this.dataset.step)); });
+  });
+  document.querySelectorAll(".api-mode-tab").forEach(t => {
+    t.addEventListener("click", function() { setApiMode(this.dataset.mode); });
+  });
+  document.getElementById("btn-next").addEventListener("click", nextStep);
+  document.getElementById("btn-prev").addEventListener("click", prevStep);
+  document.getElementById("btn-camara").addEventListener("click", function() {
+    const input = document.getElementById("file-input");
+    input.removeAttribute("capture");
+    input.setAttribute("capture", "environment");
+    input.click();
+  });
+  document.getElementById("btn-galeria").addEventListener("click", function() {
+    const input = document.getElementById("file-input");
+    input.removeAttribute("capture");
+    input.click();
+  });
+  document.getElementById("file-input").addEventListener("change", function() {
+    handleFiles(this.files);
+    this.value = '';
+  });
+  document.getElementById("e-tipo").addEventListener("change", function() {
+    onTipoChange();
+  });
+  document.getElementById("btn-copy").addEventListener("click", copyPrompt);
+  document.getElementById("btn-send").addEventListener("click", sendToAI);
+  document.getElementById("btn-report").addEventListener("click", generateReportFromAI);
+  document.getElementById("btn-pdf").addEventListener("click", downloadPDF);
+  document.getElementById("btn-word").addEventListener("click", downloadWord);
+  document.getElementById("btn-img-sheet").addEventListener("click", printImageSheet);
+  document.getElementById("btn-print").addEventListener("click", printReport);
+  document.getElementById("btn-reset").addEventListener("click", resetAll);
+}
+
+function loadSavedConfig() {
+  let saved = localStorage.getItem("ecokimi_api_mode");
+  if (saved) setApiMode(saved);
+  let proxy = localStorage.getItem("ecokimi_proxy_url");
+  if (proxy) document.getElementById("proxy-url").value = proxy;
+  let model = localStorage.getItem("ecokimi_kimi_model");
+  if (model) document.getElementById("kimi-model").value = model;
+}
+
+function setApiMode(mode) {
+  apiMode = mode;
+  document.querySelectorAll(".api-mode-tab").forEach(t => t.classList.remove("active"));
+  document.querySelector('.api-mode-tab[data-mode="' + mode + '"]').classList.add("active");
+  document.getElementById("config-proxy").style.display = mode === "proxy" ? "block" : "none";
+  document.getElementById("config-manual").style.display = mode === "manual" ? "block" : "none";
+  localStorage.setItem("ecokimi_api_mode", mode);
+  updateSendButton();
+}
+
+function updateSendButton() {
+  let btn = document.getElementById("btn-send");
+  if (!btn) return;
+  btn.textContent = apiMode === "manual" ? "📋 Copiar para Kimi" : "🚀 Enviar a IA";
+}
+
+// ============================================================
+//  NAVEGACION
+// ============================================================
+function goTo(n) {
+  if (n < 0 || n > 6) return;
+  if (n > currentStep) {
+    for (let i = currentStep; i < n; i++) {
+      if (!validateStep(i)) return;
+    }
+  }
+  document.querySelectorAll(".section").forEach((s, i) => s.classList.toggle("active", i === n));
+  document.querySelectorAll(".step").forEach((s, i) => {
+    s.classList.remove("active", "done");
+    if (i < n) s.classList.add("done");
+    if (i === n) s.classList.add("active");
+  });
+  currentStep = n;
+  updateNav();
+  if (n === 3) renderProtocolo();
+  if (n === 5) renderPrompts();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function nextStep() {
+  if (currentStep < 6) {
+    if (!validateStep(currentStep)) return;
+    goTo(currentStep + 1);
+  }
+}
+
+function prevStep() {
+  if (currentStep > 0) goTo(currentStep - 1);
+}
+
+function validateStep(n) {
+  showStatus("", "info");
+  if (n === 0) return true;
+  if (n === 1) {
+    let nombre = document.getElementById("p-nombre").value.trim();
+    let edad = document.getElementById("p-edad").value.trim();
+    let sexo = document.getElementById("p-sexo").value;
+    if (!nombre) { showStatus("Nombre del paciente requerido", "error"); return false; }
+    if (!edad || isNaN(parseInt(edad))) { showStatus("Edad válida requerida", "error"); return false; }
+    if (!sexo) { showStatus("Sexo requerido", "error"); return false; }
+  }
+  if (n === 2) {
+    let tipo = document.getElementById("e-tipo").value;
+    if (!tipo) { showStatus("Selecciona un tipo de estudio", "error"); return false; }
+  }
+  if (n === 3) return true;
+  if (n === 4) {
+    if (capturedImages.length === 0) { showStatus("Captura al menos una imagen", "error"); return false; }
+  }
+  return true;
+}
+
+function updateNav() {
+  let prev = document.getElementById("btn-prev");
+  let next = document.getElementById("btn-next");
+  if (currentStep === 6) {
+    prev.style.display = "flex";
+    prev.textContent = "←";
+    next.style.display = "none";
+  } else {
+    prev.style.display = currentStep === 0 ? "none" : "flex";
+    next.style.display = "flex";
+    next.textContent = "Siguiente →";
+  }
+}
+
+function showStatus(msg, type) {
+  let el = document.getElementById("global-toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.style.background = type === "error" ? "rgba(255,59,48,0.12)" : type === "success" ? "rgba(52,199,89,0.12)" : "var(--accent-light)";
+  el.style.color = type === "error" ? "var(--danger)" : type === "success" ? "var(--positive)" : "var(--accent)";
+  el.style.borderColor = type === "error" ? "var(--danger)" : type === "success" ? "var(--positive)" : "var(--accent)";
+  el.style.transform = "translateX(-50%) translateY(0)";
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.transform = "translateX(-50%) translateY(-120%)"; }, 3500);
+}
+
+// ============================================================
+//  PROTOCOLOS
+// ============================================================
+function onTipoChange() { renderProtocolo(); }
+
+function renderProtocolo() {
+  let tipo = document.getElementById("e-tipo").value;
+  let container = document.getElementById("protocolo-content");
+  if (!tipo || !protocolos[tipo]) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>Selecciona un tipo de estudio</p></div>';
+    return;
+  }
+  let p = protocolos[tipo];
+  let html = '<div class="protocol-box"><h4>' + p.titulo + '</h4><ul>';
+  p.items.forEach(item => {
+    html += `<li><span class="chk" onclick="this.classList.toggle('checked')">✓</span><span>${item}</span></li>`;
+  });
+  html += '</ul></div>';
+  container.innerHTML = html;
+}
+
+function verificarCalidad() {
+  let checklist = document.querySelectorAll(".protocol-box .chk.checked");
+  let total = document.querySelectorAll(".protocol-box .chk").length;
+  if (checklist.length < total) {
+    showStatus("Faltan " + (total - checklist.length) + " vistas por capturar", "warning");
+  } else {
+    showStatus("Todas las vistas capturadas", "success");
+    document.querySelector('.step[data-step="4"]').classList.add("done");
+  }
+}
+
+// ============================================================
+//  IMAGENES
+// ============================================================
+function compressImage(dataUrl, maxWidth, maxHeight, quality) {
+  return new Promise(resolve => {
+    let img = new Image();
+    img.onload = function() {
+      let canvas = document.createElement("canvas");
+      let w = img.width, h = img.height;
+      if (w > maxWidth) { h = Math.round(h * (maxWidth / w)); w = maxWidth; }
+      if (h > maxHeight) { w = Math.round(w * (maxHeight / h)); h = maxHeight; }
+      canvas.width = w; canvas.height = h;
+      let ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.src = dataUrl;
+  });
+}
+
+function handleFiles(files) {
+  Array.from(files).forEach(file => {
+    if (file.size > 20 * 1024 * 1024) { showStatus("Imagen muy grande, comprímela", "warning"); return; }
+    let reader = new FileReader();
+    reader.onload = function(e) {
+      compressImage(e.target.result, 1200, 1200, 0.7).then(compressed => {
+        capturedImages.push(compressed);
+        renderGallery();
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderGallery() {
+  let g = document.getElementById("gallery");
+  g.innerHTML = capturedImages.map((src, i) => {
+    let sizeKB = Math.round((src.length * 3 / 4) / 1024);
+    return `<div class="gallery-item"><img src="${src}"><button class="del" onclick="removeImage(${i})">×</button><span class="size">${sizeKB} KB</span></div>`;
+  }).join('');
+}
+
+function removeImage(i) { capturedImages.splice(i, 1); renderGallery(); }
+
+// ============================================================
+//  PROMPTS
+// ============================================================
+function renderPrompts() {
+  let tipo = document.getElementById("e-tipo").value;
+  let container = document.getElementById("prompts-list");
+  if (!tipo || !prompts[tipo]) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">🤖</div><p>Selecciona un tipo de estudio</p></div>';
+    return;
+  }
+  container.innerHTML = `<div class="prompt-card selected" id="prompt-card-0"><h4>${nombresPrompts[tipo]}</h4><p>Prompt especializado con referencias actualizadas</p></div>`;
+  document.getElementById("prompt-card-0").addEventListener("click", function() { selectPrompt(tipo); });
+  selectPrompt(tipo);
+}
+
+function selectPrompt(key) {
+  selectedPromptKey = key;
+  document.querySelectorAll(".prompt-card").forEach(c => c.classList.remove("selected"));
+  let card = document.getElementById("prompt-card-0");
+  if (card) card.classList.add("selected");
+  buildPrompt();
+}
+
+function buildPrompt() {
+  if (!selectedPromptKey) return;
+  let text = prompts[selectedPromptKey];
+  let get = id => document.getElementById(id) ? document.getElementById(id).value : "No especificado";
+  text = text.replace(/{NOMBRE}/g, get("p-nombre"))
+    .replace(/{EDAD}/g, get("p-edad"))
+    .replace(/{SEXO}/g, get("p-sexo"))
+    .replace(/{MOTIVO}/g, get("p-motivo"))
+    .replace(/{ANTECEDENTES}/g, get("p-antecedentes") || "No especificados")
+    .replace(/{EQUIPO}/g, get("e-equipo") || "No especificado")
+    .replace(/{TRANSDUCTOR}/g, get("e-transductor") || "No especificado")
+    .replace(/{FRECUENCIA}/g, get("e-frecuencia") || "No especificado")
+    .replace(/{PROFUNDIDAD}/g, get("e-profundidad") || "No especificado")
+    .replace(/{GANANCIA}/g, get("e-ganancia") || "No especificado");
+
+  let tipo = document.getElementById("e-tipo").value;
+  if (guiasReferencia[tipo]) {
+    text += "\n\nReferencias: " + guiasReferencia[tipo];
+  }
+
+  generatedPromptText = text;
+  document.getElementById("generated-prompt").value = text;
+  document.getElementById("generated-prompt-card").style.display = "block";
+  let imgCount = capturedImages.length;
+  let estTokens = Math.ceil(text.length / 4) + (imgCount * 800);
+  let estCost = (estTokens / 1000000 * 0.95).toFixed(3);
+  document.getElementById("cost-estimate").textContent = "~" + estTokens + " tokens | ~$" + estCost + " | " + imgCount + " imagen(es)";
+}
+
+function copyPrompt() {
+  let text = document.getElementById("generated-prompt").value;
+  navigator.clipboard.writeText(text).then(() => {
+    showStatus("Prompt copiado. Pégalo en Kimi con las imágenes.", "success");
+  }).catch(() => showStatus("Copia manualmente el prompt", "error"));
+}
+
+// ============================================================
+//  ENVIO A IA
+// ============================================================
+async function sendToAI() {
+  generatedPromptText = document.getElementById("generated-prompt").value;
+  if (apiMode === "manual") { copyPrompt(); return; }
+  let btn = document.getElementById("btn-send");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Enviando...';
+  try {
+    if (apiMode === "proxy") await sendToProxy();
+  } catch (err) {
+    showStatus("Error: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🚀 Enviar a IA";
+  }
+}
+
+async function sendToProxy() {
+  let proxyUrl = document.getElementById("proxy-url").value.trim();
+  if (!proxyUrl) throw new Error("Ingresa la URL de tu proxy");
+  localStorage.setItem("ecokimi_proxy_url", proxyUrl);
+  let model = document.getElementById("kimi-model").value;
+  localStorage.setItem("ecokimi_kimi_model", model);
+  showStatus("Enviando a Kimi via proxy...", "info");
+
+  let contentParts = [{ type: "text", text: generatedPromptText }];
+  capturedImages.forEach(img => {
+    contentParts.push({ type: "image_url", image_url: { url: img } });
+  });
+
+  let payload = {
+    model,
+    messages: [{ role: "user", content: contentParts }],
+    max_tokens: 4096,
+    reasoning_effort: "low"
+  };
+
+  let response = await fetch(proxyUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  let responseText = await response.text();
+  if (!response.ok) {
+    let errData;
+    try { errData = JSON.parse(responseText); } catch(e) { errData = { error: { message: responseText } }; }
+    throw new Error("Error " + response.status + ": " + (errData.error?.message || responseText.substring(0, 200)));
+  }
+
+  let data = JSON.parse(responseText);
+  if (data.error) throw new Error(data.error.message || "Error en la API");
+
+  let content = data.choices?.[0]?.message?.content;
+
+  if (!content || content.trim() === "") {
+    let reasoning = data.choices?.[0]?.message?.reasoning_content;
+    if (reasoning) {
+      content = limpiarRazonamiento(reasoning);
+    } else {
+      content = "Sin respuesta";
+    }
+  }
+
+  aiResponseText = content;
+  showResponse();
+}
+
+function showResponse() {
+  if (!aiResponseText || aiResponseText.trim() === "") {
+    showStatus("No se recibió respuesta de la IA", "warning");
+    aiResponseText = "[No se recibió respuesta. Verifica tu conexión e intenta nuevamente.]";
+  } else {
+    showStatus("Análisis recibido correctamente", "success");
+  }
+  document.getElementById("ai-response-text").textContent = aiResponseText;
+  document.getElementById("ai-response-card").style.display = "block";
+  setTimeout(() => {
+    document.getElementById("ai-response-card").scrollIntoView({ behavior: "smooth" });
+  }, 200);
+}
+
+// ============================================================
+//  REPORTE
+// ============================================================
+function generateReportFromAI() {
+  if (!aiResponseText || aiResponseText.trim() === "") {
+    showStatus("No hay respuesta de la IA", "error");
+    return;
+  }
+  let tipo = document.getElementById("e-tipo").value;
+  let tmpl = reportTemplates[tipo] || reportTemplates.abdomen;
+  let now = new Date().toLocaleString("es-ES", { dateStyle: "long", timeStyle: "short" });
+  let fechaCorta = new Date().toLocaleDateString("es-ES");
+  let get = id => document.getElementById(id) ? document.getElementById(id).value : "N/E";
+  let idPac = get("p-nombre").split(" ")[0].substring(0, 3).toUpperCase() + "-" +
+    fechaCorta.replace(/\//g, "-") + "-" + Math.floor(Math.random() * 900 + 100);
+
+  let alertas = detectarAlertas(aiResponseText);
+  let parsed = parseAIResponse(aiResponseText);
+
+  let tablasHtml = tmpl.tablas.map(t => {
+    let ths = t.cols.map(c => '<th>' + c + '</th>').join('');
+    let trs = t.rows.map(r => '<tr><td>' + r + '</td><td></td><td></td><td class="interp-normal">Normal</td></tr>').join('');
+    return '<div class="report-section"><h4>' + t.titulo + '</h4><table class="report-table"><thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table></div>';
+  }).join('');
+
+  let refsHtml = guiasReferencia[tipo] ?
+    '<div class="report-section"><h4>Referencias y guías</h4><div class="reference-box"><strong>' + guiasReferencia[tipo] + '</strong></div></div>' : '';
+
+  let alertasHtml = alertas.length > 0 ? '<div class="no-print">' + generarBannerAlertas(alertas) + '</div>' : '';
+
+  let reportHTML = '<div class="report-preview" id="report-print">' +
+    '<div class="report-header">' +
+    '<div class="clinic-name">Centro de Imágenes Diagnósticas</div>' +
+    '<h2>' + tmpl.titulo + '</h2>' +
+    '<div class="meta">' + tmpl.subtitulo + ' | ' + fechaCorta + '</div>' +
+    '</div>' +
+    '<div class="report-body">' +
+    alertasHtml +
+    '<div class="report-section"><h4>Datos del paciente</h4>' +
+    '<div class="report-grid">' +
+    '<div class="col"><div class="col-label">Nombre</div><div class="col-value">' + get("p-nombre") + '</div></div>' +
+    '<div class="col"><div class="col-label">Edad / Sexo</div><div class="col-value">' + get("p-edad") + ' años / ' + get("p-sexo") + '</div></div>' +
+    '<div class="col"><div class="col-label">Fecha</div><div class="col-value">' + fechaCorta + '</div></div>' +
+    '<div class="col"><div class="col-label">ID</div><div class="col-value">' + idPac + '</div></div>' +
+    '</div>' +
+    '<p style="font-size:10px;margin-top:4px"><strong>Motivo:</strong> ' + get("p-motivo") + '</p>' +
+    '<p style="font-size:10px"><strong>Antecedentes:</strong> ' + (get("p-antecedentes") || "Ninguno") + '</p>' +
+    '</div>' +
+
+    '<div class="report-section"><h4>Parámetros técnicos</h4>' +
+    '<p style="font-size:10px"><strong>Equipo:</strong> ' + get("e-equipo") + ' | <strong>Transductor:</strong> ' + get("e-transductor") + '</p>' +
+    '<p style="font-size:10px"><strong>Frecuencia:</strong> ' + get("e-frecuencia") + ' MHz | <strong>Profundidad:</strong> ' + get("e-profundidad") + ' cm | <strong>Ganancia:</strong> ' + get("e-ganancia") + '</p>' +
+    '<p style="font-size:10px"><strong>Comentarios:</strong> ' + (get("e-comentarios") || "Ninguno") + '</p>' +
+    '</div>' +
+
+    (parsed.clinicos ? '<div class="report-section"><h4>Datos clínicos relevantes</h4><div class="report-clinical">' + parsed.clinicos + '</div></div>' : '') +
+
+    tablasHtml +
+
+    (parsed.hallazgos ? '<div class="report-section report-organs"><h4>Hallazgos por órgano</h4>' + parsed.hallazgos + '</div>' : '') +
+
+    (parsed.patrones ? '<div class="report-section"><h4>Patrones patológicos identificados</h4><div class="report-clinical">' + parsed.patrones + '</div></div>' : '') +
+
+    refsHtml +
+
+    (parsed.analisis ? '<div class="report-section"><h4>Análisis clínico</h4><div class="report-clinical">' + parsed.analisis + '</div></div>' : '') +
+
+    (parsed.diagnostico ? '<div class="report-section"><h4>Impresión diagnóstica</h4><div class="report-diagnosis">' + parsed.diagnostico + '</div></div>' : '') +
+
+    (parsed.diferencial ? '<div class="report-section"><h4>Diagnóstico diferencial</h4><div class="report-differential">' + parsed.diferencial + '</div></div>' : '') +
+
+    (parsed.recomendaciones ? '<div class="report-section"><h4>Recomendaciones</h4><div class="report-recommendations">' + parsed.recomendaciones + '</div></div>' : '') +
+
+    '<div class="report-signoff">' +
+    '<div class="date">Fecha: ' + now + '</div>' +
+    '<div class="reg">Registro: ' + idPac + '</div>' +
+    '</div>' +
+
+    '<div class="report-footer" style="margin-top:14px;padding-top:10px;border-top:1px solid #e8e8ed;text-align:center;font-size:9px;color:#86868b;">' +
+    '<p>Este informe fue generado con asistencia de inteligencia artificial.<br>La interpretación final debe ser validada por un médico especialista.</p>' +
+    '</div>' +
+    '</div></div>';
+
+  document.getElementById("report-container").innerHTML = reportHTML;
+  goTo(6);
+}
+
+// ============================================================
+//  PARSEAR RESPUESTA IA — v9.2: marcadores [[SECCION]]
+// ============================================================
+function parseAIResponse(text) {
+  let result = { clinicos: "", hallazgos: "", patrones: "", analisis: "", diagnostico: "", diferencial: "", recomendaciones: "" };
+  if (!text || text.trim() === "") return result;
+
+  // 1) Normalizar: quitar bloques de código markdown si los hay
+  let t = text.replace(/```[a-z]*\n?/gi, "").replace(/```/g, "").trim();
+
+  // 2) Extraer por marcadores [[SECCION]] (case-insensitive)
+  const map = {
+    DATOS: "clinicos",
+    HALLAZGOS: "hallazgos",
+    TABLA: null,
+    PATRONES: "patrones",
+    ANALISIS: "analisis",
+    DIAGNOSTICO: "diagnostico",
+    DIFERENCIAL: "diferencial",
+    RECOMENDACIONES: "recomendaciones"
+  };
+
+  // Regex: [[NAME]] seguido de contenido hasta el siguiente [[NAME]] o fin
+  const markerRe = /\[\[\s*(DATOS|HALLAZGOS|TABLA|PATRONES|ANALISIS|DIAGNOSTICO|DIFERENCIAL|RECOMENDACIONES)\s*\]\]/gi;
+  let matches = [];
+  let m;
+  while ((m = markerRe.exec(t)) !== null) {
+    matches.push({ key: m[1].toUpperCase(), start: m.index, end: m.index + m[0].length });
+  }
+
+  if (matches.length > 0) {
+    for (let i = 0; i < matches.length; i++) {
+      let cur = matches[i];
+      let nextStart = (i + 1 < matches.length) ? matches[i + 1].start : t.length;
+      let content = t.substring(cur.end, nextStart).trim();
+      let targetKey = map[cur.key];
+      if (targetKey) {
+        if (result[targetKey]) result[targetKey] += "\n" + content;
+        else result[targetKey] = content;
+      }
+    }
+  } else {
+    // 3) Fallback: parseo por secciones numeradas (compatibilidad con respuestas viejas)
+    let clean = limpiarRazonamiento(t);
+    let fallback = parsearPorSecciones(clean);
+    Object.assign(result, fallback);
+  }
+
+  // 4) Limpiar líneas de razonamiento residuales
+  for (let k of ["clinicos", "hallazgos", "patrones", "analisis", "diagnostico", "diferencial", "recomendaciones"]) {
+    if (result[k]) result[k] = limpiarRazonamiento(result[k]);
+  }
+
+  // 5) Formatear a HTML
+  result.clinicos = formatSectionHtml(result.clinicos);
+  result.hallazgos = formatHallazgos(result.hallazgos);
+  result.patrones = formatSectionHtml(result.patrones);
+  result.analisis = formatSectionHtml(result.analisis);
+  result.diagnostico = formatListHtml(result.diagnostico);
+  result.diferencial = formatListHtml(result.diferencial);
+  result.recomendaciones = formatListHtml(result.recomendaciones);
+
+  return result;
+}
+
+// Fallback: parseo por secciones numeradas (compatibilidad)
+function parsearPorSecciones(cleanText) {
+  let result = { clinicos: "", hallazgos: "", patrones: "", analisis: "", diagnostico: "", diferencial: "", recomendaciones: "" };
+  let lines = cleanText.split("\n");
+  let sections = {};
+
+  const sectionPatterns = [
+    { key: "clinicos", patterns: [/1\.\s*DATOS CLINICOS RELEVANTES/i, /1\.\s*DATOS CLINICOS/i, /DATOS CLINICOS RELEVANTES/i] },
+    { key: "hallazgos", patterns: [/2\.\s*HALLAZGOS/i, /HALLAZGOS POR ORGANO/i, /HALLAZGOS.*BIOMETRIA/i, /HALLAZGOS.*ANATOMIA/i] },
+    { key: "patrones", patterns: [/4\.\s*PATRONES PATOLOGICOS/i, /PATRONES PATOLOGICOS IDENTIFICADOS/i, /CLASIFICACION.*RADS/i, /CLASIFICACION.*BI-RADS/i] },
+    { key: "analisis", patterns: [/5\.\s*ANALISIS CLINICO/i, /ANALISIS CLINICO/i, /CORRELACION CLINICA/i] },
+    { key: "diagnostico", patterns: [/6\.\s*IMPRESION DIAGNOSTICA/i, /6\.\s*DIAGNOSTICO/i, /IMPRESION DIAGNOSTICA/i, /DIAGNOSTICO PRINCIPAL/i] },
+    { key: "diferencial", patterns: [/DIAGNOSTICO DIFERENCIAL/i, /3\s*DIAGNOSTICOS DIFERENCIALES/i, /DIFERENCIALES/i] },
+    { key: "recomendaciones", patterns: [/6\.\s*RECOMENDACIONES/i, /7\.\s*RECOMENDACIONES/i, /RECOMENDACIONES/i] }
+  ];
+
+  let positions = [];
+  for (let sec of sectionPatterns) {
+    for (let p of sec.patterns) {
+      let match = cleanText.match(p);
+      if (match) { positions.push({ key: sec.key, index: match.index, end: match.index + match[0].length }); break; }
+    }
+  }
+  positions.sort((a, b) => a.index - b.index);
+  for (let i = 0; i < positions.length; i++) {
+    let cur = positions[i];
+    let end = (i + 1 < positions.length) ? positions[i + 1].index : cleanText.length;
+    let content = cleanText.substring(cur.end, end).trim();
+    if (sections[cur.key]) sections[cur.key] += "\n" + content;
+    else sections[cur.key] = content;
+  }
+  return {
+    clinicos: sections.clinicos || "",
+    hallazgos: sections.hallazgos || "",
+    patrones: sections.patrones || "",
+    analisis: sections.analisis || "",
+    diagnostico: sections.diagnostico || "",
+    diferencial: sections.diferencial || "",
+    recomendaciones: sections.recomendaciones || ""
+  };
+}
+
+// ============================================================
+//  LIMPIEZA SEGURA DE RAZONAMIENTO
+//  (Solo descarta líneas inequívocamente en inglés / chain-of-thought)
+// ============================================================
+function limpiarRazonamiento(text) {
+  if (!text) return "";
+  let lines = text.split("\n");
+  let clean = [];
+  const reasoningPrefixes = [
+    "wait,", "wait ", "let me ", "actually,", "hmm,", "i'll ", "i think",
+    "i believe", "i need to", "i should", "i will ", "note:", "however,",
+    "okay,", "alright,", "so, ", "first, i", "second, i", "third, i"
+  ];
+  for (let line of lines) {
+    let trimmed = line.trim();
+    if (!trimmed) { clean.push(line); continue; }
+    let l = trimmed.toLowerCase();
+    // Si contiene español típico, conservar SIEMPRE
+    const hasSpanish = /[áéíóúñ¿¡ü]/i.test(l) ||
+                       /\b(de|la|el|los|las|con|sin|para|por|se|su|que|del|al|es|son|está|están|hay|no|sí|muy|más|también|según|entre|sobre|bajo|desde|hasta)\b/.test(l);
+    if (hasSpanish) { clean.push(line); continue; }
+    // Solo descartar prefijos inequívocos de razonamiento en inglés
+    const isReasoning = reasoningPrefixes.some(p => l.startsWith(p));
+    if (!isReasoning) clean.push(line);
+  }
+  return clean.join("\n");
+}
+
+// ============================================================
+//  FORMATEADORES HTML
+// ============================================================
+function formatSectionHtml(text) {
+  if (!text || text.trim() === "") return "";
+  let lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length === 0) return "";
+  if (lines.every(l => l.length < 220)) {
+    return "<ul>" + lines.map(l => "<li>" + escapeHtml(l.replace(/^[\-\*•]\s*/, "")) + "</li>").join("") + "</ul>";
+  }
+  return "<p>" + escapeHtml(lines.join(" ")) + "</p>";
+}
+
+function formatListHtml(text) {
+  if (!text || text.trim() === "") return "";
+  let lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0 && !l.match(/^[\-\*•]\s*$/));
+  if (lines.length === 0) return "";
+  return "<ol>" + lines.map(l => "<li>" + escapeHtml(l.replace(/^[\-\*•\d\.)]+\s*/, "")) + "</li>").join("") + "</ol>";
+}
+
+function formatHallazgos(text) {
+  if (!text || text.trim() === "") return "";
+  let lines = text.split("\n");
+  let html = "";
+  let currentOrgan = "";
+  let organBuffer = [];
+  const organNames = [
+    "HÍGADO","VESÍCULA","VÍA","PÁNCREAS","BAZO","RIÑÓN","AORTA","TGI",
+    "ÚTERO","ENDOMETRIO","OVARIO","TESTÍCULO","EPIDÍDIMO","PRÓSTATA",
+    "CARÓTIDA","TENDÓN","MÚSCULO","LIGAMENTO","LÓBULO","ISTMO","NÓDULO",
+    "GANGLIO","PLACENTA","FETO","SACO","EMBRIÓN","MAMA","AXILA",
+    "VESÍCULAS","CORDÓN","TÚNICA","PELVIS"
+  ];
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
+    let isHeader = false;
+    let upper = line.toUpperCase();
+    for (let name of organNames) {
+      if (upper.indexOf(name) >= 0 && (line.indexOf(":") >= 0 || line.indexOf("–") >= 0 || line.indexOf("-") >= 0)) {
+        if (organBuffer.length > 0) html += flushOrgan();
+        currentOrgan = line.replace(/[:–-].*$/, "").trim();
+        isHeader = true;
+        break;
+      }
+    }
+    if (!isHeader) organBuffer.push(line);
+  }
+  if (organBuffer.length > 0) html += flushOrgan();
+
+  function flushOrgan() {
+    let content = organBuffer.map(l => '<li>' + escapeHtml(l.replace(/^[-•\*\s]+/, "")) + '</li>').join("");
+    organBuffer = [];
+    return '<h5>' + escapeHtml(currentOrgan) + '</h5><ul>' + content + '</ul>';
+  }
+  if (!html) html = '<p>' + escapeHtml(text) + '</p>';
+  return html;
+}
+
+function escapeHtml(text) {
+  let div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ============================================================
+//  PLANTILLAS REPORTE
+// ============================================================
+const reportTemplates = {
+  abdomen: {
+    titulo: "INFORME DE ECOGRAFÍA ABDOMINAL COMPLETA",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Abdominal",
+    tablas: [
+      { titulo: "Hígado", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Eje longitudinal", "Eje anteroposterior", "Volumen"] },
+      { titulo: "Vesícula Biliar", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Longitud", "Ancho", "Pared"] },
+      { titulo: "Riñones", cols: ["Parámetro", "Derecho", "Izquierdo", "Referencia", "Interpretación"], rows: ["Longitud", "Cortical"] }
+    ]
+  },
+  obstetrica_ge: {
+    titulo: "INFORME DE ECOGRAFÍA OBSTÉTRICA - GESTACIÓN TEMPRANA",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Obstétrico Temprano",
+    tablas: [{ titulo: "Parámetros gestacionales", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Saco DM", "LCC", "Latido"] }]
+  },
+  obstetrica_t1: {
+    titulo: "INFORME DE ECOGRAFÍA OBSTÉTRICA - PRIMER TRIMESTRE",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Obstétrico (12-14 sem)",
+    tablas: [{ titulo: "Biometría Fetal", cols: ["Parámetro", "Valor", "Percentil", "Interpretación"], rows: ["LCC", "DBP", "CC", "CA", "LF", "TN"] }]
+  },
+  obstetrica_t2: {
+    titulo: "INFORME DE ECOGRAFÍA OBSTÉTRICA - SEGUNDO TRIMESTRE",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Obstétrico (15-24 sem)",
+    tablas: [
+      { titulo: "Biometría Fetal", cols: ["Parámetro", "Valor", "Percentil", "Interpretación"], rows: ["DBP", "CC", "CA", "LF", "Peso"] },
+      { titulo: "Placenta y Líquido", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["ILA", "Placenta grado"] }
+    ]
+  },
+  obstetrica_t3: {
+    titulo: "INFORME DE ECOGRAFÍA OBSTÉTRICA - TERCER TRIMESTRE",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Obstétrico (>24 sem)",
+    tablas: [
+      { titulo: "Biometría Fetal", cols: ["Parámetro", "Valor", "Percentil", "Interpretación"], rows: ["DBP", "CC", "CA", "LF", "Peso"] },
+      { titulo: "Doppler", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["IR umbilical"] }
+    ]
+  },
+  cardiaca: {
+    titulo: "INFORME DE ECOCARDIOGRAMA TRANSTORÁCICO",
+    subtitulo: "Estudio de Imágenes – Ecocardiografía (ASE 2023)",
+    tablas: [{ titulo: "Ventrículo Izquierdo", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["DDVI", "DSVI", "SIV", "PPVI", "FEVI"] }]
+  },
+  renal: {
+    titulo: "INFORME DE ECOGRAFÍA RENAL Y VESICAL",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Urológico",
+    tablas: [
+      { titulo: "Riñón Derecho", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Longitud", "Cortical"] },
+      { titulo: "Riñón Izquierdo", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Longitud", "Cortical"] }
+    ]
+  },
+  tiroidea: {
+    titulo: "INFORME DE ECOGRAFÍA TIROIDEA (TI-RADS)",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Cervical (ACR TI-RADS 2023)",
+    tablas: [
+      { titulo: "Lóbulo Derecho", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Longitud", "Ancho", "AP", "Volumen"] },
+      { titulo: "Lóbulo Izquierdo", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Longitud", "Ancho", "AP", "Volumen"] }
+    ]
+  },
+  musk: {
+    titulo: "INFORME DE ECOGRAFÍA MUSCULOESQUELÉTICA",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Musculoesquelético",
+    tablas: [{ titulo: "Lesiones", cols: ["Lesión", "Ubicación", "Tamaño", "Interpretación"], rows: ["Lesión 1", "Lesión 2"] }]
+  },
+  vascular: {
+    titulo: "INFORME DE DOPPLER VASCULAR",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Vascular (SVU 2023)",
+    tablas: [{ titulo: "Carótidas", cols: ["Parámetro", "Derecha", "Izquierda", "Referencia", "Interpretación"], rows: ["IMT", "VPS"] }]
+  },
+  pelvica: {
+    titulo: "INFORME DE ECOGRAFÍA PÉLVICA",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Ginecológico",
+    tablas: [
+      { titulo: "Útero", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Longitud", "Ancho", "AP"] },
+      { titulo: "Ovarios", cols: ["Parámetro", "Derecho", "Izquierdo", "Interpretación"], rows: ["Longitud", "Ancho"] }
+    ]
+  },
+  mama: {
+    titulo: "INFORME DE ECOGRAFÍA MAMARIA (BI-RADS)",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Mamario (ACR BI-RADS 2024)",
+    tablas: [
+      { titulo: "Mama Derecha", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Grosor total", "Grosor glandular"] },
+      { titulo: "Mama Izquierda", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Grosor total", "Grosor glandular"] }
+    ]
+  },
+  prostata: {
+    titulo: "INFORME DE ECOGRAFÍA PROSTÁTICA",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Urológico",
+    tablas: [{ titulo: "Próstata", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["AP", "Transversal", "Longitudinal", "Volumen"] }]
+  },
+  genital_masc: {
+    titulo: "INFORME DE ECOGRAFÍA TESTICULAR Y ESCROTAL",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Urológico",
+    tablas: [
+      { titulo: "Testículo Derecho", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Longitud", "Ancho", "AP", "Volumen"] },
+      { titulo: "Testículo Izquierdo", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Longitud", "Ancho", "AP", "Volumen"] }
+    ]
+  },
+  pediatrico: {
+    titulo: "INFORME DE ECOGRAFÍA PEDIÁTRICA",
+    subtitulo: "Estudio de Imágenes – Ultrasonido Pediátrico (ESPR 2023)",
+    tablas: [
+      { titulo: "Riñón Derecho", cols: ["Parámetro", "Valor", "Percentil", "Interpretación"], rows: ["Longitud", "Cortical"] },
+      { titulo: "Riñón Izquierdo", cols: ["Parámetro", "Valor", "Percentil", "Interpretación"], rows: ["Longitud", "Cortical"] }
+    ]
+  },
+  partes_blandas: {
+    titulo: "INFORME DE ECOGRAFÍA DE PARTES BLANDAS",
+    subtitulo: "Estudio de Imágenes – Ultrasonido de Partes Blandas (EFSUMB/AIUM)",
+    tablas: [
+      { titulo: "Lesión", cols: ["Parámetro", "Valor", "Referencia", "Interpretación"], rows: ["Dimensiones", "Volumen", "Vascularización"] }
+    ]
+  }
+};
+
+// ============================================================
+//  DESCARGAR PDF REAL (jsPDF + html2canvas)
+//  - Informe limpio SIN alertas ni banner
+//  - Anexo: lámina de imágenes 6 por página en A4 horizontal
+// ============================================================
+async function downloadPDF() {
+  const reportEl = document.getElementById("report-print");
+  if (!reportEl) { showStatus("Genera primero el reporte", "error"); return; }
+  if (typeof window.jspdf === "undefined" || typeof html2canvas === "undefined") {
+    showStatus("Cargando librerías PDF, intenta de nuevo en 1 segundo...", "warning");
+    return;
+  }
+  showStatus("Generando PDF...", "info");
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pageW = 210, pageH = 297, margin = 10;
+    const usableW = pageW - margin * 2;
+
+    const clone = reportEl.cloneNode(true);
+    clone.querySelectorAll(".alert-banner, .no-print").forEach(el => el.remove());
+    clone.style.width = usableW + "mm";
+    clone.style.background = "#ffffff";
+    clone.style.boxShadow = "none";
+    clone.style.border = "none";
+    document.body.appendChild(clone);
+
+    const canvas = await html2canvas(clone, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false
+    });
+    document.body.removeChild(clone);
+
+    const imgData = canvas.toDataURL("image/jpeg", 0.92);
+    const imgH = (canvas.height * usableW) / canvas.width;
+
+    let heightLeft = imgH;
+    let position = margin;
+
+    pdf.addImage(imgData, "JPEG", margin, position, usableW, imgH);
+    heightLeft -= (pageH - margin * 2);
+
+    while (heightLeft > 0) {
+      pdf.addPage();
+      position = margin - (imgH - heightLeft);
+      pdf.addImage(imgData, "JPEG", margin, position, usableW, imgH);
+      heightLeft -= (pageH - margin * 2);
+    }
+
+    if (capturedImages.length > 0) {
+      const lW = 297, lH = 210, lMargin = 8, gap = 4;
+      const cols = 3, rows = 2;
+      const cellW = (lW - lMargin * 2 - gap * (cols - 1)) / cols;
+      const cellH = (lH - lMargin * 2 - gap * (rows - 1)) / rows;
+
+      await Promise.all(capturedImages.map(src => new Promise(res => {
+        const im = new Image();
+        im.onload = im.onerror = () => res();
+        im.src = src;
+      })));
+
+      for (let i = 0; i < capturedImages.length; i++) {
+        const idx = i % 6;
+        if (idx === 0) {
+          pdf.addPage("a4", "l");
+          pdf.setFontSize(10);
+          pdf.setTextColor(120);
+          pdf.text(
+            "Lámina de imágenes - " + (document.getElementById("p-nombre").value || "Paciente") +
+            " | Pág. " + (Math.floor(i / 6) + 1),
+            lMargin, lMargin - 2
+          );
+        }
+        const col = idx % 3;
+        const row = Math.floor(idx / 3);
+        const x = lMargin + col * (cellW + gap);
+        const y = lMargin + row * (cellH + gap);
+
+        pdf.setDrawColor(210);
+        pdf.setLineWidth(0.2);
+        pdf.rect(x, y, cellW, cellH);
+
+        try {
+          const im = new Image();
+          await new Promise((res, rej) => { im.onload = res; im.onerror = rej; im.src = capturedImages[i]; });
+          const ratio = im.width / im.height;
+          const cellRatio = cellW / cellH;
+          let w = cellW - 2, h = cellH - 2, ox = x + 1, oy = y + 1;
+          if (ratio > cellRatio) {
+            h = (cellW - 2) / ratio;
+            oy = y + 1 + ((cellH - 2) - h) / 2;
+          } else {
+            w = (cellH - 2) * ratio;
+            ox = x + 1 + ((cellW - 2) - w) / 2;
+          }
+          pdf.addImage(capturedImages[i], "JPEG", ox, oy, w, h);
+        } catch(e) {
+          pdf.setFontSize(8);
+          pdf.setTextColor(200, 0, 0);
+          pdf.text("Error imagen " + (i + 1), x + 4, y + cellH / 2);
+        }
+      }
+    }
+
+    const nombre = (document.getElementById("p-nombre").value || "Paciente").replace(/\s+/g, "_");
+    const fecha = new Date().toISOString().slice(0, 10);
+    pdf.save(`Informe_${nombre}_${fecha}.pdf`);
+    showStatus("PDF descargado correctamente", "success");
+  } catch (err) {
+    console.error(err);
+    showStatus("Error al generar PDF: " + err.message, "error");
+  }
+}
+
+// ============================================================
+//  IMPRIMIR SOLO LA LÁMINA DE IMÁGENES
+// ============================================================
+function printImageSheet() {
+  if (capturedImages.length === 0) { showStatus("No hay imágenes para imprimir", "error"); return; }
+  const w = window.open("", "_blank");
+  if (!w) { showStatus("Permite ventanas emergentes para imprimir", "error"); return; }
+  const nombrePac = (document.getElementById("p-nombre").value || "Paciente");
+  const fecha = new Date().toLocaleDateString("es-ES");
+  const grupos = [];
+  for (let i = 0; i < capturedImages.length; i += 6) grupos.push(capturedImages.slice(i, i + 6));
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Lámina de imágenes - ${nombrePac}</title>
+  <style>
+    @page { size: A4 landscape; margin: 8mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #222; }
+    .page { page-break-after: always; padding: 4mm 0; }
+    .page:last-child { page-break-after: auto; }
+    .head { font-size: 10px; color: #555; margin-bottom: 3mm; display: flex; justify-content: space-between; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 4mm; height: 180mm; }
+    .cell { border: 0.3mm solid #ccc; background: #fafafa; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .cell img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+    @media print {
+      .cell { border-color: #ddd; background: #fff; }
+    }
+  </style></head><body>
+  ${grupos.map((grupo, g) => `
+    <div class="page">
+      <div class="head">
+        <span><b>${nombrePac}</b> — Lámina de imágenes</span>
+        <span>Página ${g + 1} de ${grupos.length} — ${fecha}</span>
+      </div>
+      <div class="grid">
+        ${grupo.map(src => `<div class="cell"><img src="${src}"></div>`).join("")}
+      </div>
+    </div>
+  `).join("")}
+  </body></html>`;
+
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => { w.print(); }, 900);
+}
+
+// ============================================================
+//  DESCARGAR DOCX (sin alertas)
+// ============================================================
+function downloadWord() {
+  let reportEl = document.getElementById("report-print");
+  if (!reportEl) { showStatus("Genera primero el reporte", "error"); return; }
+
+  let tipo = document.getElementById("e-tipo").value;
+  let tmpl = reportTemplates[tipo] || reportTemplates.abdomen;
+  let get = id => document.getElementById(id) ? document.getElementById(id).value : "N/E";
+  let fecha = new Date().toLocaleDateString("es-ES").replace(/\//g, "-");
+  let filename = "Informe_" + get("p-nombre").replace(/\s+/g, "_") + "_" + fecha + ".docx";
+
+  if (typeof docx === 'undefined') {
+    showStatus("Cargando librería... intenta de nuevo", "warning");
+    setTimeout(downloadWord, 2000);
+    return;
+  }
+
+  try {
+    const { Document, Packer, Paragraph, TextRun, AlignmentType, convertInchesToTwip } = docx;
+    let lines = aiResponseText.split('\n');
+    let children = [];
+
+    children.push(new Paragraph({
+      children: [new TextRun({ text: tmpl.titulo, size: 26, bold: true, font: "Arial" })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 100 }
+    }));
+
+    children.push(new Paragraph({
+      children: [new TextRun({ text: tmpl.subtitulo + " | " + fecha, size: 18, color: "666666", font: "Arial" })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 }
+    }));
+
+    children.push(new Paragraph({
+      children: [new TextRun({ text: "DATOS DEL PACIENTE", size: 20, bold: true, color: "0071e3" })],
+      spacing: { after: 80 }
+    }));
+    children.push(new Paragraph({ children: [new TextRun({ text: "Nombre: ", size: 17, bold: true }), new TextRun({ text: get("p-nombre"), size: 17 })] }));
+    children.push(new Paragraph({ children: [new TextRun({ text: "Edad: ", size: 17, bold: true }), new TextRun({ text: get("p-edad") + " años", size: 17 }), new TextRun({ text: " | Sexo: ", size: 17, bold: true }), new TextRun({ text: get("p-sexo"), size: 17 })] }));
+    children.push(new Paragraph({ children: [new TextRun({ text: "Motivo: ", size: 17, bold: true }), new TextRun({ text: get("p-motivo") || "No especificado", size: 17 })], spacing: { after: 150 } }));
+
+    children.push(new Paragraph({
+      children: [new TextRun({ text: "PARÁMETROS TÉCNICOS", size: 20, bold: true, color: "0071e3" })],
+      spacing: { after: 80 }
+    }));
+    children.push(new Paragraph({ children: [new TextRun({ text: "Equipo: ", size: 17, bold: true }), new TextRun({ text: get("e-equipo") || "No especificado", size: 17 }), new TextRun({ text: " | Transductor: ", size: 17, bold: true }), new TextRun({ text: get("e-transductor") || "No especificado", size: 17 })], spacing: { after: 150 } }));
+
+    children.push(new Paragraph({
+      children: [new TextRun({ text: "HALLAZGOS", size: 20, bold: true, color: "0071e3" })],
+      spacing: { after: 80 }
+    }));
+    let hallazgosLines = lines.filter(l => l.includes('HÍGADO') || l.includes('VESÍCULA') || l.includes('RIÑÓN') || l.includes('BAZO') || l.includes('PÁNCREAS') || l.includes('AORTA')).slice(0, 8);
+    if (hallazgosLines.length > 0) {
+      hallazgosLines.forEach(h => {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: "• " + h.replace(/^[-•\*\s]+/, ''), size: 17, font: "Arial" })],
+          spacing: { after: 30 }
+        }));
+      });
+    } else {
+      let resumen = aiResponseText.split('\n').slice(0, 12).join(' ');
+      children.push(new Paragraph({
+        children: [new TextRun({ text: resumen.substring(0, 600) + '...', size: 17 })],
+        spacing: { after: 30 }
+      }));
+    }
+    children.push(new Paragraph({ spacing: { after: 150 } }));
+
+    children.push(new Paragraph({
+      children: [new TextRun({ text: "ANÁLISIS CLÍNICO", size: 20, bold: true, color: "0071e3" })],
+      spacing: { after: 80 }
+    }));
+    let analisisLines = lines.filter(l => l.includes('Diagnóstico') || l.includes('diagnóstico') || l.includes('ANÁLISIS') || l.includes('análisis')).slice(0, 6);
+    if (analisisLines.length > 0) {
+      analisisLines.forEach(a => {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: "• " + a.replace(/^[-•\*\d\s]+/, ''), size: 17 })],
+          spacing: { after: 30 }
+        }));
+      });
+    } else {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: aiResponseText.split('\n').slice(0, 8).join(' ').substring(0, 400), size: 17 })],
+        spacing: { after: 30 }
+      }));
+    }
+    children.push(new Paragraph({ spacing: { after: 150 } }));
+
+    children.push(new Paragraph({
+      children: [new TextRun({ text: "RECOMENDACIONES", size: 20, bold: true, color: "0071e3" })],
+      spacing: { after: 80 }
+    }));
+    let recLines = lines.filter(l => l.includes('Recomendación') || l.includes('recomendación') || l.includes('Seguimiento')).slice(0, 5);
+    if (recLines.length > 0) {
+      recLines.forEach(r => {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: "• " + r.replace(/^[-•\*\d\s]+/, ''), size: 17 })],
+          spacing: { after: 30 }
+        }));
+      });
+    } else {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: "Seguimiento clínico según evolución. Consultar con médico tratante.", size: 17 })],
+        spacing: { after: 30 }
+      }));
+    }
+    children.push(new Paragraph({ spacing: { after: 150 } }));
+
+    if (guiasReferencia[tipo]) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: "REFERENCIAS Y GUÍAS", size: 18, bold: true, color: "666666" })],
+        spacing: { after: 60 }
+      }));
+      children.push(new Paragraph({
+        children: [new TextRun({ text: guiasReferencia[tipo], size: 15, color: "444444", italics: true })],
+        spacing: { after: 150 }
+      }));
+    }
+
+    children.push(new Paragraph({
+      children: [new TextRun({ text: "Documento generado con asistencia de IA | " + new Date().toLocaleString("es-ES"), size: 13, color: "999999" })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 30 }
+    }));
+    children.push(new Paragraph({
+      children: [new TextRun({ text: "La interpretación final debe ser validada por un médico especialista.", size: 13, color: "999999", italics: true })],
+      alignment: AlignmentType.CENTER
+    }));
+
+    const doc = new Document({
+      sections: [{
+        properties: {
+          page: { margin: { top: convertInchesToTwip(0.8), bottom: convertInchesToTwip(0.8), left: convertInchesToTwip(0.8), right: convertInchesToTwip(0.8) } }
+        },
+        children: children
+      }]
+    });
+
+    Packer.toBlob(doc).then(blob => {
+      let link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+      showStatus("Reporte DOCX descargado", "success");
+    }).catch(err => {
+      console.error(err);
+      showStatus("Error al generar DOCX: " + err.message, "error");
+    });
+
+  } catch (err) {
+    console.error(err);
+    showStatus("Error: " + err.message, "error");
+  }
+}
+
+function printReport() {
+  let reportEl = document.getElementById("report-print");
+  if (!reportEl) { showStatus("Genera primero el reporte", "error"); return; }
+  window.print();
+}
+
+function resetAll() {
+  if (!confirm("¿Iniciar un nuevo estudio? Se perderán los datos actuales.")) return;
+  document.querySelectorAll("input,textarea").forEach(el => el.value = "");
+  document.querySelectorAll("select").forEach(el => el.selectedIndex = 0);
+  capturedImages = [];
+  renderGallery();
+  document.getElementById("protocolo-content").innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>Selecciona un tipo de estudio</p></div>';
+  document.getElementById("prompts-list").innerHTML = '<div class="empty-state"><div class="icon">🤖</div><p>Selecciona un tipo de estudio</p></div>';
+  document.getElementById("generated-prompt-card").style.display = "none";
+  document.getElementById("ai-response-card").style.display = "none";
+  document.getElementById("report-container").innerHTML = "";
+  aiResponseText = "";
+  goTo(1);
+}
+</script>
+</body>
+</html>
