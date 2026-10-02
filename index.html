@@ -650,10 +650,9 @@ input[type="checkbox"]{width:auto}
       <button class="btn btn-success" id="btn-pdf-lite">📄 PDF paciente (lite)</button>
       <button class="btn btn-success" id="btn-png-lite">🖼️ PNG paciente</button>
       <button class="btn btn-secondary" id="btn-print-lite">🖨️ Imprimir lite</button>
+    </div>
     <div class="btn-row" id="btn-row-imagenes" style="margin-bottom:8px">
-     <button class="btn btn-warning" id="btn-pdf-imagenes">📄 PDF imágenes (6/pág)</button>
-     <button class="btn btn-warning" id="btn-png-imagenes">🖼️ Descargar PNGs</button>
-     <button class="btn btn-secondary" id="btn-print-imagenes">🖨️ Imprimir 6/pág</button>
+      <button class="btn btn-warning" id="btn-print-imagenes">🖼️ Imprimir solo imágenes</button>
     </div>
     <div class="btn-row" id="btn-row-receta" style="margin-bottom:12px">
       <button class="btn btn-corp" id="btn-pdf-receta">📄 PDF receta</button>
@@ -5244,278 +5243,51 @@ function actualizarVisibilidadBotones() {
 // ═══════════════════════════════════════════════════════════
 //  PDF / PNG / DOCX / IMPRIMIR
 // ═══════════════════════════════════════════════════════════
-
-  async function descargarImagenesPDF() {
-  const caso = window._casoActual || casoActual;
-  if (!caso) { showStatus("Genera primero el informe", "error"); return; }
-  const imgs = caso.acquisition?.imagenes || [];
-  if (imgs.length === 0) { showStatus("No hay imágenes capturadas", "error"); return; }
-  const btn = document.getElementById("btn-pdf-imagenes");
-  const btnOriginal = btn ? btn.textContent : "";
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Preparando...'; }
-  showStatus("Preparando PDF de imágenes...", "info");
-  try {
-    const { jsPDF } = window.jspdf;
-    const IMGS_POR_PAGINA = 6, COLS = 3, ROWS = 2;
-    const pdf = new jsPDF("p", "mm", "a4");
-    const pw = pdf.internal.pageSize.getWidth();
-    const ph = pdf.internal.pageSize.getHeight();
-    const mg = 10, headerH = 16, footerH = 8, gap = 3;
-    const areaW = pw - (mg * 2);
-    const areaH = ph - (mg * 2) - headerH - footerH;
-    const celW = (areaW - (gap * (COLS - 1))) / COLS;
-    const celH = (areaH - (gap * (ROWS - 1))) / ROWS;
-    const g = id => document.getElementById(id) ? document.getElementById(id).value : "N/E";
-    const nombre = g("e-nombre"), idPac = g("e-id");
-    const fecha = new Date().toLocaleDateString("es-ES");
-    const totalPaginas = Math.ceil(imgs.length / IMGS_POR_PAGINA);
-    const imgsLoaded = await Promise.all(imgs.map(img => new Promise((resolve) => {
-      const i = new Image();
-      i.onload = () => resolve({ el: i, tag: img.tag || "Vista", w: i.width, h: i.height, src: img.dataUrl });
-      i.onerror = () => resolve(null);
-      i.src = img.dataUrl;
-    })));
-    const validas = imgsLoaded.filter(x => x !== null);
-    if (validas.length === 0) throw new Error("No se pudieron cargar las imágenes");
-    for (let p = 0; p < totalPaginas; p++) {
-      if (p > 0) pdf.addPage();
-      pdf.setFillColor(26, 58, 92);
-      pdf.rect(0, 0, pw, headerH, "F");
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(11);
-      pdf.text("EcoRadAi · Imágenes Evidenciales", mg, 7);
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(8);
-      pdf.text(nombre + " · " + idPac + " · " + fecha, mg, 12.5);
-      pdf.setFont("helvetica", "bold");
-      pdf.text("Página " + (p + 1) + " / " + totalPaginas, pw - mg, 12.5, { align: "right" });
-      const inicio = p * IMGS_POR_PAGINA;
-      const fin = Math.min(inicio + IMGS_POR_PAGINA, validas.length);
-      for (let k = 0; k < fin - inicio; k++) {
-        const item = validas[inicio + k];
-        const col = k % COLS, row = Math.floor(k / COLS);
-        const celX = mg + col * (celW + gap);
-        const celY = mg + headerH + row * (celH + gap);
-        const labelH = 5;
-        pdf.setFillColor(240, 240, 245);
-        pdf.rect(celX, celY, celW, labelH, "F");
-        pdf.setTextColor(26, 58, 92);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(7.5);
-        let tag = item.tag || ("Vista " + (inicio + k + 1));
-        if (tag.length > 22) tag = tag.substring(0, 20) + "…";
-        pdf.text(tag, celX + 2, celY + 3.5);
-        pdf.setFont("helvetica", "normal");
-        pdf.setTextColor(150, 150, 150);
-        pdf.text("#" + (inicio + k + 1), celX + celW - 2, celY + 3.5, { align: "right" });
-        const imgBoxY = celY + labelH;
-        const imgBoxH = celH - labelH;
-        pdf.setDrawColor(200, 200, 210);
-        pdf.setLineWidth(0.2);
-        pdf.rect(celX, imgBoxY, celW, imgBoxH);
-        const imgRatio = item.w / item.h;
-        let drawW = celW, drawH = celW / imgRatio;
-        if (drawH > imgBoxH) { drawH = imgBoxH; drawW = imgBoxH * imgRatio; }
-        const x = celX + (celW - drawW) / 2;
-        const y = imgBoxY + (imgBoxH - drawH) / 2;
-        const fmt = item.src.startsWith("data:image/png") ? "PNG" : "JPEG";
-        pdf.addImage(item.src, fmt, x, y, drawW, drawH, undefined, "FAST");
-      }
-      pdf.setTextColor(120, 120, 120);
-      pdf.setFontSize(7.5);
-      pdf.setFont("helvetica", "normal");
-      pdf.text("Caso: " + (caso.case_id || "—"), mg, ph - 4);
-      const mostrando = Math.min(IMGS_POR_PAGINA, validas.length - inicio);
-      pdf.text("Imágenes " + (inicio + 1) + "–" + (inicio + mostrando) + " de " + validas.length, pw - mg, ph - 4, { align: "right" });
-      await new Promise(r => setTimeout(r, 20));
-    }
-    const nombreArchivo = "Imagenes_" + nombre.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "") + "_" + new Date().toISOString().slice(0, 10) + ".pdf";
-    pdf.save(nombreArchivo);
-    showStatus("✓ PDF: " + totalPaginas + " pág · " + validas.length + " imágenes", "success");
-  } catch (e) {
-    console.error("[descargarImagenesPDF]", e);
-    showStatus("Error: " + e.message, "error");
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = btnOriginal; }
-  }
-}
-
-async function descargarImagenesSuelta() {
-  const caso = window._casoActual || casoActual;
-  const imgs = caso?.acquisition?.imagenes || [];
-  if (imgs.length === 0) { showStatus("No hay imágenes", "error"); return; }
-  const nombrePac = (document.getElementById("e-nombre")?.value || "paciente").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
-  const fecha = new Date().toISOString().slice(0, 10);
-  showStatus("Descargando " + imgs.length + " imagen" + (imgs.length !== 1 ? "es" : "") + "...", "info");
-  for (let i = 0; i < imgs.length; i++) {
-    const img = imgs[i];
-    const link = document.createElement("a");
-    const tag = (img.tag || "vista").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
-    link.download = "EcoRadAi_" + nombrePac + "_" + String(i + 1).padStart(2, "0") + "_" + tag + "_" + fecha + ".jpg";
-    link.href = img.dataUrl;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    await new Promise(r => setTimeout(r, 400));
-  }
-  showStatus("✓ " + imgs.length + " imágenes descargadas", "success");
-}
 async function descargarPDF(tipo) {
   const id = tipo === "medico" ? "report-medico" : "report-lite";
   const el = document.getElementById(id);
   if (!el) { showStatus("Genera primero el informe", "error"); return; }
-
-  const btnId = tipo === "medico" ? "btn-pdf-medico" : "btn-pdf-lite";
-  const btn = document.getElementById(btnId);
-  const btnOriginal = btn ? btn.textContent : "";
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generando...'; }
-  showStatus("Preparando PDF...", "info");
-
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const scaleValue = isIOS ? 1.5 : 2;
-
-  const wrapper = document.createElement("div");
-  wrapper.style.position = "fixed";
-  wrapper.style.left = "-99999px";
-  wrapper.style.top = "0";
-  wrapper.style.width = "800px";
-  wrapper.style.background = "#ffffff";
-  wrapper.style.padding = "0";
-  wrapper.style.zIndex = "-1";
-
-  const clone = el.cloneNode(true);
-  clone.style.width = "800px";
-  clone.style.maxWidth = "800px";
-  clone.style.margin = "0";
-  clone.style.boxShadow = "none";
-  clone.style.border = "none";
-  clone.style.borderRadius = "0";
-  wrapper.appendChild(clone);
-  document.body.appendChild(wrapper);
-
+  showStatus("Generando PDF...", "info");
   try {
-    showStatus("Capturando informe...", "info");
-
-    const fullCanvas = await html2canvas(clone, {
-      scale: scaleValue,
-      useCORS: true,
-      allowTaint: false,
-      backgroundColor: "#ffffff",
-      windowWidth: 800,
-      width: 800,
-      scrollX: 0,
-      scrollY: 0,
-      logging: false
-    });
-
-    const canvasMP = (fullCanvas.width * fullCanvas.height) / 1000000;
-    console.log("[PDF] Canvas: " + fullCanvas.width + "×" + fullCanvas.height +
-                " = " + canvasMP.toFixed(2) + " Mpx");
-
-    if (canvasMP > 16) throw new Error("Canvas demasiado grande (" + canvasMP.toFixed(1) + " Mpx).");
-    if (fullCanvas.width === 0 || fullCanvas.height === 0) throw new Error("Canvas vacío.");
-
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF("p", "mm", "a4");
     const pw = pdf.internal.pageSize.getWidth();
     const ph = pdf.internal.pageSize.getHeight();
     const mg = 10;
     const cw = pw - (mg * 2);
-    const ch = ph - (mg * 2);
-
-    const pageHeightPx = Math.floor((fullCanvas.width / cw) * ch);
-    let yOffset = 0;
-    let page = 0;
-    const totalSlices = Math.ceil(fullCanvas.height / pageHeightPx);
-
-    while (yOffset < fullCanvas.height) {
-      const sliceHeight = Math.min(pageHeightPx, fullCanvas.height - yOffset);
-      const pct = Math.round(((page + 1) / totalSlices) * 100);
-      showStatus("Página " + (page + 1) + "/" + totalSlices + " (" + pct + "%)...", "info");
-
-      const sliceCanvas = document.createElement("canvas");
-      sliceCanvas.width = fullCanvas.width;
-      sliceCanvas.height = sliceHeight;
-      const ctx = sliceCanvas.getContext("2d");
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-      ctx.drawImage(fullCanvas, 0, yOffset, fullCanvas.width, sliceHeight,
-                    0, 0, fullCanvas.width, sliceHeight);
-
-      if (page > 0) pdf.addPage();
-      const imgH = (sliceHeight * cw) / fullCanvas.width;
-      pdf.addImage(sliceCanvas.toDataURL("image/jpeg", 0.92), "JPEG",
-                   mg, mg, cw, imgH, undefined, "FAST");
-
-      yOffset += sliceHeight;
-      page++;
-      await new Promise(r => setTimeout(r, 10));
+    const header = el.querySelector(".report-header") || el.querySelector(".lite-header");
+    const secciones = el.querySelectorAll(".report-body > .report-section, .lite-body > .lite-section");
+    let headerCanvas = null, headerH = 0;
+    if (header) { headerCanvas = await html2canvas(header, { scale: 2, useCORS: true, backgroundColor: "#ffffff" }); headerH = (headerCanvas.height * cw) / headerCanvas.width; }
+    let y = mg;
+    const colocarHeader = () => { if (headerCanvas) { pdf.addImage(headerCanvas.toDataURL("image/png"), "PNG", mg, y, cw, headerH); y += headerH + 3; } };
+    colocarHeader();
+    for (const sec of secciones) {
+      const canvas = await html2canvas(sec, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+      const imgW = cw;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      if (y + imgH > ph - mg) { pdf.addPage(); y = mg; colocarHeader(); }
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, y, imgW, imgH);
+      y += imgH + 3;
     }
-
     const total = pdf.internal.getNumberOfPages();
-    for (let i = 1; i <= total; i++) {
-      pdf.setPage(i);
-      pdf.setFontSize(8);
-      pdf.setTextColor(150);
-      pdf.text("EcoRadAi · " + new Date().toLocaleDateString("es-ES"), mg, ph - 5);
-      pdf.text("Página " + i + " de " + total, pw - mg, ph - 5, { align: "right" });
-    }
-
-    const nombrePac = (document.getElementById("e-nombre")?.value || "paciente")
-                        .replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
-    const fecha = new Date().toISOString().slice(0, 10);
-    const nombre = tipo === "medico"
-      ? "Informe_Medico_" + nombrePac + "_" + fecha + ".pdf"
-      : "Informe_Lite_" + nombrePac + "_" + fecha + ".pdf";
-
+    for (let i = 1; i <= total; i++) { pdf.setPage(i); pdf.setFontSize(8); pdf.setTextColor(150); pdf.text("EcoRadAi · " + new Date().toLocaleDateString("es-ES"), mg, ph - 5); pdf.text("Página " + i + " de " + total, pw - mg, ph - 5, { align: "right" }); }
+    const nombre = tipo === "medico" ? "Informe_Medico_" + ((document.getElementById("e-nombre")?.value || "paciente").replace(/\s+/g, "_")) + "_" + new Date().toISOString().slice(0, 10) + ".pdf" : "Informe_Lite_" + ((document.getElementById("e-nombre")?.value || "paciente").replace(/\s+/g, "_")) + "_" + new Date().toISOString().slice(0, 10) + ".pdf";
     pdf.save(nombre);
-    showStatus("✓ PDF descargado (" + total + " páginas)", "success");
-
-  } catch (e) {
-    console.error("[descargarPDF]", e);
-    showStatus("Error PDF: " + e.message, "error");
-  } finally {
-    if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
-    if (btn) { btn.disabled = false; btn.textContent = btnOriginal; }
-  }
+    showStatus("PDF descargado (" + total + " páginas)", "success");
+  } catch (e) { console.error("[descargarPDF]", e); showStatus("Error: " + e.message, "error"); }
 }
 async function descargarPNG() {
   const el = document.getElementById("report-lite");
   if (!el) { showStatus("Genera el informe lite", "error"); return; }
-
-  const wrapper = document.createElement("div");
-  wrapper.style.position = "fixed";
-  wrapper.style.left = "-99999px";
-  wrapper.style.width = "800px";
-  wrapper.style.background = "#ffffff";
-  const clone = el.cloneNode(true);
-  clone.style.width = "800px";
-  clone.style.maxWidth = "800px";
-  wrapper.appendChild(clone);
-  document.body.appendChild(wrapper);
-
   try {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    const cn = await html2canvas(clone, {
-      scale: isIOS ? 1.5 : 2,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      windowWidth: 800,
-      width: 800
-    });
+    const cn = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
     const l = document.createElement("a");
     l.download = "Informe_Lite_" + new Date().toISOString().slice(0, 10) + ".png";
     l.href = cn.toDataURL("image/png");
     l.click();
-    showStatus("PNG descargado (" + cn.width + "×" + cn.height + ")", "success");
-  } catch (e) {
-    showStatus("Error: " + e.message, "error");
-  } finally {
-    if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
-  }
+    showStatus("PNG descargado", "success");
+  } catch (e) { showStatus("Error: " + e.message, "error"); }
 }
 function descargarDOCX(tipo) {
   const el = document.getElementById(tipo === "medico" ? "report-medico" : "report-lite");
@@ -5546,80 +5318,16 @@ function descargarDOCX(tipo) {
 function imprimir(t) { window.print(); }
 function imprimirTodo() { window.print(); }
 function imprimirSoloImagenes() {
-  const caso = window._casoActual || casoActual;
-  const imgs = caso?.acquisition?.imagenes || [];
-  const pageEls = document.querySelectorAll(".report-imagenes-pagina");
-  if (imgs.length === 0 && pageEls.length === 0) {
-    showStatus("No hay imágenes para imprimir", "error");
-    return;
-  }
-  const g = id => document.getElementById(id) ? document.getElementById(id).value : "N/E";
-  const nombre = g("e-nombre"), idPac = g("e-id");
-  const fecha = new Date().toLocaleDateString("es-ES");
-  let listaImagenes = imgs;
-  if (listaImagenes.length === 0) {
-    listaImagenes = Array.from(pageEls).flatMap(p =>
-      Array.from(p.querySelectorAll("img")).map(img => ({ dataUrl: img.src, tag: img.alt || "Vista" }))
-    );
-  }
-  const IMGS_POR_PAGINA = 6;
-  const totalPaginas = Math.ceil(listaImagenes.length / IMGS_POR_PAGINA);
-  const ventana = window.open("", "_blank", "width=1000,height=1100");
-  if (!ventana) { showStatus("Permite ventanas emergentes en Safari", "error"); return; }
-  let html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">';
-  html += '<meta name="viewport" content="width=device-width,initial-scale=1">';
-  html += '<title>Imágenes · ' + nombre + '</title><style>';
-  html += '@page { size: A4 portrait; margin: 10mm; }';
-  html += '* { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }';
-  html += 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; margin: 0; padding: 0; background: #e8e8ed; color: #1d1d1f; }';
-  html += '.aviso { position: sticky; top: 0; z-index: 10; text-align: center; font-size: 12px; color: #8a6a00; padding: 12px; background: #fff9e6; border-bottom: 2px solid #d4a017; font-weight: 500; }';
-  html += '.pagina { width: 210mm; height: 297mm; padding: 0; margin: 20px auto; background: white; box-shadow: 0 4px 20px rgba(0,0,0,0.15); page-break-after: always; break-after: page; position: relative; display: flex; flex-direction: column; }';
-  html += '.pagina:last-child { page-break-after: auto; break-after: auto; }';
-  html += '.header { background: linear-gradient(135deg, #1a3a5c 0%, #0071e3 100%); color: white; padding: 8mm 8mm 4mm 8mm; display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0; }';
-  html += '.header .titulo { font-size: 14px; font-weight: 700; letter-spacing: 0.5px; }';
-  html += '.header .meta { font-size: 10px; opacity: 0.9; margin-top: 3px; }';
-  html += '.header .pag { font-size: 11px; font-weight: 600; opacity: 0.95; text-align: right; }';
-  html += '.grid { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 3mm; padding: 4mm 8mm 2mm 8mm; }';
-  html += '.celda { display: flex; flex-direction: column; border: 1px solid #d2d2d7; border-radius: 3px; overflow: hidden; background: #fafafa; }';
-  html += '.celda .label { height: 6mm; background: #f0f0f5; display: flex; align-items: center; justify-content: space-between; padding: 0 2mm; font-size: 8px; font-weight: 600; color: #1a3a5c; flex-shrink: 0; }';
-  html += '.celda .label .num { color: #999; font-weight: 500; }';
-  html += '.celda .img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 1mm; overflow: hidden; }';
-  html += '.celda .img-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }';
-  html += '.footer { display: flex; justify-content: space-between; font-size: 8px; color: #86868b; padding: 2mm 8mm 4mm 8mm; font-family: ui-monospace, monospace; flex-shrink: 0; }';
-  html += '@media print { body { background: white; } .aviso { display: none; } .pagina { margin: 0; box-shadow: none; width: auto; height: auto; min-height: 100vh; } }';
-  html += '</style></head><body>';
-  html += '<div class="aviso">📄 Vista previa · ' + listaImagenes.length + ' imagen' + (listaImagenes.length !== 1 ? 'es' : '') + ' en ' + totalPaginas + ' página' + (totalPaginas !== 1 ? 's' : '') + ' · En iPhone: Compartir → Imprimir</div>';
-  for (let p = 0; p < totalPaginas; p++) {
-    const inicio = p * IMGS_POR_PAGINA;
-    const fin = Math.min(inicio + IMGS_POR_PAGINA, listaImagenes.length);
-    html += '<div class="pagina"><div class="header">';
-    html += '<div><div class="titulo">EcoRadAi · Imágenes Evidenciales</div>';
-    html += '<div class="meta">' + nombre + ' · ' + idPac + ' · ' + fecha + '</div></div>';
-    html += '<div class="pag">Página ' + (p + 1) + ' / ' + totalPaginas + '</div></div>';
-    html += '<div class="grid">';
-    for (let k = inicio; k < fin; k++) {
-      const img = listaImagenes[k];
-      const tag = (img.tag || ('Vista ' + (k + 1)));
-      html += '<div class="celda"><div class="label"><span>' + tag + '</span><span class="num">#' + (k + 1) + '</span></div>';
-      html += '<div class="img-wrap"><img src="' + img.dataUrl + '" alt="' + tag + '"></div></div>';
-    }
-    html += '</div><div class="footer">';
-    html += '<span>Caso: ' + (caso?.case_id || '—') + '</span>';
-    html += '<span>Imágenes ' + (inicio + 1) + '–' + fin + ' de ' + listaImagenes.length + '</span>';
-    html += '</div></div>';
-  }
-  html += '</body></html>';
-  ventana.document.write(html);
-  ventana.document.close();
-  ventana.onload = function () {
-    setTimeout(() => {
-      ventana.focus();
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      if (!isIOS) { try { ventana.print(); } catch (e) { console.warn("Auto-print bloqueado", e); } }
-      else { showStatus("Usa Compartir → Imprimir", "info"); }
-    }, 600);
-  };
-  showStatus("Vista abierta · " + totalPaginas + " página" + (totalPaginas !== 1 ? "s" : ""), "success");
+  const ps = document.querySelectorAll(".report-imagenes-pagina");
+  if (ps.length === 0) { showStatus("No hay imágenes", "error"); return; }
+  const v = window.open("", "_blank");
+  if (!v) { showStatus("Permite ventanas emergentes", "error"); return; }
+  let h = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Imágenes</title><style>@page{size:letter;margin:12mm}body{font-family:Arial;margin:0;padding:0;background:#fff}</style></head><body>';
+  ps.forEach(p => { h += p.outerHTML; });
+  h += "</body></html>";
+  v.document.write(h);
+  v.document.close();
+  v.onload = () => { setTimeout(() => { v.focus(); v.print(); }, 400); };
 }
 function imprimirSoloReceta() {
   const r = document.getElementById("report-receta-separada");
@@ -5631,125 +5339,31 @@ function imprimirSoloReceta() {
   v.onload = function () { setTimeout(function () { v.focus(); v.print(); }, 400); };
 }
 async function descargarRecetaPDF() {
-  const el = document.getElementById("report-receta-separada");
-  if (!el) { showStatus("No hay receta", "error"); return; }
-
-  const btn = document.getElementById("btn-pdf-receta");
-  const btnOriginal = btn ? btn.textContent : "";
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generando...'; }
-
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const scaleValue = isIOS ? 1.5 : 2;
-
-  const wrapper = document.createElement("div");
-  wrapper.style.position = "fixed";
-  wrapper.style.left = "-99999px";
-  wrapper.style.width = "800px";
-  wrapper.style.background = "#ffffff";
-  const clone = el.cloneNode(true);
-  clone.style.width = "800px";
-  clone.style.maxWidth = "800px";
-  clone.style.margin = "0";
-  clone.style.boxShadow = "none";
-  wrapper.appendChild(clone);
-  document.body.appendChild(wrapper);
-
+  const r = document.getElementById("report-receta-separada");
+  if (!r) { showStatus("No hay receta", "error"); return; }
   try {
     const { jsPDF } = window.jspdf;
+    const cn = await html2canvas(r, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
     const pdf = new jsPDF("p", "mm", "a4");
     const pw = pdf.internal.pageSize.getWidth();
-    const ph = pdf.internal.pageSize.getHeight();
-    const mg = 10;
-    const cw = pw - (mg * 2);
-    const ch = ph - (mg * 2);
-
-    const canvas = await html2canvas(clone, {
-      scale: scaleValue,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      windowWidth: 800,
-      width: 800
-    });
-
-    const pageHeightPx = Math.floor((canvas.width / cw) * ch);
-    let yOffset = 0;
-    let page = 0;
-
-    while (yOffset < canvas.height) {
-      const sliceHeight = Math.min(pageHeightPx, canvas.height - yOffset);
-      const sliceCanvas = document.createElement("canvas");
-      sliceCanvas.width = canvas.width;
-      sliceCanvas.height = sliceHeight;
-      const ctx = sliceCanvas.getContext("2d");
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-      ctx.drawImage(canvas, 0, yOffset, canvas.width, sliceHeight,
-                    0, 0, canvas.width, sliceHeight);
-
-      if (page > 0) pdf.addPage();
-      const imgH = (sliceHeight * cw) / canvas.width;
-      pdf.addImage(sliceCanvas.toDataURL("image/jpeg", 0.92), "JPEG",
-                   mg, mg, cw, imgH, undefined, "FAST");
-      yOffset += sliceHeight;
-      page++;
-      await new Promise(r => setTimeout(r, 10));
-    }
-
-    const total = pdf.internal.getNumberOfPages();
-    for (let i = 1; i <= total; i++) {
-      pdf.setPage(i);
-      pdf.setFontSize(8);
-      pdf.setTextColor(150);
-      pdf.text("EcoRadAi · Receta", mg, ph - 5);
-      pdf.text("Página " + i + " de " + total, pw - mg, ph - 5, { align: "right" });
-    }
-
+    const iw = pw - 20;
+    const ih = (cn.height * iw) / cn.width;
+    pdf.addImage(cn.toDataURL("image/png"), "PNG", 10, 10, iw, ih);
     pdf.save("Receta_" + new Date().toISOString().slice(0, 10) + ".pdf");
-    showStatus("✓ Receta PDF descargada (" + total + " páginas)", "success");
-  } catch (e) {
-    console.error("[descargarRecetaPDF]", e);
-    showStatus("Error: " + e.message, "error");
-  } finally {
-    if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
-    if (btn) { btn.disabled = false; btn.textContent = btnOriginal; }
-  }
+    showStatus("Receta PDF descargada", "success");
+  } catch (e) { showStatus("Error: " + e.message, "error"); }
 }
 async function descargarRecetaPNG() {
-  const el = document.getElementById("report-receta-separada");
-  if (!el) { showStatus("No hay receta", "error"); return; }
-
-  const wrapper = document.createElement("div");
-  wrapper.style.position = "fixed";
-  wrapper.style.left = "-99999px";
-  wrapper.style.width = "800px";
-  wrapper.style.background = "#ffffff";
-  const clone = el.cloneNode(true);
-  clone.style.width = "800px";
-  clone.style.maxWidth = "800px";
-  wrapper.appendChild(clone);
-  document.body.appendChild(wrapper);
-
+  const r = document.getElementById("report-receta-separada");
+  if (!r) { showStatus("No hay receta", "error"); return; }
   try {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    const cn = await html2canvas(clone, {
-      scale: isIOS ? 1.5 : 2,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      windowWidth: 800,
-      width: 800
-    });
+    const cn = await html2canvas(r, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
     const l = document.createElement("a");
     l.download = "Receta_" + new Date().toISOString().slice(0, 10) + ".png";
     l.href = cn.toDataURL("image/png");
     l.click();
     showStatus("Receta PNG descargada", "success");
-  } catch (e) {
-    showStatus("Error: " + e.message, "error");
-  } finally {
-    if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
-  }
+  } catch (e) { showStatus("Error: " + e.message, "error"); }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -6181,8 +5795,6 @@ function setupEventListeners() {
   on("btn-png-lite", "click", descargarPNG);
   on("btn-print-lite", "click", () => imprimir("lite"));
   on("btn-print-imagenes", "click", imprimirSoloImagenes);
-  on("btn-pdf-imagenes", "click", descargarImagenesPDF);
-  on("btn-png-imagenes", "click", descargarImagenesSuelta);
   on("btn-print-receta", "click", imprimirSoloReceta);
   on("btn-pdf-receta", "click", descargarRecetaPDF);
   on("btn-png-receta", "click", descargarRecetaPNG);
@@ -6258,8 +5870,6 @@ window.descargarRecetaPNG = descargarRecetaPNG;
 window.imprimir = imprimir;
 window.imprimirTodo = imprimirTodo;
 window.imprimirSoloImagenes = imprimirSoloImagenes;
-window.descargarImagenesPDF = descargarImagenesPDF;
-window.descargarImagenesSuelta = descargarImagenesSuelta;  
 window.imprimirSoloReceta = imprimirSoloReceta;
 window.irACambiarTamizaje = irACambiarTamizaje;
 window.cambiarSubtabAdmin = cambiarSubtabAdmin;
