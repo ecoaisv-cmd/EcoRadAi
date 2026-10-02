@@ -5,10 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-<title>Ecosistema de Salud EcoRadAi v23.4 — Extensible + Admin</title>
+<title>Ecosistema de Salud EcoRadAi v23.3 — Extensible + Admin</title>
 <script src="https://unpkg.com/docx@8.5.0/build/index.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -222,9 +219,9 @@ input[type="checkbox"]{width:auto}
 .report-medico .report-clinical{background:#fafbfc;border:1px solid #e8e8ed;border-radius:6px;padding:10px 12px;font-size:11px;line-height:1.55}
 .report-medico .report-recommendations{background:#f0fff4;border-left:4px solid #34c759;padding:10px 14px;border-radius:0 6px 6px 0;margin:8px 0}
 .report-medico .report-banderas{background:#fff3f3;border-left:4px solid #ff3b30;padding:10px 14px;border-radius:0 6px 6px 0;margin:8px 0}
-.report-medico .plan-table{width:100%;border-collapse:collapse;font-size:10px;margin:6px 0;table-layout:fixed;word-wrap:break-word}
-.report-medico .plan-table th{background:#f0f7ff;color:#1a3a5c;padding:4px 5px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3}
-.report-medico .plan-table td{padding:4px 5px;border-bottom:1px solid #e8e8ed;color:#333;font-size:9px;overflow:hidden;text-overflow:ellipsis;vertical-align:top}
+.report-medico .plan-table{width:100%;border-collapse:collapse;font-size:10px;margin:6px 0}
+.report-medico .plan-table th{background:#f0f7ff;color:#1a3a5c;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3}
+.report-medico .plan-table td{padding:6px 8px;border-bottom:1px solid #e8e8ed;color:#333;font-size:10px}
 .report-medico .metas-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
 .report-medico .meta-box{background:#f0fff4;border:1px solid #34c759;border-radius:6px;padding:8px}
 .report-medico .meta-box .m-name{font-size:9px;color:#1a4a2a;font-weight:600;text-transform:uppercase}
@@ -249,7 +246,7 @@ input[type="checkbox"]{width:auto}
 .report-lite .lite-header{background:linear-gradient(135deg,#1a3a5c 0%,#0071e3 100%);color:#fff;padding:20px;text-align:center}
 .report-lite .lite-header h2{font-size:18px;font-weight:700;margin:6px 0}
 .report-lite .lite-body{padding:24px}
-.report-lite .lite-section{margin-bottom:20px;page-break-inside:avoid;break-inside:avoid}
+.report-lite .lite-section{margin-bottom:20px}
 .report-lite .lite-section h4{font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px}
 .report-lite .lite-section p,.report-lite .lite-section li{font-size:13px;line-height:1.6;color:#333;margin-bottom:6px}
 .semaforo-container{text-align:center;padding:20px;border-radius:12px;margin-bottom:20px;background:#f8f9fa}
@@ -288,9 +285,9 @@ input[type="checkbox"]{width:auto}
 .receta-datos-paciente{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;background:#f8f9fa;border-left:4px solid #0071e3;border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:18px}
 .receta-dato{font-size:11px;color:#333}
 .receta-dato .lbl{font-weight:700;color:#1a3a5c;text-transform:uppercase;font-size:9px;letter-spacing:0.4px;display:block}
-.receta-farmacos-table{width:100%;border-collapse:collapse;font-size:10px;margin:10px 0;table-layout:fixed}
+.receta-farmacos-table{width:100%;border-collapse:collapse;font-size:10px;margin:10px 0}
 .receta-farmacos-table th{background:#f0f7ff;color:#1a3a5c;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3}
-.receta-farmacos-table td{padding:6px 8px;border-bottom:1px solid #e8e8ed;color:#333;word-wrap:break-word}
+.receta-farmacos-table td{padding:6px 8px;border-bottom:1px solid #e8e8ed;color:#333}
 .receta-firma-unica{max-width:420px;margin:36px auto 0;padding:20px 24px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;text-align:center}
 .receta-firma-unica .firma-linea{border-top:1.5px solid #1a3a5c;width:70%;margin:36px auto 8px}
 .receta-pie-sep{margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:var(--font-mono);word-break:break-all}
@@ -386,7 +383,6 @@ input[type="checkbox"]{width:auto}
 .admin-badge.inactive{background:#fff3f3;color:var(--danger)}
 .admin-badge.custom{background:#fff9e6;color:var(--warning)}
 .admin-badge.base{background:var(--accent-light);color:var(--accent)}
-.btn-plan-activar{background:#1a3a5c;color:white;border:none;padding:10px 20px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:8px}
 @media print{@page{size:letter;margin:12mm}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{background:#fff!important;color:#000!important;padding:0!important}.header,.steps,.nav-footer,.btn,.no-print,.card,.plan-selector,.tabs,.seccion-titulo-preview,.paquetes-grid,.estudio-selector,.admin-container,.accordion-header,.btn-row{display:none!important}.container{max-width:100%!important;padding:0!important}.section{display:block!important}#sec-reporte{display:block!important}.report-medico,.report-lite,.report-receta-separada,.report-imagenes-pagina{border:none!important;border-radius:0!important;box-shadow:none!important;overflow:visible!important;max-width:100%!important;page-break-after:always;break-after:page}.report-medico:last-child,.report-lite:last-child,.report-receta-separada:last-child,.report-imagenes-pagina:last-child{page-break-after:auto;break-after:auto}}
 @media (min-width:640px){.paquetes-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
