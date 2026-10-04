@@ -8229,6 +8229,134 @@ async function guardarFichaPaciente() {
 /* ═══════════════════════════════════════════════════════════════════
    FIN DE LA ENTREGA A
    ═══════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   BLOQUE 4.5 — INTEGRACIÓN CON EL FLUJO EXISTENTE
+   Extiende funciones existentes para usar los datos de la ficha.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Extender recogerClinica() para incluir datos de la ficha ─── */
+const _recogerClinicaOriginal = window.recogerClinica || recogerClinica;
+function recogerClinicaExtendida() {
+  const base = _recogerClinicaOriginal();
+  if (_pacienteActual) {
+    base._ficha = {
+      subject_id: _pacienteActual.subject_id,
+      fecha_nacimiento: _pacienteActual.fecha_nacimiento,
+      dui: _pacienteActual.dui,
+      departamento: _pacienteActual.departamento,
+      municipio: _pacienteActual.municipio,
+      zona_geografica: _pacienteActual.zona_geografica,
+      nivel_educativo: _pacienteActual.nivel_educativo,
+      ocupacion: _pacienteActual.ocupacion,
+      estado_civil: _pacienteActual.estado_civil,
+      numero_hijos: _pacienteActual.numero_hijos
+    };
+  }
+  return base;
+}
+
+/* ─── Extender validateStep() para validar la ficha ─── */
+const _validateStepOriginal = window.validateStep || validateStep;
+function validateStepExtendido(n) {
+  const seq = getStepSequence();
+  const sid = seq[n];
+
+  if (sid === "sec-empleado") {
+    if (_pacienteActual && _pacienteActual.subject_id) return true;
+    showStatus("Completa la ficha del paciente antes de continuar", "error");
+    return false;
+  }
+
+  return _validateStepOriginal(n);
+}
+
+/* ─── Extender generarInformeBase() para usar subject_id de la ficha ─── */
+const _generarInformeBaseOriginal = window.generarInformeBase || generarInformeBase;
+async function generarInformeBaseExtendido() {
+  if (!_pacienteActual || !_pacienteActual.subject_id) {
+    showStatus("Primero completa la ficha del paciente", "error");
+    return;
+  }
+
+  const eId = document.getElementById("e-id");
+  if (eId) eId.value = _pacienteActual.subject_id;
+
+  const eNombre = document.getElementById("e-nombre");
+  if (eNombre) eNombre.value = _pacienteActual.nombre || "";
+
+  const eEdad = document.getElementById("e-edad");
+  if (eEdad) eEdad.value = _pacienteActual.edad || "";
+
+  const eSexo = document.getElementById("e-sexo");
+  if (eSexo) eSexo.value = _pacienteActual.sexo || "";
+
+  const eEmail = document.getElementById("c-email-empleado");
+  if (eEmail && _pacienteActual.email) eEmail.value = _pacienteActual.email;
+
+  const eTel = document.getElementById("c-telefono-empleado");
+  if (eTel && _pacienteActual.telefono) eTel.value = _pacienteActual.telefono;
+
+  return _generarInformeBaseOriginal();
+}
+
+/* ─── Extender resetAll() para limpiar la ficha ─── */
+const _resetAllOriginal = window.resetAll || resetAll;
+function resetAllExtendido() {
+  _pacienteActual = null;
+  _modoFicha = "nuevo";
+  _firmaImagenData = null;
+  const fc = document.getElementById("firma-guardada-container");
+  if (fc) fc.remove();
+  const buscador = document.getElementById("ficha-buscador");
+  if (buscador) buscador.value = "";
+  const res = document.getElementById("ficha-resultados");
+  if (res) res.style.display = "none";
+  const bc = document.getElementById("ficha-busqueda-card");
+  if (bc) bc.style.display = "block";
+  const pc = document.getElementById("ficha-paciente-card");
+  if (pc) pc.style.display = "none";
+  _resetAllOriginal();
+}
+
+/* ─── Extender buildPrompt() para incluir datos de la ficha ─── */
+const _buildPromptOriginal = window.buildPrompt || buildPrompt;
+function buildPromptExtendido() {
+  if (_pacienteActual) {
+    const eId = document.getElementById("e-id");
+    if (eId) eId.value = _pacienteActual.subject_id;
+    const eNombre = document.getElementById("e-nombre");
+    if (eNombre) eNombre.value = _pacienteActual.nombre || "";
+    const eEdad = document.getElementById("e-edad");
+    if (eEdad) eEdad.value = _pacienteActual.edad || "";
+    const eSexo = document.getElementById("e-sexo");
+    if (eSexo) eSexo.value = _pacienteActual.sexo || "";
+  }
+  return _buildPromptOriginal();
+}
+
+/* ─── Inicialización al cargar el DOM ─── */
+document.addEventListener("DOMContentLoaded", function() {
+  setTimeout(() => {
+    try { inicializarSelectoresGeograficos(); } catch (e) { console.warn("[Geo]", e); }
+    try { cargarEmpresasEnSelect(); } catch (e) { console.warn("[Empresas]", e); }
+
+    const ff = document.getElementById("ficha-firma-fecha");
+    if (ff && !ff.value) ff.value = new Date().toISOString().slice(0, 10);
+
+    try { verificarConsentimientos(); } catch (e) { console.warn("[Consent]", e); }
+  }, 500);
+});
+
+/* ─── Sobrescribir las funciones globales ─── */
+window.validateStep = validateStepExtendido;
+window.generarInformeBase = generarInformeBaseExtendido;
+window.resetAll = resetAllExtendido;
+window.buildPrompt = buildPromptExtendido;
+window.recogerClinica = recogerClinicaExtendida;
+
+/* ═══════════════════════════════════════════════════════════════════
+   FIN DE LA ENTREGA B
+   ═══════════════════════════════════════════════════════════════════ */
 console.log("%c ✓ EcoRadAi v23.4 listo para usar ", "background:#1a3a5c;color:white;padding:6px 12px;border-radius:4px;font-weight:bold;font-size:12px");
 </script>
 </body>
