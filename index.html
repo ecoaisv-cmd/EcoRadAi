@@ -3880,13 +3880,68 @@ function renderPaginasImagenes(g, f, id, caso) {
   return '<div class="report-imagenes-pagina" id="report-imagenes-pagina"><div style="text-align:center;padding-bottom:12px;border-bottom:2px solid #1a3a5c;margin-bottom:14px"><div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:#0071e3">EcoRadAi</div><h2 style="font-size:16px;font-weight:700;color:#1a3a5c;margin:4px 0">Imágenes Evidenciales</h2><div style="font-size:10px;color:#666">' + g("e-nombre") + " | " + f + '</div></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">' + im.map(x => '<div style="background:#f8f9fa;border:1px solid #e0e0e0;border-radius:6px;overflow:hidden;aspect-ratio:4/3"><img src="' + x.dataUrl + '" style="width:100%;height:100%;object-fit:cover;display:block"></div>').join("") + '</div><div style="display:flex;justify-content:space-between;font-size:9px;color:#86868b;margin-top:12px;padding-top:8px;border-top:1px solid #e8e8ed;font-family:var(--font-mono)"><span>Caso: ' + id + '</span><span>' + im.length + " imágenes</span></div></div>";
 }
 function renderRecetaSeparada(p, caso, g, f, id) {
-  const fs = caso.plan?.farmacologico || [], nf = caso.plan?.no_farmacologico || [];
-  if (fs.length === 0 && nf.length === 0) return "";
+  // ── PLAN FARMACOLÓGICO (desde JSON estructurado, como siempre) ──
+  const fs = caso.plan?.farmacologico || [];
   const esc = escapeHtml;
   const firma = caso.signatures?.medico || {};
-  const ft = fs.length > 0 ? '<table class="receta-farmacos-table"><thead><tr><th>Fármaco</th><th>Dosis/Vía</th><th>Frecuencia</th><th>Duración</th></tr></thead><tbody>' + fs.map(x => '<tr><td><strong>' + esc(x.farmaco || "") + '</strong></td><td>' + esc(x.dosis || "") + " " + esc(x.via || "") + '</td><td>' + esc(x.frecuencia || "") + '</td><td>' + esc(x.duracion || "") + "</td></tr>").join("") + "</tbody></table>" : '<p style="font-size:11px;color:#666">Sin tratamiento farmacológico.</p>';
-  const nh = nf.length > 0 ? '<h4 style="font-size:10px;color:#1a3a5c;text-transform:uppercase;margin-top:14px;margin-bottom:6px">Recomendaciones no farmacológicas</h4><ul style="font-size:11px;line-height:1.6;color:#333;margin-left:18px">' + nf.map(x => "<li><strong>" + esc(x.categoria || "") + "</strong>: " + esc(x.intervencion || "") + "</li>").join("") + "</ul>" : "";
-  return '<div class="report-receta-separada" id="report-receta-separada"><div class="receta-header-sep"><div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85">Ecosistema EcoRadAi</div><h2>RECETA MÉDICA</h2><div style="font-size:10px;opacity:0.85">Documento válido para prescripción</div></div><div class="receta-body-sep"><div class="receta-datos-paciente"><div class="receta-dato"><span class="lbl">Paciente:</span> ' + g("e-nombre") + '</div><div class="receta-dato"><span class="lbl">ID:</span> ' + g("e-id") + '</div><div class="receta-dato"><span class="lbl">Edad:</span> ' + g("e-edad") + ' años</div><div class="receta-dato"><span class="lbl">Fecha:</span> ' + f + '</div></div><h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin-bottom:12px">PRESCRIPCIÓN</h3>' + ft + nh + '<div class="receta-firma-unica"><div class="firma-linea"></div><p style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:3px">' + esc(firma.nombre || g("c-medico") || "Médico Validador") + '</p><p style="font-size:11px;color:#1a3a5c;font-weight:600">CSSPM: ' + esc(firma.csspm || g("c-csspm") || "N/E") + '</p><p style="font-size:10px;color:#86868b;margin-top:6px">Fecha: ' + f + '</p></div><div class="receta-pie-sep"><div style="max-width:70%">SHA-256: ' + esc(firma.hash || "pendiente") + '</div><div>Receta: ' + id + '</div></div></div></div>';
+
+  const ft = fs.length > 0
+    ? '<table class="receta-farmacos-table"><thead><tr><th>Fármaco</th><th>Dosis/Vía</th><th>Frecuencia</th><th>Duración</th></tr></thead><tbody>'
+      + fs.map(x => '<tr><td><strong>' + esc(x.farmaco || "") + '</strong></td><td>'
+        + esc(x.dosis || "") + " " + esc(x.via || "") + '</td><td>'
+        + esc(x.frecuencia || "") + '</td><td>'
+        + esc(x.duracion || "") + "</td></tr>").join("")
+      + "</tbody></table>"
+    : '<p style="font-size:11px;color:#666">Sin tratamiento farmacológico.</p>';
+
+  // ── PLAN NO FARMACOLÓGICO (desde el texto del informe médico) ──
+  // Misma fuente que usa renderInformeMedico en la sección planNF.
+  // Si no hay texto narrativo, cae al JSON estructurado como fallback.
+  let nfHTML = "";
+  const nfTexto = p && p["sec_planNF"] ? p["sec_planNF"].trim() : "";
+  if (nfTexto) {
+    // Misma función que usa el informe médico: renderTextoLibre + corregirOrtografia
+    nfHTML = renderTextoLibre(corregirOrtografia(nfTexto));
+  } else {
+    // Fallback: usar el JSON estructurado si no hay texto narrativo
+    const nf = caso.plan?.no_farmacologico || [];
+    if (nf.length > 0) {
+      nfHTML = '<ul style="font-size:11px;line-height:1.6;color:#333;margin-left:18px">'
+        + nf.map(x => "<li>" + esc(corregirOrtografia(x.intervencion || "")) + "</li>").join("")
+        + '</ul>';
+    }
+  }
+
+  const nh = nfHTML
+    ? '<h4 style="font-size:10px;color:#1a3a5c;text-transform:uppercase;margin-top:14px;margin-bottom:6px">Recomendaciones no farmacológicas</h4>' + nfHTML
+    : "";
+
+  // ── RENDER FINAL ──
+  return '<div class="report-receta-separada" id="report-receta-separada">'
+    + '<div class="receta-header-sep">'
+    + '<div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85">Ecosistema EcoRadAi</div>'
+    + '<h2>RECETA MÉDICA</h2>'
+    + '<div style="font-size:10px;opacity:0.85">Documento válido para prescripción</div>'
+    + '</div>'
+    + '<div class="receta-body-sep">'
+    + '<div class="receta-datos-paciente">'
+    + '<div class="receta-dato"><span class="lbl">Paciente:</span> ' + g("e-nombre") + '</div>'
+    + '<div class="receta-dato"><span class="lbl">ID:</span> ' + g("e-id") + '</div>'
+    + '<div class="receta-dato"><span class="lbl">Edad:</span> ' + g("e-edad") + ' años</div>'
+    + '<div class="receta-dato"><span class="lbl">Fecha:</span> ' + f + '</div>'
+    + '</div>'
+    + '<h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin-bottom:12px">PRESCRIPCIÓN</h3>'
+    + ft + nh
+    + '<div class="receta-firma-unica">'
+    + '<div class="firma-linea"></div>'
+    + '<p style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:3px">' + esc(firma.nombre || g("c-medico") || "Médico Validador") + '</p>'
+    + '<p style="font-size:11px;color:#1a3a5c;font-weight:600">CSSPM: ' + esc(firma.csspm || g("c-csspm") || "N/E") + '</p>'
+    + '<p style="font-size:10px;color:#86868b;margin-top:6px">Fecha: ' + f + '</p>'
+    + '</div>'
+    + '<div class="receta-pie-sep">'
+    + '<div style="max-width:70%">SHA-256: ' + esc(firma.hash || "pendiente") + '</div>'
+    + '<div>Receta: ' + id + '</div>'
+    + '</div></div></div>';
 }
 function renderInformeLite(p, caso, nivel, rec, g, f) {
   const nNorm = normalizarNivel(nivel);
