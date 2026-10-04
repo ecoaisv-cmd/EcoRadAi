@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Ecosistema de Salud EcoRadAi v23.4 — Extensible + Admin + PDF fiel</title>
 <script src="https://unpkg.com/docx@8.5.0/build/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -389,6 +390,44 @@ input[type="checkbox"]{width:auto}
 </head>
 <body>
 <div id="global-toast" style="position:fixed;top:10px;left:50%;transform:translateX(-50%) translateY(-120%);z-index:9999;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:500;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);box-shadow:0 4px 16px rgba(0,0,0,0.12);transition:transform .3s ease;max-width:90%;text-align:center;backdrop-filter:blur(10px)"></div>
+<!-- ═══════════════════════════════════════════════════════════
+     PANTALLA DE LOGIN — EcoRadAi v23.4
+     Se muestra encima de todo si no hay sesión activa
+     ═══════════════════════════════════════════════════════════ -->
+<div id="login-overlay" style="position:fixed;inset:0;background:linear-gradient(135deg,#1a3a5c 0%,#0071e3 100%);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;font-family:var(--font-sans)">
+  <div style="background:var(--bg);border-radius:var(--radius-lg);max-width:400px;width:100%;padding:32px 28px;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+    
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="font-size:42px;margin-bottom:8px">🩺</div>
+      <h1 style="font-size:20px;font-weight:800;color:var(--corp);margin-bottom:4px;letter-spacing:-0.5px">EcoRadAi</h1>
+      <p style="font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1.5px;font-weight:600">Ecosistema de Salud v23.4</p>
+    </div>
+
+    <div id="login-form-container">
+      <div class="form-group" style="margin-bottom:14px">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px">Correo electrónico</label>
+        <input type="email" id="login-email" placeholder="tu@correo.com" autocomplete="email" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-md);background:var(--bg);color:var(--text-primary);font-size:14px">
+      </div>
+      <div class="form-group" style="margin-bottom:18px">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px">Contraseña</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-md);background:var(--bg);color:var(--text-primary);font-size:14px">
+      </div>
+      <button id="btn-login" style="width:100%;padding:13px;background:var(--accent);color:white;border:none;border-radius:var(--radius-md);font-size:14px;font-weight:700;cursor:pointer;transition:all .2s">Iniciar sesión</button>
+      <div id="login-error" style="display:none;margin-top:12px;padding:10px 12px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:12px;color:#7a1a1a;line-height:1.4"></div>
+    </div>
+
+    <div id="login-loading" style="display:none;text-align:center;padding:20px">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px;border-color:var(--accent-light);border-top-color:var(--accent);margin:0 auto 12px"></div>
+      <p style="font-size:12px;color:var(--text-secondary)">Verificando sesión...</p>
+    </div>
+
+    <p style="font-size:10px;color:var(--text-tertiary);text-align:center;margin-top:20px;line-height:1.5">
+      Si no tienes cuenta, contacta al administrador.<br>
+      El registro público está desactivado.
+    </p>
+
+  </div>
+</div>
 <div class="header">
   <div class="header-inner">
     <h1 id="app-title">EcoRadAi v23.4</h1>
@@ -3055,8 +3094,314 @@ window.SECCIONES_POR_TAMIZAJE = SECCIONES_POR_TAMIZAJE;
    - construirInstruccionJSON refuerza obligatoriedad
    - sendToProxyBasico con reintento si falta JSON
    ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   CONEXIÓN SUPABASE — EcoRadAi v23.4
+   ═══════════════════════════════════════════════════════════ */
 
-function initDB() {
+const SUPABASE_URL = "https://hjlspgdkqenwlidcvlqc.supabase.co";
+const SUPABASE_KEY = "sb_publishable_m2MPW87L1T-1_ieakK7t5g_Xw4IBs5T";
+
+let supabaseClient = null;
+let usuarioActual = null;   // { id, email, rol, nombre, paciente_id }
+
+if (typeof supabase !== "undefined") {
+  supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  console.log("[Supabase] Cliente inicializado");
+} else {
+  console.error("[Supabase] Librería no cargada. Revisa el <head>.");
+}
+
+/* ───────────────────────────────────────────────────────────
+   LOGIN / LOGOUT
+   ─────────────────────────────────────────────────────────── */
+
+async function iniciarSesion(email, password) {
+  if (!supabaseClient) throw new Error("Supabase no está cargado");
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(traducirErrorAuth(error.message));
+  return data;
+}
+
+async function cerrarSesion() {
+  if (!supabaseClient) return;
+  await supabaseClient.auth.signOut();
+  location.reload();
+}
+
+async function cargarPerfilUsuario(userId) {
+  if (!supabaseClient) return null;
+  const { data, error } = await supabaseClient
+    .from("profiles")
+    .select("id, rol, nombre, email, paciente_id")
+    .eq("id", userId)
+    .single();
+  if (error) {
+    console.error("[Perfil] Error:", error);
+    return null;
+  }
+  return data;
+}
+
+function traducirErrorAuth(msg) {
+  if (!msg) return "Error desconocido";
+  if (msg.includes("Invalid login")) return "Correo o contraseña incorrectos";
+  if (msg.includes("Email not confirmed")) return "Debes confirmar tu correo primero";
+  if (msg.includes("rate limit")) return "Demasiados intentos. Espera un minuto.";
+  return msg;
+}
+
+/* ───────────────────────────────────────────────────────────
+   MOSTRAR / OCULTAR LOGIN
+   ─────────────────────────────────────────────────────────── */
+
+function mostrarLogin() {
+  const el = document.getElementById("login-overlay");
+  const f = document.getElementById("login-form-container");
+  const l = document.getElementById("login-loading");
+  if (el) el.style.display = "flex";
+  if (f) f.style.display = "block";
+  if (l) l.style.display = "none";
+}
+
+function ocultarLogin() {
+  const el = document.getElementById("login-overlay");
+  if (el) el.style.display = "none";
+}
+
+function mostrarErrorLogin(msg) {
+  const e = document.getElementById("login-error");
+  if (e) { e.textContent = msg; e.style.display = "block"; }
+}
+
+/* ───────────────────────────────────────────────────────────
+   AJUSTAR UI SEGÚN ROL
+   ─────────────────────────────────────────────────────────── */
+
+function ajustarUIPorRol(rol) {
+  console.log("[Rol]", rol);
+  // El paciente solo ve su portal. Ocultamos todo lo demás.
+  if (rol === "paciente") {
+    document.querySelectorAll("#tabs-principales .tab").forEach(t => {
+      if (t.dataset.tab !== "pacientes") t.style.display = "none";
+    });
+    const tabAdmin = document.querySelector('.tab.admin-tab');
+    if (tabAdmin) tabAdmin.style.display = "none";
+    // Marcar clase en body para CSS si hace falta después
+    document.body.dataset.rol = "paciente";
+  } else {
+    document.body.dataset.rol = rol || "operador";
+  }
+}
+
+/* ───────────────────────────────────────────────────────────
+   INICIALIZACIÓN DE SESIÓN
+   ─────────────────────────────────────────────────────────── */
+
+async function verificarSesion() {
+  if (!supabaseClient) {
+    mostrarErrorLogin("No se pudo conectar con el servidor.");
+    return;
+  }
+  const f = document.getElementById("login-form-container");
+  const l = document.getElementById("login-loading");
+  if (f) f.style.display = "none";
+  if (l) l.style.display = "block";
+
+  const { data: { session } } = await supabaseClient.auth.getSession();
+
+  if (!session) {
+    mostrarLogin();
+    return;
+  }
+
+  const perfil = await cargarPerfilUsuario(session.user.id);
+  if (!perfil) {
+    await supabaseClient.auth.signOut();
+    mostrarLogin();
+    mostrarErrorLogin("No se encontró tu perfil. Contacta al administrador.");
+    return;
+  }
+
+  usuarioActual = {
+    id: session.user.id,
+    email: session.user.email,
+    rol: perfil.rol,
+    nombre: perfil.nombre,
+    paciente_id: perfil.paciente_id
+  };
+
+  console.log("[Sesión] Usuario:", usuarioActual.email, "| Rol:", usuarioActual.rol);
+  ocultarLogin();
+  ajustarUIPorRol(usuarioActual.rol);
+}
+
+/* ───────────────────────────────────────────────────────────
+   LISTENERS DEL LOGIN
+   ─────────────────────────────────────────────────────────── */
+
+document.addEventListener("DOMContentLoaded", function () {
+  const btn = document.getElementById("btn-login");
+  const emailInput = document.getElementById("login-email");
+  const passInput = document.getElementById("login-password");
+  const errBox = document.getElementById("login-error");
+
+  if (btn) {
+    btn.addEventListener("click", async function () {
+      const email = emailInput?.value.trim();
+      const password = passInput?.value;
+      if (errBox) errBox.style.display = "none";
+      if (!email || !password) {
+        mostrarErrorLogin("Completa correo y contraseña");
+        return;
+      }
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner" style="border-color:rgba(255,255,255,0.3);border-top-color:white"></span> Entrando...';
+      try {
+        await iniciarSesion(email, password);
+        await verificarSesion();
+      } catch (err) {
+        mostrarErrorLogin(err.message);
+        btn.disabled = false;
+        btn.textContent = "Iniciar sesión";
+      }
+    });
+  }
+
+  if (passInput) {
+    passInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") btn?.click();
+    });
+  }
+
+  // Verificar sesión al cargar
+  verificarSesion();
+});
+/* ═══════════════════════════════════════════════════════════
+   PERSISTENCIA EN SUPABASE (reemplaza IndexedDB)
+   ═══════════════════════════════════════════════════════════ */
+
+async function initDB() {
+  // Ya no usamos IndexedDB. Verificamos que Supabase esté arriba.
+  return supabaseClient ? true : null;
+}
+
+async function guardarCasoDB(caso) {
+  if (!supabaseClient) return false;
+  try {
+    // 1) Asegurar que el paciente exista en `patients`
+    const { error: errPac } = await supabaseClient
+      .from("patients")
+      .upsert({
+        subject_id: caso.subject.subject_id,
+        nombre: caso.subject.nombre,
+        edad: caso.subject.edad,
+        sexo: caso.subject.sexo,
+        empresa: caso.subject.empresa || null,
+        area: caso.subject.area || null,
+        email: caso.subject.contacto?.email || null,
+        telefono: caso.subject.contacto?.telefono || null
+      }, { onConflict: "subject_id" });
+    if (errPac) console.warn("[patients upsert]", errPac);
+
+    // 2) Guardar el caso completo
+    const { error: errCaso } = await supabaseClient
+      .from("cases")
+      .upsert({
+        case_id: caso.case_id,
+        subject_id: caso.subject.subject_id,
+        created_by: usuarioActual?.id || null,
+        estudio: caso.encounter?.estudio || null,
+        riesgo_nivel: caso.riesgo_global?.nivel || null,
+        enfoque: caso.enfoque || "corporativo",
+        payload: caso,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "case_id" });
+    if (errCaso) throw errCaso;
+
+    // 3) Registrar en auditoría
+    await supabaseClient.from("audit_log").insert({
+      user_id: usuarioActual?.id || null,
+      accion: "guardar_caso",
+      case_id: caso.case_id,
+      detalle: { estudio: caso.encounter?.estudio }
+    });
+
+    console.log("[Supabase] Caso guardado:", caso.case_id);
+    return true;
+  } catch (e) {
+    console.error("[guardarCasoDB]", e);
+    return false;
+  }
+}
+
+async function obtenerCasoDB(caseId) {
+  if (!supabaseClient) return null;
+  const { data, error } = await supabaseClient
+    .from("cases")
+    .select("payload")
+    .eq("case_id", caseId)
+    .single();
+  if (error) { console.error("[obtenerCasoDB]", error); return null; }
+  return data?.payload || null;
+}
+
+async function listarCasosDB() {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("cases")
+    .select("payload")
+    .order("created_at", { ascending: false });
+  if (error) { console.error("[listarCasosDB]", error); return []; }
+  return (data || []).map(r => r.payload);
+}
+
+async function listarCasosPorPacienteDB(subjectId) {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("cases")
+    .select("payload")
+    .eq("subject_id", subjectId)
+    .order("created_at", { ascending: false });
+  if (error) { console.error("[listarCasosPorPacienteDB]", error); return []; }
+  return (data || []).map(r => r.payload);
+}
+
+async function eliminarCasoDB(caseId) {
+  if (!supabaseClient) return false;
+  const { error } = await supabaseClient.from("cases").delete().eq("case_id", caseId);
+  if (error) { console.error("[eliminarCasoDB]", error); return false; }
+  return true;
+}
+
+async function guardarArtifactDB(artifact) {
+  if (!supabaseClient) return false;
+  const { error } = await supabaseClient.from("artifacts").upsert({
+    artifact_id: artifact.artifact_id,
+    case_id: artifact.case_id,
+    tipo: artifact.tipo,
+    html: artifact.html
+  }, { onConflict: "artifact_id" });
+  if (error) { console.error("[guardarArtifactDB]", error); return false; }
+  return true;
+}
+
+async function obtenerArtifactsPorCasoDB(caseId) {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("artifacts")
+    .select("tipo, html, artifact_id")
+    .eq("case_id", caseId);
+  if (error) { console.error("[obtenerArtifactsPorCasoDB]", error); return []; }
+  return (data || []).map(r => ({
+    artifact_id: r.artifact_id,
+    case_id: caseId,
+    tipo: r.tipo,
+    html: r.html,
+    created_at: new Date().toISOString()
+  }));
+}
+
+/*function initDB() {
   return new Promise(resolve => {
     try {
       const r = indexedDB.open("EcoRadAiDB_v234", 1);
@@ -3171,7 +3516,7 @@ function obtenerArtifactsPorCasoDB(cid) {
     req.onsuccess = () => r(req.result || []);
     req.onerror = () => r([]);
   });
-}
+}*/
 
 function on(id, ev, h) {
   const el = document.getElementById(id);
