@@ -279,6 +279,407 @@ input[type="checkbox"]{width:auto}
 .report-lite .lite-metas .meta-item-lite .m-name{font-weight:600;color:#1a4a2a}
 .report-lite .lite-metas .meta-item-lite .m-values{font-size:11px;color:#1a4a2a}
 .report-lite .lite-metas .meta-item-lite .m-values strong{color:#34c759}
+/* ═══════════════════════════════════════════════════════════
+   INFORME LITE v2 — Estilos nuevos
+   ═══════════════════════════════════════════════════════════ */
+
+.report-lite-v2 {
+  background: #fff;
+  color: #1d1d1f;
+  border-radius: var(--radius-md);
+  padding: 0;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+  max-width: 640px;
+  margin: 0 auto;
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+.report-lite-v2 .lv2-header {
+  background: linear-gradient(135deg, #1a3a5c 0%, #0071e3 100%);
+  color: #fff;
+  padding: 22px 24px;
+  text-align: center;
+}
+
+.report-lite-v2 .lv2-header .lv2-brand {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.8px;
+  opacity: 0.85;
+}
+
+.report-lite-v2 .lv2-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 6px 0 4px;
+  letter-spacing: -0.3px;
+}
+
+.report-lite-v2 .lv2-header .lv2-meta {
+  font-size: 11px;
+  opacity: 0.9;
+  margin-top: 4px;
+}
+
+.report-lite-v2 .lv2-body {
+  padding: 22px 24px;
+}
+
+.report-lite-v2 .lv2-section {
+  margin-bottom: 20px;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.report-lite-v2 .lv2-section h4 {
+  font-size: 11px;
+  color: #0071e3;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+  font-weight: 700;
+  border-bottom: 1.5px solid #e8e8ed;
+  padding-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.report-lite-v2 .lv2-section p,
+.report-lite-v2 .lv2-section li {
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.report-lite-v2 .lv2-section ul,
+.report-lite-v2 .lv2-section ol {
+  margin-left: 20px;
+}
+
+/* Semáforo dentro del lite */
+.report-lite-v2 .lv2-semaforo {
+  text-align: center;
+  padding: 24px 20px;
+  background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
+  border-bottom: 1px solid #e8e8ed;
+}
+
+.report-lite-v2 .lv2-semaforo .luz {
+  display: inline-block;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  margin-bottom: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+
+.report-lite-v2 .lv2-semaforo .luz.bajo       { background: radial-gradient(circle at 30% 30%, #5ee07a, #34c759); }
+.report-lite-v2 .lv2-semaforo .luz.moderado   { background: radial-gradient(circle at 30% 30%, #ffe066, #ffcc00); }
+.report-lite-v2 .lv2-semaforo .luz.alto       { background: radial-gradient(circle at 30% 30%, #ffb366, #ff9500); }
+.report-lite-v2 .lv2-semaforo .luz.muy-alto   { background: radial-gradient(circle at 30% 30%, #ff6b6b, #ff3b30); }
+
+.report-lite-v2 .lv2-semaforo .nivel {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.report-lite-v2 .lv2-semaforo .nivel.bajo     { color: #34c759; }
+.report-lite-v2 .lv2-semaforo .nivel.moderado { color: #d4a017; }
+.report-lite-v2 .lv2-semaforo .nivel.alto     { color: #ff9500; }
+.report-lite-v2 .lv2-semaforo .nivel.muy-alto { color: #ff3b30; }
+
+.report-lite-v2 .lv2-semaforo .desc {
+  font-size: 12px;
+  color: #666;
+  max-width: 420px;
+  margin: 0 auto;
+  line-height: 1.55;
+}
+
+/* Resumen ejecutivo */
+.report-lite-v2 .lv2-resumen {
+  background: #f0f7ff;
+  border-left: 4px solid #0071e3;
+  border-radius: 0 8px 8px 0;
+  padding: 14px 16px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: #1a3a5c;
+}
+
+/* Tabla de valores */
+.report-lite-v2 .lv2-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin: 6px 0;
+}
+
+.report-lite-v2 .lv2-tabla th {
+  background: #f0f7ff;
+  color: #1a3a5c;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border-bottom: 1.5px solid #0071e3;
+}
+
+.report-lite-v2 .lv2-tabla td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e8e8ed;
+  color: #333;
+  font-size: 11.5px;
+  vertical-align: middle;
+}
+
+.report-lite-v2 .lv2-tabla tr:last-child td { border-bottom: none; }
+
+.report-lite-v2 .lv2-flag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.report-lite-v2 .lv2-flag.normal { background: #e8f9ec; color: #1a4a2a; }
+.report-lite-v2 .lv2-flag.alto   { background: #fff3f3; color: #7a1a1a; }
+.report-lite-v2 .lv2-flag.bajo   { background: #fff9e6; color: #8a6a00; }
+
+/* Plan no farmacológico */
+.report-lite-v2 .lv2-plan-nf {
+  background: #f0fff4;
+  border-left: 4px solid #34c759;
+  border-radius: 0 8px 8px 0;
+  padding: 14px 18px;
+}
+
+.report-lite-v2 .lv2-plan-nf h5 {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1a4a2a;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.report-lite-v2 .lv2-plan-nf li {
+  color: #1a4a2a;
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 6px;
+}
+
+/* Referencia a receta */
+.report-lite-v2 .lv2-receta-ref {
+  background: linear-gradient(135deg, #f8fbff, #e8f0fa);
+  border: 2px dashed #1a3a5c;
+  border-radius: 10px;
+  padding: 16px 18px;
+  text-align: center;
+}
+
+.report-lite-v2 .lv2-receta-ref .icon {
+  font-size: 32px;
+  margin-bottom: 6px;
+}
+
+.report-lite-v2 .lv2-receta-ref .titulo {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a3a5c;
+  margin-bottom: 4px;
+}
+
+.report-lite-v2 .lv2-receta-ref .detalle {
+  font-size: 11px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.report-lite-v2 .lv2-receta-ref .lista {
+  text-align: left;
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: #1a3a5c;
+}
+
+/* Metas */
+.report-lite-v2 .lv2-metas {
+  background: #f0fff4;
+  border: 1px solid #34c759;
+  border-radius: 8px;
+  padding: 4px 12px;
+}
+
+.report-lite-v2 .lv2-meta-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid #d4f5dc;
+  font-size: 12px;
+  gap: 10px;
+}
+
+.report-lite-v2 .lv2-meta-item:last-child { border-bottom: none; }
+
+.report-lite-v2 .lv2-meta-item .m-name {
+  font-weight: 600;
+  color: #1a4a2a;
+  flex: 1;
+}
+
+.report-lite-v2 .lv2-meta-item .m-values {
+  font-size: 11.5px;
+  color: #1a4a2a;
+  font-family: ui-monospace, monospace;
+}
+
+.report-lite-v2 .lv2-meta-item .m-values strong { color: #34c759; }
+
+.report-lite-v2 .lv2-meta-item .m-plazo {
+  font-size: 10px;
+  color: #666;
+  margin-left: 8px;
+}
+
+/* Labs de seguimiento */
+.report-lite-v2 .lv2-labs {
+  background: #fafbfc;
+  border: 1px solid #e8e8ed;
+  border-radius: 8px;
+  padding: 4px 12px;
+}
+
+.report-lite-v2 .lv2-lab-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid #e8e8ed;
+  font-size: 12px;
+}
+
+.report-lite-v2 .lv2-lab-item:last-child { border-bottom: none; }
+
+.report-lite-v2 .lv2-lab-item .l-name {
+  font-weight: 600;
+  color: #1a3a5c;
+}
+
+.report-lite-v2 .lv2-lab-item .l-plazo {
+  font-size: 10.5px;
+  background: #e8f0fa;
+  color: #0071e3;
+  padding: 3px 8px;
+  border-radius: 100px;
+  font-weight: 600;
+}
+
+/* Plan sugerido (suscripción) */
+.report-lite-v2 .lv2-plan-sug {
+  background: linear-gradient(135deg, #fff9e6, #fff3cc);
+  border: 2px solid #d4a017;
+  border-radius: 12px;
+  padding: 18px 20px;
+  text-align: center;
+}
+
+.report-lite-v2 .lv2-plan-sug .sug-titulo {
+  font-size: 10px;
+  font-weight: 700;
+  color: #8a6a00;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.report-lite-v2 .lv2-plan-sug .sug-nombre {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1a3a5c;
+  margin-bottom: 2px;
+}
+
+.report-lite-v2 .lv2-plan-sug .sug-precio {
+  font-size: 15px;
+  font-weight: 700;
+  color: #d4a017;
+  margin-bottom: 10px;
+}
+
+.report-lite-v2 .lv2-plan-sug .sug-razones {
+  font-size: 11px;
+  color: #666;
+  text-align: left;
+  margin: 10px auto;
+  max-width: 380px;
+  line-height: 1.6;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.6);
+  border-radius: 8px;
+}
+
+/* Firma */
+.report-lite-v2 .lv2-firma {
+  background: #f8fbff;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #d0d8e0;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.report-lite-v2 .lv2-firma .linea {
+  border-top: 1.5px solid #1a3a5c;
+  width: 70%;
+  margin: 40px auto 8px;
+}
+
+.report-lite-v2 .lv2-firma .nombre {
+  font-size: 13px;
+  color: #1a3a5c;
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.report-lite-v2 .lv2-firma .csspm {
+  font-size: 11px;
+  color: #666;
+}
+
+.report-lite-v2 .lv2-firma .hash {
+  font-size: 8px;
+  color: #999;
+  font-family: ui-monospace, monospace;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #d0d8e0;
+  word-break: break-all;
+}
+
+.report-lite-v2 .lv2-footer {
+  padding: 14px 24px;
+  border-top: 1px solid #e8e8ed;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: #86868b;
+  font-family: ui-monospace, monospace;
+}
 .report-receta-separada{background:#fff;color:#1d1d1f;width:100%;max-width:800px;margin:0 auto 20px;border:2px solid #1a3a5c;border-radius:var(--radius-md);overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,0.08)}
 .receta-header-sep{background:#1a3a5c;color:#fff;text-align:center;padding:16px}
 .receta-header-sep h2{font-size:20px;font-weight:700;letter-spacing:2px;margin:6px 0}
@@ -4291,17 +4692,225 @@ function renderRecetaSeparada(p, caso, g, f, id) {
 function renderInformeLite(p, caso, nivel, rec, g, f) {
   const nNorm = normalizarNivel(nivel);
   const nc = nNorm === "MUY ALTO" ? "muy-alto" : nNorm === "ALTO" ? "alto" : nNorm === "MODERADO" ? "moderado" : "bajo";
-  const desc = { BAJO: "Tus resultados están en buen estado.", MODERADO: "Se detectaron signos tempranos.", ALTO: "Se detectaron alteraciones que requieren manejo.", "MUY ALTO": "Se detectaron alteraciones importantes." };
-  const acc = { BAJO: ["Alimentación balanceada", "Ejercicio 30 min/día", "Dormir 7-8 horas", "Beber suficiente agua", "Repetir en 12 meses"], MODERADO: ["Reducir azúcares", "Caminar 30 min/día", "Reducir peso 5% en 3 meses", "Evitar alcohol y tabaco", "Repetir en 6 meses"], ALTO: ["Dieta mediterránea", "Ejercicio 150 min/sem", "Reducir peso 7% en 6 meses", "Tomar medicación", "Repetir en 3 meses"], "MUY ALTO": ["Plan de manejo intensivo", "Seguir indicaciones", "Medicación estricta", "Asistir a consultas", "Repetir mensualmente"] };
-  const esc = escapeHtml, cor = corregirOrtografia;
-  const ls = (caso.plan?.laboratorios || []).map(l => typeof l === "string" ? l : (l.estudio || "")).filter(l => l);
-  const fs = caso.plan?.farmacologico || [];
-  const ms = caso.plan?.metas || [];
+  const esc = escapeHtml;
+  const cor = corregirOrtografia;
+
+  // ─── Descripciones y acciones por nivel ───
+  const descNivel = {
+    BAJO:       "Tus resultados están en buen estado. Mantén tus hábitos actuales.",
+    MODERADO:   "Se detectaron signos tempranos que conviene vigilar y corregir.",
+    ALTO:       "Se detectaron alteraciones que requieren manejo y seguimiento médico.",
+    "MUY ALTO": "Se detectaron alteraciones importantes que requieren atención médica prioritaria."
+  };
+
+  // ─── Secciones del informe médico parseadas ───
+  // Estas ya las tienes en `p` (parseAIResponse). Las reutilizamos.
+  const secResumen     = p["sec_resumen"] || p["sec_1"] || "";
+  const secTabla       = p["sec_tabla_metricas"] || p["sec_tabla"] || p["sec_5"] || "";
+  const secRiesgo      = p["sec_riesgo"] || p["sec_7"] || "";
+  const secPlanNF      = p["sec_planNF"] || p["sec_plan_nf"] || p["sec_8"] || "";
+  const secPlanFarm    = p["sec_tablaFarmacos"] || p["sec_plan_farm"] || p["sec_9"] || "";
+  const secMetas       = p["sec_metas"] || p["sec_10"] || "";
+  const secLabs        = p["sec_labsSeguimiento"] || p["sec_labs_seg"] || p["sec_11"] || "";
+
+  // ─── Resumen ejecutivo (limpio) ───
+  let resumenHTML = "";
+  if (secResumen && secResumen.trim()) {
+    resumenHTML = `<div class="lv2-section"><h4>📋 Resumen ejecutivo</h4><div class="lv2-resumen">${renderTextoLibre(cor(secResumen))}</div></div>`;
+  } else {
+    // Fallback: generar resumen mínimo desde los datos
+    resumenHTML = `<div class="lv2-section"><h4>📋 Resumen ejecutivo</h4><div class="lv2-resumen"><p>Se realizó un tamizaje ${esc(caso.encounter?.estudio || "").replace(/_/g, " ")} el ${esc(f)}.</p><p>Resultado global: <strong>${nNorm}</strong>. ${descNivel[nNorm] || ""}</p></div></div>`;
+  }
+
+  // ─── Tabla de valores ───
+  // Estrategia: si el informe médico tiene tabla parseada, la usamos.
+  // Si no, construimos desde `caso.metrics`.
+  let tablaHTML = "";
+  if (secTabla && secTabla.trim() && secTabla.includes("|")) {
+    tablaHTML = `<div class="lv2-section"><h4>📊 Tus valores</h4>${renderTablaLite(secTabla)}</div>`;
+  } else if (caso.metrics && caso.metrics.length > 0) {
+    tablaHTML = `<div class="lv2-section"><h4>📊 Tus valores</h4>${renderTablaDesdeMetrics(caso.metrics)}</div>`;
+  }
+
+  // ─── Clasificación de riesgo ───
+  let riesgoHTML = "";
+  if (secRiesgo && secRiesgo.trim()) {
+    riesgoHTML = `<div class="lv2-section"><h4>🎯 Clasificación de riesgo</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.65;color:#333">${renderTextoLibre(cor(secRiesgo))}</div></div>`;
+  }
+
+  // ─── Plan no farmacológico ───
+  let planNFHTML = "";
+  if (secPlanNF && secPlanNF.trim()) {
+    planNFHTML = `<div class="lv2-section"><h4>🥗 Plan no farmacológico</h4><div class="lv2-plan-nf">${renderTextoLibre(cor(secPlanNF))}</div></div>`;
+  } else {
+    const nf = caso.plan?.no_farmacologico || [];
+    if (nf.length > 0) {
+      planNFHTML = `<div class="lv2-section"><h4>🥗 Plan no farmacológico</h4><div class="lv2-plan-nf"><ul>${nf.map(x => `<li><strong>${esc(x.categoria || "")}:</strong> ${esc(cor(x.intervencion || ""))}${x.meta ? " — Meta: " + esc(cor(x.meta)) : ""}</li>`).join("")}</ul></div></div>`;
+    }
+  }
+
+  // ─── Plan farmacológico → referencia a receta ───
+  let recetaRefHTML = "";
+  const farmacos = caso.plan?.farmacologico || [];
+  if (farmacos.length > 0) {
+    const lista = farmacos.map(x => `<li><strong>${esc(x.farmaco || "")}</strong> — ${esc(x.dosis || "")} ${esc(x.via || "")} cada ${esc(x.frecuencia || "")}</li>`).join("");
+    recetaRefHTML = `
+      <div class="lv2-section">
+        <h4>💊 Plan farmacológico</h4>
+        <div class="lv2-receta-ref">
+          <div class="icon">💊</div>
+          <div class="titulo">Tu receta médica completa está adjunta</div>
+          <div class="detalle">Prescripción con dosis, vía, frecuencia y duración.<br>Preséntala en la farmacia para surtir tus medicamentos.</div>
+          <div class="lista"><strong>Resumen de medicamentos:</strong><ul style="margin-top:6px;margin-left:18px">${lista}</ul></div>
+        </div>
+      </div>
+    `;
+  } else if (secPlanFarm && secPlanFarm.trim() && !secPlanFarm.toLowerCase().includes("sin tratamiento")) {
+    recetaRefHTML = `<div class="lv2-section"><h4>💊 Plan farmacológico</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.65;color:#333">${renderTextoLibre(cor(secPlanFarm))}</div></div>`;
+  } else {
+    recetaRefHTML = `<div class="lv2-section"><h4>💊 Plan farmacológico</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px;font-size:12.5px;color:#666;text-align:center">Sin tratamiento farmacológico indicado.</div></div>`;
+  }
+
+  // ─── Metas ───
+  let metasHTML = "";
+  const metas = caso.plan?.metas || [];
+  if (metas.length > 0) {
+    metasHTML = `<div class="lv2-section"><h4>🎯 Tus metas</h4><div class="lv2-metas">${metas.map(m => `<div class="lv2-meta-item"><span class="m-name">${esc((m.metrica || "").replace(/_/g, " "))}</span><span class="m-values">${m.valor_actual ?? "—"} → <strong>${m.valor_meta ?? "—"}</strong><span class="m-plazo"> (${m.plazo_dias || 90} días)</span></span></div>`).join("")}</div></div>`;
+  } else if (secMetas && secMetas.trim()) {
+    metasHTML = `<div class="lv2-section"><h4>🎯 Tus metas</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px">${renderTextoLibre(cor(secMetas))}</div></div>`;
+  }
+
+  // ─── Labs de seguimiento ───
+  let labsHTML = "";
+  const labs = caso.plan?.laboratorios || [];
+  if (labs.length > 0) {
+    labsHTML = `<div class="lv2-section"><h4>🔬 Exámenes de seguimiento</h4><div class="lv2-labs">${labs.map(l => { const nombre = typeof l === "string" ? l : (l.estudio || ""); const plazo = typeof l === "object" ? (l.plazo_dias || "—") : "—"; return `<div class="lv2-lab-item"><span class="l-name">${esc(cor(nombre))}</span><span class="l-plazo">${plazo} días</span></div>`; }).join("")}</div></div>`;
+  } else if (secLabs && secLabs.trim()) {
+    labsHTML = `<div class="lv2-section"><h4>🔬 Exámenes de seguimiento</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px">${renderTextoLibre(cor(secLabs))}</div></div>`;
+  }
+
+  // ─── Plan sugerido (suscripción) ───
+  let sugerenciaHTML = "";
+  try {
+    const sug = sugerirPlanSuscripcion(caso);
+    if (sug && sug.plan) {
+      sugerenciaHTML = `
+        <div class="lv2-section">
+          <div class="lv2-plan-sug">
+            <div class="sug-titulo">🎯 Recomendación de seguimiento</div>
+            <div class="sug-nombre">${esc(sug.nombre)}</div>
+            <div class="sug-precio">${sug.precio.modo === "empresa" ? sugerencia.precio.empresa : sugerencia.precio.individual}</div>
+            ${sug.precio.modo === "empresa" ? '<div style="font-size:11px;color:#8a6a00;margin-bottom:8px;padding:4px 12px;background:#fff9e6;border-radius:100px;display:inline-block">💼 Tu empresa lo cubre</div>' : ''}
+            <div class="sug-razones">${sug.razones.map(r => "• " + esc(r)).join("<br>")}</div>
+          </div>
+        </div>
+      `;
+    }
+  } catch (e) { /* silencioso */ }
+
+  // ─── Firma ───
   const firma = caso.signatures?.medico || {};
-  const mh = ms.length > 0 ? '<div class="lite-metas">' + ms.map(m => '<div class="meta-item-lite"><span class="m-name">' + esc(m.metrica || "") + '</span><span class="m-values">' + m.valor_actual + " → <strong>" + m.valor_meta + "</strong></span></div>").join("") + "</div>" : "";
-  const sugerencia = sugerirPlanSuscripcion(caso);
-  const sugerenciaBloque = sugerencia.plan ? `<div class="lite-plan"><div class="plan-titulo">🎯 Recomendación</div><div class="plan-nombre">${sugerencia.nombre}</div><div class="plan-precio">${sugerencia.precio.modo === "empresa" ? sugerencia.precio.empresa : sugerencia.precio.individual}</div>${sugerencia.precio.modo === "empresa" ? '<div class="plan-empresa-info">💼 Tu empresa lo cubre</div>' : ''}<div class="plan-razones">${sugerencia.razones.map(r => "• " + esc(r)).join("<br>")}</div><button class="btn-plan-activar" onclick="activarPlanSugerido('${sugerencia.plan}')">Activar ${sugerencia.nombre}</button></div>` : '';
-  return '<div class="report-lite" id="report-lite"><div class="lite-header"><h2>Tu Resultado</h2><div class="meta">' + g("e-nombre") + " | " + f + '</div></div><div class="lite-body"><div class="semaforo-container"><div class="semaforo-luz ' + nc + '"></div><div class="semaforo-nivel ' + nc + '">' + nNorm + '</div><div class="semaforo-descripcion">' + desc[nNorm] + '</div></div>' + sugerenciaBloque + '<div class="lite-section"><h4>Qué debes hacer</h4><div class="lite-acciones"><h5>Tus 5 pasos</h5><ol>' + (acc[nNorm] || acc.MODERADO).map(a => "<li>" + a + "</li>").join("") + '</ol></div></div>' + (mh ? '<div class="lite-section"><h4>🎯 Tus metas</h4>' + mh + "</div>" : "") + (ls.length > 0 ? '<div class="lite-section"><h4>🔬 Laboratorios</h4><ul style="margin-left:18px">' + ls.map(l => "<li>" + esc(cor(l)) + "</li>").join("") + "</ul></div>" : "") + (fs.length > 0 ? '<div class="lite-section"><h4>💊 Tratamiento</h4><ol style="margin-left:18px">' + fs.map(x => "<li><strong>" + esc(x.farmaco || "") + "</strong> " + esc(x.dosis || "") + "</li>").join("") + "</ol></div>" : "") + '<div class="lite-section" style="margin-top:24px;padding-top:20px;border-top:1px dashed #d0d8e0"><h4>✍️ Firma</h4><div style="text-align:center;padding:20px;background:#f8fbff;border:1px solid #d0d8e0;border-radius:8px;max-width:400px;margin:0 auto"><div style="border-top:1.5px solid #1a3a5c;width:70%;margin:40px auto 8px"></div><p style="font-size:13px;color:#1a3a5c;margin-bottom:2px"><strong>' + esc(firma.nombre || g("c-medico") || "Médico Validador") + '</strong></p><p style="font-size:11px;color:#666">CSSPM: ' + esc(firma.csspm || g("c-csspm") || "N/E") + '</p></div></div></div></div>';
+  const firmaHTML = `
+    <div class="lv2-section">
+      <h4>✍️ Firma del médico</h4>
+      <div class="lv2-firma">
+        <div class="linea"></div>
+        <p class="nombre">${esc(firma.nombre || g("c-medico") || "Médico Validador")}</p>
+        <p class="csspm">CSSPM: ${esc(firma.csspm || g("c-csspm") || "N/E")}</p>
+        <div class="hash">SHA-256: ${esc(firma.hash || "pendiente")}</div>
+      </div>
+    </div>
+  `;
+
+  // ─── Header ───
+  const empresa = g("c-empresa") || "";
+  const nombrePaciente = g("e-nombre") || "";
+
+  return `
+    <div class="report-lite-v2" id="report-lite">
+      <div class="lv2-header">
+        <div class="lv2-brand">Ecosistema de Salud EcoRadAi</div>
+        <h2>Mi informe de salud</h2>
+        <div class="lv2-meta">${esc(nombrePaciente)}${empresa ? " · " + esc(empresa) : ""} · ${esc(f)}</div>
+      </div>
+
+      <div class="lv2-semaforo">
+        <div class="luz ${nc}"></div>
+        <div class="nivel ${nc}">${nNorm}</div>
+        <div class="desc">${descNivel[nNorm] || ""}</div>
+      </div>
+
+      <div class="lv2-body">
+        ${resumenHTML}
+        ${tablaHTML}
+        ${riesgoHTML}
+        ${planNFHTML}
+        ${recetaRefHTML}
+        ${metasHTML}
+        ${labsHTML}
+        ${sugerenciaHTML}
+        ${firmaHTML}
+      </div>
+
+      <div class="lv2-footer">
+        <span>EcoRadAi · ${esc(f)}</span>
+        <span>${esc(caso.case_id || "")}</span>
+      </div>
+    </div>
+  `;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUXILIARES PARA LA TABLA DEL LITE
+   ═══════════════════════════════════════════════════════════ */
+
+function renderTablaLite(texto) {
+  // El texto viene con formato "|" del informe médico. Lo convertimos a tabla HTML limpia.
+  const lineas = texto.split("\n").map(l => l.trim()).filter(l => l && l.includes("|"));
+  if (lineas.length === 0) return renderTextoLibre(corregirOrtografia(texto));
+
+  // Detectar si la primera línea es encabezado (todas las celdas no numéricas)
+  const filas = lineas.map(l => l.split("|").map(c => c.trim()).filter(c => c !== ""));
+  const header = filas[0];
+  const cuerpo = filas.slice(1);
+
+  let html = '<table class="lv2-tabla"><thead><tr>';
+  html += header.map(h => `<th>${escapeHtml(h)}</th>`).join("");
+  html += "</tr></thead><tbody>";
+  cuerpo.forEach(fila => {
+    html += "<tr>";
+    fila.forEach((celda, i) => {
+      // Detectar flag
+      const celdaLow = celda.toLowerCase();
+      let flagClass = "";
+      if (celdaLow.includes("alto") || celdaLow.includes("elevado")) flagClass = "alto";
+      else if (celdaLow.includes("bajo") || celdaLow.includes("baja")) flagClass = "bajo";
+      else if (celdaLow.includes("normal") || celdaLow.includes("óptimo") || celdaLow.includes("bueno")) flagClass = "normal";
+      if (flagClass && i === fila.length - 1) {
+        html += `<td><span class="lv2-flag ${flagClass}">${escapeHtml(celda)}</span></td>`;
+      } else {
+        html += `<td>${escapeHtml(corregirOrtografia(celda))}</td>`;
+      }
+    });
+    html += "</tr>";
+  });
+  html += "</tbody></table>";
+  return html;
+}
+
+function renderTablaDesdeMetrics(metrics) {
+  let html = '<table class="lv2-tabla"><thead><tr><th>Métrica</th><th>Valor</th><th>Referencia</th><th>Estado</th></tr></thead><tbody>';
+  metrics.forEach(m => {
+    const key = (m.key || "").replace(/_/g, " ").replace(/\./g, " · ");
+    const val = (m.value ?? "—") + " " + (m.unit || "");
+    const ref = (m.ref_min !== undefined && m.ref_max !== undefined) ? `${m.ref_min} - ${m.ref_max}` : "—";
+    const flag = (m.flag || "normal").toLowerCase();
+    const flagClass = flag === "alto" ? "alto" : flag === "bajo" ? "bajo" : "normal";
+    const flagLabel = flag === "alto" ? "Alto" : flag === "bajo" ? "Bajo" : "Normal";
+    html += `<tr><td>${escapeHtml(key)}</td><td><strong>${escapeHtml(String(val))}</strong></td><td>${escapeHtml(ref)}</td><td><span class="lv2-flag ${flagClass}">${flagLabel}</span></td></tr>`;
+  });
+  html += "</tbody></table>";
+  return html;
 }
 
 function renderArtifacts(caso, g, d, n, r) {
