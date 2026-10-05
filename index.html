@@ -3792,6 +3792,58 @@ function toggleDescripcion(id) {
   if (!el) return;
   el.classList.toggle("show");
 }
+/* ═══════════════════════════════════════════════════════════
+   v23.4.1 — HELPERS DE LECTURA DE EDAD Y SEXO
+   Lee de _pacienteActual primero, luego de la ficha, luego del DOM viejo
+   ═══════════════════════════════════════════════════════════ */
+
+function _getEdadPaciente() {
+  // 1) Desde el objeto global del paciente
+  if (typeof _pacienteActual !== "undefined" && _pacienteActual) {
+    if (typeof _pacienteActual.edad === "number" && _pacienteActual.edad > 0) return _pacienteActual.edad;
+    if (typeof _pacienteActual.edad === "string") {
+      const n = parseInt(_pacienteActual.edad);
+      if (n > 0) return n;
+    }
+  }
+  // 2) Desde ficha-edad (input readonly "X años")
+  const fEdad = document.getElementById("ficha-edad");
+  if (fEdad && fEdad.value) {
+    const n = parseInt(fEdad.value);
+    if (n > 0) return n;
+  }
+  // 3) Desde fecha de nacimiento
+  const fNac = document.getElementById("ficha-fecha_nacimiento");
+  if (fNac && fNac.value) {
+    const hoy = new Date();
+    const nac = new Date(fNac.value);
+    let edad = hoy.getFullYear() - nac.getFullYear();
+    const m = hoy.getMonth() - nac.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
+    if (edad > 0) return edad;
+  }
+  // 4) Fallback: input viejo (por compatibilidad)
+  const eEdad = document.getElementById("e-edad");
+  if (eEdad && eEdad.value) {
+    const n = parseInt(eEdad.value);
+    if (n > 0) return n;
+  }
+  return null;
+}
+
+function _getSexoPaciente() {
+  // 1) Desde _pacienteActual
+  if (typeof _pacienteActual !== "undefined" && _pacienteActual && _pacienteActual.sexo) {
+    return _pacienteActual.sexo;
+  }
+  // 2) Desde ficha-sexo
+  const fSexo = document.getElementById("ficha-sexo");
+  if (fSexo && fSexo.value) return fSexo.value;
+  // 3) Fallback: input viejo
+  const eSexo = document.getElementById("e-sexo");
+  if (eSexo && eSexo.value) return eSexo.value;
+  return "";
+}
 
 function calcHOMA() {
   const g = document.getElementById("lab-glucosa"), i = document.getElementById("lab-insulina"), o = document.getElementById("lab-homa");
@@ -3805,18 +3857,29 @@ function calcHOMA() {
   } else o.value = "";
 }
 function calcTFG() {
-  const c = document.getElementById("lab-creatinina"), e = document.getElementById("e-edad"), s = document.getElementById("e-sexo"), o = document.getElementById("lab-tfg");
-  if (!c || !e || !s || !o) return;
-  const cr = parseFloat(c.value), ed = parseInt(e.value), sx = s.value;
+  const c = document.getElementById("lab-creatinina");
+  const o = document.getElementById("lab-tfg");
+  if (!c || !o) return;
+  const cr = parseFloat(c.value);
+  const ed = _getEdadPaciente();
+  const sx = _getSexoPaciente();
   if (cr && ed && sx) {
-    const k = sx === "Femenino" ? 0.7 : 0.9, a = sx === "Femenino" ? -0.241 : -0.302;
-    const mn = Math.min(cr / k, 1), mx = Math.max(cr / k, 1);
+    const k = sx === "Femenino" ? 0.7 : 0.9;
+    const a = sx === "Femenino" ? -0.241 : -0.302;
+    const mn = Math.min(cr / k, 1);
+    const mx = Math.max(cr / k, 1);
     let t = 142 * Math.pow(mn, a) * Math.pow(mx, -1.2) * Math.pow(0.9938, ed);
     if (sx === "Femenino") t *= 1.012;
     o.value = t.toFixed(0);
     const inp = o.closest(".lab-input");
-    if (inp) { inp.classList.remove("warning", "danger"); if (t < 60) inp.classList.add("warning"); if (t < 30) inp.classList.add("danger"); }
-  } else o.value = "";
+    if (inp) {
+      inp.classList.remove("warning", "danger");
+      if (t < 60) inp.classList.add("warning");
+      if (t < 30) inp.classList.add("danger");
+    }
+  } else {
+    o.value = "";
+  }
 }
 function calcIMC() {
   const p = document.getElementById("cl-peso"), t = document.getElementById("cl-talla"), o = document.getElementById("cl-imc");
@@ -3830,35 +3893,68 @@ function calcIMC() {
   } else o.value = "";
 }
 function calcFINDRISC() {
-  const ee = document.getElementById("e-edad"), sx = document.getElementById("e-sexo"), im = document.getElementById("cl-imc"), ci = document.getElementById("cl-cintura"), ac = document.getElementById("cl-actividad"), o = document.getElementById("cl-findrisc");
-  if (!ee || !o) return;
-  const ed = parseInt(ee.value), s = sx?.value || "", imv = parseFloat(im?.value), cv = parseFloat(ci?.value), av = parseFloat(ac?.value);
+  const im = document.getElementById("cl-imc");
+  const ci = document.getElementById("cl-cintura");
+  const ac = document.getElementById("cl-actividad");
+  const o = document.getElementById("cl-findrisc");
+  if (!o) return;
+
+  const ed = _getEdadPaciente();
+  const s = _getSexoPaciente();
+  const imv = parseFloat(im?.value);
+  const cv = parseFloat(ci?.value);
+  const av = parseFloat(ac?.value);
+
   if (!ed) { o.value = ""; return; }
+
   let sc = 0;
-  if (ed >= 45 && ed < 55) sc += 2; else if (ed >= 55 && ed < 65) sc += 3; else if (ed >= 65) sc += 4;
+  if (ed >= 45 && ed < 55) sc += 2;
+  else if (ed >= 55 && ed < 65) sc += 3;
+  else if (ed >= 65) sc += 4;
+
   if (s === "Masculino") sc += 1;
-  if (imv >= 25 && imv < 30) sc += 1; else if (imv >= 30) sc += 3;
+
+  if (imv >= 25 && imv < 30) sc += 1;
+  else if (imv >= 30) sc += 3;
+
   if (cv) {
     if (s === "Masculino" && cv >= 94 && cv < 102) sc += 3;
     else if (s === "Masculino" && cv >= 102) sc += 4;
     else if (s === "Femenino" && cv >= 80 && cv < 88) sc += 3;
     else if (s === "Femenino" && cv >= 88) sc += 4;
   }
+
   if (av !== undefined && !isNaN(av) && av < 30) sc += 2;
+
   o.value = sc + " pts";
 }
 function calcFramingham() {
-  const e = document.getElementById("e-edad"), s = document.getElementById("e-sexo"), p = document.getElementById("cl-pas"), ct = document.getElementById("lab-ct"), hdl = document.getElementById("lab-hdl"), t = document.getElementById("cl-tabaco"), o = document.getElementById("cl-framingham");
-  if (!e || !s || !p || !ct || !hdl || !o) return;
-  const ed = parseInt(e.value), sx = s.value, pv = parseFloat(p.value), ctv = parseFloat(ct.value), hv = parseFloat(hdl.value), fm = parseFloat(t?.value) > 0;
+  const p  = document.getElementById("cl-pas");
+  const ct = document.getElementById("lab-ct");
+  const hdl = document.getElementById("lab-hdl");
+  const t  = document.getElementById("cl-tabaco");
+  const o  = document.getElementById("cl-framingham");
+  if (!o) return;
+
+  const ed = _getEdadPaciente();
+  const sx = _getSexoPaciente();
+  const pv = parseFloat(p?.value);
+  const ctv = parseFloat(ct?.value);
+  const hv = parseFloat(hdl?.value);
+  const fm = parseFloat(t?.value) > 0;
+
   if (!ed || !sx || !pv || !ctv || !hv) { o.value = ""; return; }
+
   let sc = 0;
-  if (ed >= 50) sc += 2; if (ed >= 60) sc += 2;
+  if (ed >= 50) sc += 2;
+  if (ed >= 60) sc += 2;
   if (sx === "Masculino") sc += 1;
-  if (pv >= 140) sc += 2; if (pv >= 160) sc += 2;
+  if (pv >= 140) sc += 2;
+  if (pv >= 160) sc += 2;
   if (ctv >= 240) sc += 2;
   if (hv < 40) sc += 1;
   if (fm) sc += 2;
+
   o.value = Math.min(sc * 1.5, 30).toFixed(1) + "%";
 }
 function calcAUDITC() {
@@ -3878,7 +3974,11 @@ function calcIPAQ() {
   const o = document.getElementById("cl-ipaq");
   if (o) o.value = Math.round(mets);
 }
-function calcFCMax() { const ed = parseInt(document.getElementById("e-edad")?.value) || 0; const o = document.getElementById("cl-fcmax"); if (o && ed > 0) o.value = 220 - ed; }
+function calcFCMax() {
+  const ed = _getEdadPaciente();
+  const o = document.getElementById("cl-fcmax");
+  if (o && ed > 0) o.value = 220 - ed;
+}
 function calcISI() { let t = 0; for (let i = 1; i <= 7; i++) { const el = document.getElementById("isi" + i); if (el) t += parseInt(el.value) || 0; } const o = document.getElementById("cl-isi-total"); if (o) o.value = t; }
 function calcSTOPBANG() { const c = ["stop-s", "stop-t", "stop-o", "stop-p", "stop-b", "stop-a", "stop-n", "stop-g"]; let t = 0; c.forEach(id => { const el = document.getElementById(id); if (el) t += parseInt(el.value) || 0; }); const o = document.getElementById("cl-stopbang"); if (o) o.value = t; }
 function calcEpworth() { let t = 0; for (let i = 1; i <= 8; i++) { const el = document.getElementById("epw" + i); if (el) t += parseInt(el.value) || 0; } const o = document.getElementById("cl-epworth"); if (o) o.value = t; }
@@ -8729,6 +8829,8 @@ function recogerClinicaExtendida() {
     base._ficha = {
       subject_id: _pacienteActual.subject_id,
       fecha_nacimiento: _pacienteActual.fecha_nacimiento,
+      edad: _getEdadPaciente(),
+      sexo: _getSexoPaciente(),
       dui: _pacienteActual.dui,
       departamento: _pacienteActual.departamento,
       municipio: _pacienteActual.municipio,
@@ -8849,6 +8951,41 @@ document.addEventListener("DOMContentLoaded", function() {
     if (ff && !ff.value) ff.value = new Date().toISOString().slice(0, 10);
 
     try { verificarConsentimientos(); } catch (e) { console.warn("[Consent]", e); }
+
+    // ═══════════════════════════════════════════════════════
+    // v23.4.1 — Recalcular escalas cuando cambie la ficha
+    // ═══════════════════════════════════════════════════════
+    const recalcTodas = () => {
+      try { calcIMC(); } catch (e) {}
+      try { calcTFG(); } catch (e) {}
+      try { calcFINDRISC(); } catch (e) {}
+      try { calcFramingham(); } catch (e) {}
+      try { calcFCMax(); } catch (e) {}
+      try { calcHOMA(); } catch (e) {}
+      try { actualizarInterpretaciones(); } catch (e) {}
+    };
+
+    // Escuchar cambios en edad y sexo de la ficha
+    const fEdad = document.getElementById("ficha-edad");
+    const fSexo = document.getElementById("ficha-sexo");
+    const fNac  = document.getElementById("ficha-fecha_nacimiento");
+    if (fEdad) fEdad.addEventListener("change", recalcTodas);
+    if (fSexo) fSexo.addEventListener("change", recalcTodas);
+    if (fNac)  fNac.addEventListener("change", recalcTodas);
+
+    // Recalcular cuando el usuario abre las secciones de vitales/labs
+    const observer = new MutationObserver(() => {
+      const vitales = document.getElementById("sec-vitales");
+      const labs = document.getElementById("sec-labs");
+      if (vitales?.classList.contains("active") || labs?.classList.contains("active")) {
+        recalcTodas();
+      }
+    });
+    ["sec-vitales", "sec-labs", "sec-clinica"].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el, { attributes: true, attributeFilter: ["class"] });
+    });
+
   }, 500);
 });
 
