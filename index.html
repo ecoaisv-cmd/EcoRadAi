@@ -6714,8 +6714,13 @@ function renderPrompts() {
   if (h) h.textContent = "1 sola llamada a Kimi. Genera informe completo + sugerencias de interconsultas.";
   c.innerHTML = `<div class="prompt-card selected" style="background:var(--bg);border:1.5px solid var(--accent);border-radius:var(--radius-md);padding:12px"><h4 style="font-size:13px;font-weight:600;margin-bottom:2px">${t.meta.icono} ${t.meta.nombre}</h4><p style="font-size:11px;color:var(--text-secondary);line-height:1.4;margin:0">1 llamada base · ${(t.especialistas?.interconsultas_disponibles || []).length} interconsultas · Guías: ${(t.guias || []).join(", ")}</p></div>`;
   selectedPromptKey = t.prompt_key;
-  buildPrompt();
-}
+  if (typeof window.buildPrompt === "function") {
+    window.buildPrompt();
+  } else {
+    buildPrompt();
+  }
+}  
+
 
 function compressImage(dataUrl, mw, mh, q) {
   return new Promise(resolve => {
@@ -8332,10 +8337,9 @@ function cerrarFichaPaciente() {
   if (buscador) buscador.value = "";
   const res = document.getElementById("ficha-resultados");
   if (res) res.style.display = "none";
-  _pacienteActual = null;
-  _modoFicha = "nuevo";
+  // ✅ NO borrar _pacienteActual: se necesita para el prompt y el informe.
+  // Solo se borra en resetAll() / mostrarFormularioPacienteNuevo().
 }
-
 async function guardarFichaPaciente() {
   if (!supabaseClient) { showStatus("Sin conexión", "error"); return; }
 
@@ -8516,17 +8520,35 @@ function resetAllExtendido() {
 /* ─── Extender buildPrompt() para incluir datos de la ficha ─── */
 const _buildPromptOriginal = window.buildPrompt || buildPrompt;
 function buildPromptExtendido() {
+  console.log("[buildPromptExtendido] _pacienteActual:", _pacienteActual);
   if (_pacienteActual) {
     const eId = document.getElementById("e-id");
-    if (eId) eId.value = _pacienteActual.subject_id;
+    if (eId) eId.value = _pacienteActual.subject_id || "";
     const eNombre = document.getElementById("e-nombre");
     if (eNombre) eNombre.value = _pacienteActual.nombre || "";
     const eEdad = document.getElementById("e-edad");
     if (eEdad) eEdad.value = _pacienteActual.edad || "";
     const eSexo = document.getElementById("e-sexo");
     if (eSexo) eSexo.value = _pacienteActual.sexo || "";
+    const eEmail = document.getElementById("c-email-empleado");
+    if (eEmail && _pacienteActual.email) eEmail.value = _pacienteActual.email;
+    const eTel = document.getElementById("c-telefono-empleado");
+    if (eTel && _pacienteActual.telefono) eTel.value = _pacienteActual.telefono;
   }
-  return _buildPromptOriginal();
+  const resultado = _buildPromptOriginal();
+
+  // ✅ Diagnóstico: verificar que los datos del paciente llegaron al prompt
+  const ta = document.getElementById("generated-prompt");
+  if (ta && _pacienteActual?.nombre) {
+    const contieneNombre = ta.value.includes(_pacienteActual.nombre);
+    console.log("[buildPromptExtendido] ¿Prompt contiene nombre del paciente?:", contieneNombre);
+    if (!contieneNombre) {
+      console.warn("[buildPromptExtendido] El nombre NO está en el prompt. Datos del paciente:",
+        { nombre: _pacienteActual.nombre, subject_id: _pacienteActual.subject_id });
+    }
+  }
+
+  return resultado;
 }
 
 /* ─── Inicialización al cargar el DOM ─── */
@@ -8548,7 +8570,12 @@ window.generarInformeBase = generarInformeBaseExtendido;
 window.resetAll = resetAllExtendido;
 window.buildPrompt = buildPromptExtendido;
 window.recogerClinica = recogerClinicaExtendida;
-
+/* ─── Re-renderizar el prompt con la versión extendida ya activa ─── */
+setTimeout(() => {
+  try {
+    if (typeof renderPrompts === "function") renderPrompts();
+  } catch (e) { console.warn("[re-renderPrompts]", e); }
+}, 150);
 /* ═══════════════════════════════════════════════════════════════════
    FIN DE LA ENTREGA B
    ═══════════════════════════════════════════════════════════════════ */
