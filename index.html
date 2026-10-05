@@ -6768,6 +6768,8 @@ async function generarInformeBase() {
     }
     casoActual.interconsultas_sugeridas = interconsultasSugeridas;
     planPropuesto = { farmacologico: casoActual.plan?.farmacologico || [], no_farmacologico: casoActual.plan?.no_farmacologico || [], metas: casoActual.plan?.metas || [], laboratorios: casoActual.plan?.laboratorios || [], seguimiento: casoActual.plan?.seguimiento || { proxima_cita: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), intervalo_dias: 90 } };
+    // ✅ v23.4.1 — Recalcular escalas justo antes de guardar el caso
+    try { recalcularTodasLasEscalas(); } catch (e) {}
     await guardarCasoDB(casoActual);
     renderInterconsultasSugeridas();
     cargarEditorTratamiento();
@@ -6997,7 +6999,11 @@ function goTo(n) {
   if (sid === "sec-protocolo") renderProtocolo();
   if (sid === "sec-analisis") { if (!selectedPromptKey) selectedPromptKey = estudioActual; renderPrompts(); }
   if (sid === "sec-interconsultas") renderInterconsultasSugeridas();
-  if (sid === "sec-vitales" || sid === "sec-clinica") setTimeout(actualizarInterpretaciones, 150);
+  if (sid === "sec-vitales" || sid === "sec-clinica" || sid === "sec-labs") {
+    setTimeout(() => {
+      try { recalcularTodasLasEscalas(); } catch (e) { console.warn("[goTo Recalc]", e); }
+    }, 200);
+  }
   if (sid === "sec-reporte") actualizarVisibilidadBotones();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -8530,12 +8536,18 @@ async function seleccionarPacienteExistente(subjectId) {
     const titulo = document.getElementById("ficha-titulo");
     if (titulo) titulo.textContent = "Ficha del paciente · " + data.nombre;
 
+    // ✅ v23.4.1 — Forzar recálculo de TODAS las escalas ahora que ya hay paciente
+    setTimeout(() => {
+      try { recalcularTodasLasEscalas(); } catch (e) { console.warn("[Recalc]", e); }
+    }, 200);
+
     showStatus("Paciente cargado", "success");
   } catch (e) {
     console.error("[seleccionarPacienteExistente]", e);
     showStatus("Error al cargar la ficha", "error");
   }
 }
+
 
 function llenarFichaPaciente(p) {
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ""; };
@@ -8716,6 +8728,8 @@ function mostrarFormularioPacienteNuevo() {
 
   renderFactoresRiesgo();
   cargarEmpresasEnSelect();
+  // ✅ v23.4.1 — Recalcular al abrir formulario de paciente nuevo (por si hay datos previos)
+  setTimeout(() => { try { recalcularTodasLasEscalas(); } catch (e) {} }, 200);
 }
 
 function cerrarFichaPaciente() {
@@ -8728,6 +8742,56 @@ function cerrarFichaPaciente() {
   // ✅ NO borrar _pacienteActual: se necesita para el prompt y el informe.
   // Solo se borra en resetAll() / mostrarFormularioPacienteNuevo().
 }
+/* ═══════════════════════════════════════════════════════════
+   v23.4.1 — RECALCULAR TODAS LAS ESCALAS
+   Dispara manualmente los cálculos de todas las escalas calculadas,
+   pasándoles los valores actuales del DOM.
+   ═══════════════════════════════════════════════════════════ */
+function recalcularTodasLasEscalas() {
+  console.log("[Recalc] Recalculando todas las escalas...");
+
+  // 1) Ejecutar cada función de cálculo conocida
+  const funciones = [
+    "calcIMC", "calcTFG", "calcFINDRISC", "calcFramingham", "calcFCMax",
+    "calcHOMA", "calcPHQ9", "calcGAD7", "calcAUDITC", "calcIPAQ",
+    "calcISI", "calcSTOPBANG", "calcEpworth"
+  ];
+  funciones.forEach(fn => {
+    if (typeof window[fn] === "function") {
+      try { window[fn](); } catch (e) { console.warn("[Recalc]", fn, e); }
+    }
+  });
+
+  // 2) Actualizar colores de interpretación (verde/amarillo/rojo)
+  if (typeof actualizarInterpretaciones === "function") {
+    try { actualizarInterpretaciones(); } catch (e) {}
+  }
+
+  // 3) Actualizar progreso de acordeones
+  if (typeof actualizarProgresoAcordeones === "function") {
+    try { actualizarProgresoAcordeones(); } catch (e) {}
+  }
+
+  // 4) Diagnóstico: mostrar qué campos calculados quedaron con valor
+  setTimeout(() => {
+    const calculados = ESCALAS_REGISTRY._items.filter(e => e.tipo === "calculada");
+    calculados.forEach(e => {
+      const el = document.getElementById(e.id);
+      if (el && el.value) {
+        console.log("[Recalc] ✓", e.id, "=", el.value);
+      }
+    });
+    const calculadosLabs = LABS_REGISTRY._items.filter(l => l.tipo === "calculada");
+    calculadosLabs.forEach(l => {
+      const el = document.getElementById(l.id);
+      if (el && el.value) {
+        console.log("[Recalc] ✓", l.id, "=", el.value);
+      }
+    });
+  }, 100);
+}
+window.recalcularTodasLasEscalas = recalcularTodasLasEscalas;
+
 async function guardarFichaPaciente() {
   if (!supabaseClient) { showStatus("Sin conexión", "error"); return; }
 
@@ -8798,8 +8862,11 @@ async function guardarFichaPaciente() {
 
     _pacienteActual = { ...pacienteData };
 
-    setStatus("✅ Ficha guardada. Continuando...", "var(--positive)");
+       setStatus("✅ Ficha guardada. Continuando...", "var(--positive)");
     showStatus("✓ Ficha guardada: " + subjectId, "success");
+
+    // ✅ v23.4.1 — Recalcular todas las escalas con los datos del paciente recién guardados
+    setTimeout(() => { try { recalcularTodasLasEscalas(); } catch (e) {} }, 150);
 
     setTimeout(() => {
       cerrarFichaPaciente();
