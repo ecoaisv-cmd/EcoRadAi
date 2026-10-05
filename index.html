@@ -4035,6 +4035,36 @@ window.SECCIONES_POR_TAMIZAJE = SECCIONES_POR_TAMIZAJE;
 // ═══════════════════════════════════════════════════════════
 // R1 — Configuración dinámica desde el Worker
 // ═══════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════
+   v23.4.1 — HELPERS GLOBALES
+   ═══════════════════════════════════════════════════════════ */
+
+function limpiarTextoPDF(html) {
+  if (!html) return "";
+  return String(html)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, "")
+    .replace(/\uFFFD/g, "");
+}
+
+function obtenerDatosPaciente() {
+  const g = id => {
+    const el = document.getElementById(id);
+    return el ? (el.value || "").trim() : "";
+  };
+  const pac = (typeof _pacienteActual !== "undefined" && _pacienteActual) ? _pacienteActual : null;
+
+  const nombre   = pac?.nombre      || g("ficha-nombre")       || g("e-nombre")     || "No especificado";
+  const subjectId = pac?.subject_id || g("ficha-subject_id")   || g("e-id")         || "No especificado";
+  const edad     = pac?.edad        || g("ficha-edad")         || g("e-edad")       || "";
+  const sexo     = pac?.sexo        || g("ficha-sexo")         || g("e-sexo")       || "";
+  const area     = pac?.area        || g("e-area")             || "N/E";
+  const email    = pac?.email       || g("ficha-email")        || g("c-email-empleado") || "";
+  const telefono = pac?.telefono    || g("ficha-telefono")     || g("c-telefono-empleado") || "";
+
+  return { nombre, subject_id: subjectId, edad, sexo, area, email, telefono, _raw: pac };
+}
+
 let SUPABASE_URL = null;
 let SUPABASE_KEY = null;
 let SENTRY_DSN = null;
@@ -5657,15 +5687,17 @@ function renderInformeMedico(p, caso, g, f, id, d, nivel) {
     if (!contenido || !contenido.trim()) return;
 
     let blockHTML = "";
-    switch (sec.tipo) {
-      case "estructurada":
+        switch (sec.tipo) {
+      case "estructurada": {
+        const pdc = obtenerDatosPaciente();
         blockHTML = '<div class="report-grid">' +
-          '<div class="col"><div class="col-label">Nombre</div><div class="col-value">' + esc(g("e-nombre")) + '</div></div>' +
-          '<div class="col"><div class="col-label">ID</div><div class="col-value">' + esc(g("e-id")) + '</div></div>' +
-          '<div class="col"><div class="col-label">Edad / Sexo</div><div class="col-value">' + esc(g("e-edad")) + " años / " + esc(g("e-sexo")) + '</div></div>' +
-          '<div class="col"><div class="col-label">Área</div><div class="col-value">' + esc(g("e-area") || "N/E") + '</div></div>' +
+          '<div class="col"><div class="col-label">Nombre</div><div class="col-value">' + esc(pdc.nombre) + '</div></div>' +
+          '<div class="col"><div class="col-label">ID</div><div class="col-value">' + esc(pdc.subject_id) + '</div></div>' +
+          '<div class="col"><div class="col-label">Edad / Sexo</div><div class="col-value">' + esc(pdc.edad) + " años / " + esc(pdc.sexo) + '</div></div>' +
+          '<div class="col"><div class="col-label">Área</div><div class="col-value">' + esc(pdc.area) + '</div></div>' +
           '</div>';
         break;
+      }
       case "tabla_metricas":
         if (contenido.includes("|") || contenido.match(/^[-•*·]/m) || contenido.match(/\S+\s*:\s*\S+/)) {
           blockHTML = '<div class="report-clinical">' + renderTextoLibre(cor(contenido)) + '</div>';
@@ -5717,7 +5749,8 @@ function renderInformeMedico(p, caso, g, f, id, d, nivel) {
     seccionesHTML += '<div class="report-section"><h4>' + sec.titulo + '</h4>' + blockHTML + '</div>';
   });
 
-  return '<div class="report-medico" id="report-medico"><div class="report-header"><div class="clinic-name">Ecosistema de Salud EcoRadAi</div><h2>' + e.meta.nombre + '</h2><div class="meta">' + g("c-empresa") + " | " + f + " | Nivel: " + nivel + (ti ? " | Con interconsultas" : "") + '</div></div><div class="report-body">' + seccionesHTML + ih + '<div class="report-section firma-section"><h4>Firma del Médico Validador</h4><div class="firma-unica"><div class="firma-title">Médico Validador</div><div class="firma-linea"></div><div class="firma-nombre">' + esc(firma.nombre || g("c-medico") || "No especificado") + '</div><div class="firma-rol">' + esc(firma.rol || "Médico Responsable") + '</div><div class="firma-csspm">CSSPM: ' + esc(firma.csspm || g("c-csspm") || "N/E") + '</div><div class="firma-fecha">Fecha: ' + f + '</div><div class="hash">SHA-256: ' + esc(firma.hash || "pendiente") + '</div></div><div class="firma-aviso-ia">Este informe fue elaborado con asistencia de IA' + (ti ? " + " + (caso.interconsultas_ejecutadas || []).filter(ic => !ic.error).length + " interconsultas" : "") + '. El médico firmante asume la responsabilidad clínica.</div></div><div class="report-section"><h4>Referencias</h4><div class="reference-box">' + (e.guias || []).join(", ") + '</div></div><div class="report-signoff"><div class="date">Generado: ' + new Date().toLocaleString("es-ES") + '</div><div class="reg">Caso: ' + id + '</div></div></div></div>';
+   const htmlFinal = '<div class="report-medico" id="report-medico"><div class="report-header"><div class="clinic-name">Ecosistema de Salud EcoRadAi</div><h2>' + e.meta.nombre + '</h2><div class="meta">' + g("c-empresa") + " | " + f + " | Nivel: " + nivel + (ti ? " | Con interconsultas" : "") + '</div></div><div class="report-body">' + seccionesHTML + ih + '<div class="report-section firma-section"><h4>Firma del Médico Validador</h4><div class="firma-unica"><div class="firma-title">Médico Validador</div><div class="firma-linea"></div><div class="firma-nombre">' + esc(firma.nombre || g("c-medico") || "No especificado") + '</div><div class="firma-rol">' + esc(firma.rol || "Médico Responsable") + '</div><div class="firma-csspm">CSSPM: ' + esc(firma.csspm || g("c-csspm") || "N/E") + '</div><div class="firma-fecha">Fecha: ' + f + '</div><div class="hash">SHA-256: ' + esc(firma.hash || "pendiente") + '</div></div><div class="firma-aviso-ia">Este informe fue elaborado con asistencia de IA' + (ti ? " + " + (caso.interconsultas_ejecutadas || []).filter(ic => !ic.error).length + " interconsultas" : "") + '. El médico firmante asume la responsabilidad clínica.</div></div><div class="report-section"><h4>Referencias</h4><div class="reference-box">' + (e.guias || []).join(", ") + '</div></div><div class="report-signoff"><div class="date">Generado: ' + new Date().toLocaleString("es-ES") + '</div><div class="reg">Caso: ' + id + '</div></div></div></div>';
+  return limpiarTextoPDF(htmlFinal);
 }
 
 function renderPaginasImagenes(g, f, id, caso) {
@@ -5762,6 +5795,7 @@ function renderRecetaSeparada(p, caso, g, f, id) {
   const fs = caso.plan?.farmacologico || [];
   const esc = escapeHtml;
   const firma = caso.signatures?.medico || {};
+  const pdc = obtenerDatosPaciente();
 
   const ft = fs.length > 0
     ? '<table class="receta-farmacos-table"><thead><tr><th>Fármaco</th><th>Dosis/Vía</th><th>Frecuencia</th><th>Duración</th></tr></thead><tbody>'
@@ -5795,7 +5829,7 @@ function renderRecetaSeparada(p, caso, g, f, id) {
     : "";
 
   // ── RENDER FINAL ──
-  return '<div class="report-receta-separada" id="report-receta-separada">'
+    const htmlFinal = '<div class="report-receta-separada" id="report-receta-separada">'
     + '<div class="receta-header-sep">'
     + '<div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85">Ecosistema EcoRadAi</div>'
     + '<h2>RECETA MÉDICA</h2>'
@@ -5803,9 +5837,9 @@ function renderRecetaSeparada(p, caso, g, f, id) {
     + '</div>'
     + '<div class="receta-body-sep">'
     + '<div class="receta-datos-paciente">'
-    + '<div class="receta-dato"><span class="lbl">Paciente:</span> ' + g("e-nombre") + '</div>'
-    + '<div class="receta-dato"><span class="lbl">ID:</span> ' + g("e-id") + '</div>'
-    + '<div class="receta-dato"><span class="lbl">Edad:</span> ' + g("e-edad") + ' años</div>'
+    + '<div class="receta-dato"><span class="lbl">Paciente:</span> ' + esc(pdc.nombre) + '</div>'
+    + '<div class="receta-dato"><span class="lbl">ID:</span> ' + esc(pdc.subject_id) + '</div>'
+    + '<div class="receta-dato"><span class="lbl">Edad:</span> ' + esc(pdc.edad) + ' años</div>'
     + '<div class="receta-dato"><span class="lbl">Fecha:</span> ' + f + '</div>'
     + '</div>'
     + '<h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin-bottom:12px">PRESCRIPCIÓN</h3>'
@@ -5820,14 +5854,15 @@ function renderRecetaSeparada(p, caso, g, f, id) {
     + '<div style="max-width:70%">SHA-256: ' + esc(firma.hash || "pendiente") + '</div>'
     + '<div>Receta: ' + id + '</div>'
     + '</div></div></div>';
+      return limpiarTextoPDF(htmlFinal);
 }
 function renderInformeLite(p, caso, nivel, rec, g, f) {
   const nNorm = normalizarNivel(nivel);
   const nc = nNorm === "MUY ALTO" ? "muy-alto" : nNorm === "ALTO" ? "alto" : nNorm === "MODERADO" ? "moderado" : "bajo";
   const esc = escapeHtml;
   const cor = corregirOrtografia;
+  const pdc = obtenerDatosPaciente();
 
-  // ─── Descripciones y acciones por nivel ───
   const descNivel = {
     BAJO:       "Tus resultados están en buen estado. Mantén tus hábitos actuales.",
     MODERADO:   "Se detectaron signos tempranos que conviene vigilar y corregir.",
@@ -5835,45 +5870,67 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
     "MUY ALTO": "Se detectaron alteraciones importantes que requieren atención médica prioritaria."
   };
 
-  // ─── Secciones del informe médico parseadas ───
-  // Estas ya las tienes en `p` (parseAIResponse). Las reutilizamos.
-  const secResumen     = p["sec_resumen"] || p["sec_1"] || "";
-  const secTabla       = p["sec_tabla_metricas"] || p["sec_tabla"] || p["sec_5"] || "";
-  const secRiesgo      = p["sec_riesgo"] || p["sec_7"] || "";
-  const secPlanNF      = p["sec_planNF"] || p["sec_plan_nf"] || p["sec_8"] || "";
-  const secPlanFarm    = p["sec_tablaFarmacos"] || p["sec_plan_farm"] || p["sec_9"] || "";
-  const secMetas       = p["sec_metas"] || p["sec_10"] || "";
-  const secLabs        = p["sec_labsSeguimiento"] || p["sec_labs_seg"] || p["sec_11"] || "";
+  /* ═══════════════════════════════════════════════════════════
+     v23.4.1 — Extraer secciones dinámicas reales del tamizaje
+     ═══════════════════════════════════════════════════════════ */
+  const estudioParaRender = caso.encounter?.estudio || estudioActual;
+  const secciones = obtenerSeccionesInforme(estudioParaRender);
 
-  // ─── Resumen ejecutivo (limpio) ───
+  const buscarPorTipo = (tiposBuscados) => {
+    for (const sec of secciones) {
+      if (tiposBuscados.includes(sec.tipo)) {
+        const contenido = p[sec.id];
+        if (contenido && contenido.trim()) return { sec, contenido };
+      }
+    }
+    return null;
+  };
+  const buscarPorTitulo = (palabras) => {
+    for (const sec of secciones) {
+      const t = (sec.tituloRaw || "").toUpperCase();
+      if (palabras.some(pal => t.includes(pal))) {
+        const contenido = p[sec.id];
+        if (contenido && contenido.trim()) return { sec, contenido };
+      }
+    }
+    return null;
+  };
+
+  const rResumen  = buscarPorTitulo(["RESUMEN"]) || buscarPorTipo(["clinica"]);
+  const rTabla    = buscarPorTipo(["tabla_metricas"]);
+  const rRiesgo   = buscarPorTitulo(["RIESGO GLOBAL", "CLASIFICACIÓN DE RIESGO", "CLASIFICACION DE RIESGO"]);
+  const rPlanNF   = buscarPorTipo(["planNF"]) || buscarPorTitulo(["NO FARMACOLÓGICO", "NO FARMACOLOGICO"]);
+  const rPlanFarm = buscarPorTipo(["tablaFarmacos"]) || buscarPorTitulo(["FARMACOLÓGICO", "FARMACOLOGICO"]);
+  const rMetas    = buscarPorTipo(["metas"]) || buscarPorTitulo(["METAS"]);
+  const rLabs     = buscarPorTipo(["labsSeguimiento"]) || buscarPorTitulo(["LABORATORIOS", "SEGUIMIENTO"]);
+
+  /* ─── Resumen ejecutivo ─── */
   let resumenHTML = "";
-  if (secResumen && secResumen.trim()) {
-    resumenHTML = `<div class="lv2-section"><h4>📋 Resumen ejecutivo</h4><div class="lv2-resumen">${renderTextoLibre(cor(secResumen))}</div></div>`;
+  if (rResumen && rResumen.contenido.trim()) {
+    resumenHTML = `<div class="lv2-section"><h4>📋 Resumen ejecutivo</h4><div class="lv2-resumen">${renderTextoLibre(cor(rResumen.contenido))}</div></div>`;
   } else {
-    // Fallback: generar resumen mínimo desde los datos
-    resumenHTML = `<div class="lv2-section"><h4>📋 Resumen ejecutivo</h4><div class="lv2-resumen"><p>Se realizó un tamizaje ${esc(caso.encounter?.estudio || "").replace(/_/g, " ")} el ${esc(f)}.</p><p>Resultado global: <strong>${nNorm}</strong>. ${descNivel[nNorm] || ""}</p></div></div>`;
+    const estudioNombre = esc((caso.encounter?.estudio || "").replace(/_/g, " "));
+    resumenHTML = `<div class="lv2-section"><h4>📋 Resumen ejecutivo</h4><div class="lv2-resumen"><p>Se realizó un tamizaje <strong>${estudioNombre}</strong> el ${esc(f)}.</p><p>Resultado global: <strong>${nNorm}</strong>. ${descNivel[nNorm] || ""}</p></div></div>`;
   }
 
-  // ─── Tabla de valores ───
-  // Estrategia: si el informe médico tiene tabla parseada, la usamos.
-  // Si no, construimos desde `caso.metrics`.
+  /* ─── Tabla de valores ─── */
   let tablaHTML = "";
-  if (secTabla && secTabla.trim() && secTabla.includes("|")) {
-    tablaHTML = `<div class="lv2-section"><h4>📊 Tus valores</h4>${renderTablaLite(secTabla)}</div>`;
+  if (rTabla && rTabla.contenido.trim()) {
+    tablaHTML = `<div class="lv2-section"><h4>📊 Tus valores</h4>${renderTablaLite(rTabla.contenido)}</div>`;
   } else if (caso.metrics && caso.metrics.length > 0) {
     tablaHTML = `<div class="lv2-section"><h4>📊 Tus valores</h4>${renderTablaDesdeMetrics(caso.metrics)}</div>`;
   }
 
-  // ─── Clasificación de riesgo ───
+  /* ─── Clasificación de riesgo ─── */
   let riesgoHTML = "";
-  if (secRiesgo && secRiesgo.trim()) {
-    riesgoHTML = `<div class="lv2-section"><h4>🎯 Clasificación de riesgo</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.65;color:#333">${renderTextoLibre(cor(secRiesgo))}</div></div>`;
+  if (rRiesgo && rRiesgo.contenido.trim()) {
+    riesgoHTML = `<div class="lv2-section"><h4>🎯 Clasificación de riesgo</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.65;color:#333">${renderTextoLibre(cor(rRiesgo.contenido))}</div></div>`;
   }
 
-  // ─── Plan no farmacológico ───
+  /* ─── Plan no farmacológico ─── */
   let planNFHTML = "";
-  if (secPlanNF && secPlanNF.trim()) {
-    planNFHTML = `<div class="lv2-section"><h4>🥗 Plan no farmacológico</h4><div class="lv2-plan-nf">${renderTextoLibre(cor(secPlanNF))}</div></div>`;
+  if (rPlanNF && rPlanNF.contenido.trim()) {
+    planNFHTML = `<div class="lv2-section"><h4>🥗 Plan no farmacológico</h4><div class="lv2-plan-nf">${renderTextoLibre(cor(rPlanNF.contenido))}</div></div>`;
   } else {
     const nf = caso.plan?.no_farmacologico || [];
     if (nf.length > 0) {
@@ -5881,7 +5938,7 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
     }
   }
 
-  // ─── Plan farmacológico → referencia a receta ───
+  /* ─── Plan farmacológico → referencia a receta ─── */
   let recetaRefHTML = "";
   const farmacos = caso.plan?.farmacologico || [];
   if (farmacos.length > 0) {
@@ -5897,31 +5954,35 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
         </div>
       </div>
     `;
-  } else if (secPlanFarm && secPlanFarm.trim() && !secPlanFarm.toLowerCase().includes("sin tratamiento")) {
-    recetaRefHTML = `<div class="lv2-section"><h4>💊 Plan farmacológico</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.65;color:#333">${renderTextoLibre(cor(secPlanFarm))}</div></div>`;
+  } else if (rPlanFarm && rPlanFarm.contenido.trim() && !rPlanFarm.contenido.toLowerCase().includes("sin tratamiento")) {
+    recetaRefHTML = `<div class="lv2-section"><h4>💊 Plan farmacológico</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.65;color:#333">${renderTextoLibre(cor(rPlanFarm.contenido))}</div></div>`;
   } else {
     recetaRefHTML = `<div class="lv2-section"><h4>💊 Plan farmacológico</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px;font-size:12.5px;color:#666;text-align:center">Sin tratamiento farmacológico indicado.</div></div>`;
   }
 
-  // ─── Metas ───
+  /* ─── Metas ─── */
   let metasHTML = "";
   const metas = caso.plan?.metas || [];
   if (metas.length > 0) {
     metasHTML = `<div class="lv2-section"><h4>🎯 Tus metas</h4><div class="lv2-metas">${metas.map(m => `<div class="lv2-meta-item"><span class="m-name">${esc((m.metrica || "").replace(/_/g, " "))}</span><span class="m-values">${m.valor_actual ?? "—"} → <strong>${m.valor_meta ?? "—"}</strong><span class="m-plazo"> (${m.plazo_dias || 90} días)</span></span></div>`).join("")}</div></div>`;
-  } else if (secMetas && secMetas.trim()) {
-    metasHTML = `<div class="lv2-section"><h4>🎯 Tus metas</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px">${renderTextoLibre(cor(secMetas))}</div></div>`;
+  } else if (rMetas && rMetas.contenido.trim()) {
+    metasHTML = `<div class="lv2-section"><h4>🎯 Tus metas</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px">${renderTextoLibre(cor(rMetas.contenido))}</div></div>`;
   }
 
-  // ─── Labs de seguimiento ───
+  /* ─── Labs de seguimiento ─── */
   let labsHTML = "";
   const labs = caso.plan?.laboratorios || [];
   if (labs.length > 0) {
-    labsHTML = `<div class="lv2-section"><h4>🔬 Exámenes de seguimiento</h4><div class="lv2-labs">${labs.map(l => { const nombre = typeof l === "string" ? l : (l.estudio || ""); const plazo = typeof l === "object" ? (l.plazo_dias || "—") : "—"; return `<div class="lv2-lab-item"><span class="l-name">${esc(cor(nombre))}</span><span class="l-plazo">${plazo} días</span></div>`; }).join("")}</div></div>`;
-  } else if (secLabs && secLabs.trim()) {
-    labsHTML = `<div class="lv2-section"><h4>🔬 Exámenes de seguimiento</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px">${renderTextoLibre(cor(secLabs))}</div></div>`;
+    labsHTML = `<div class="lv2-section"><h4>🔬 Exámenes de seguimiento</h4><div class="lv2-labs">${labs.map(l => {
+      const nombre = typeof l === "string" ? l : (l.estudio || "");
+      const plazo  = typeof l === "object" ? (l.plazo_dias || "—") : "—";
+      return `<div class="lv2-lab-item"><span class="l-name">${esc(cor(nombre))}</span><span class="l-plazo">${plazo} días</span></div>`;
+    }).join("")}</div></div>`;
+  } else if (rLabs && rLabs.contenido.trim()) {
+    labsHTML = `<div class="lv2-section"><h4>🔬 Exámenes de seguimiento</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px">${renderTextoLibre(cor(rLabs.contenido))}</div></div>`;
   }
 
-  // ─── Plan sugerido (suscripción) ───
+  /* ─── Plan sugerido (suscripción) ─── */
   let sugerenciaHTML = "";
   try {
     const sug = sugerirPlanSuscripcion(caso);
@@ -5931,7 +5992,7 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
           <div class="lv2-plan-sug">
             <div class="sug-titulo">🎯 Recomendación de seguimiento</div>
             <div class="sug-nombre">${esc(sug.nombre)}</div>
-            <div class="sug-precio">${sug.precio.modo === "empresa" ? sugerencia.precio.empresa : sugerencia.precio.individual}</div>
+            <div class="sug-precio">${sug.precio.modo === "empresa" ? sug.precio.empresa : sug.precio.individual}</div>
             ${sug.precio.modo === "empresa" ? '<div style="font-size:11px;color:#8a6a00;margin-bottom:8px;padding:4px 12px;background:#fff9e6;border-radius:100px;display:inline-block">💼 Tu empresa lo cubre</div>' : ''}
             <div class="sug-razones">${sug.razones.map(r => "• " + esc(r)).join("<br>")}</div>
           </div>
@@ -5940,7 +6001,7 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
     }
   } catch (e) { /* silencioso */ }
 
-  // ─── Firma ───
+  /* ─── Firma ─── */
   const firma = caso.signatures?.medico || {};
   const firmaHTML = `
     <div class="lv2-section">
@@ -5954,16 +6015,14 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
     </div>
   `;
 
-  // ─── Header ───
+  /* ─── Render final ─── */
   const empresa = g("c-empresa") || "";
-  const nombrePaciente = g("e-nombre") || "";
-
-  return `
+  const htmlFinal = `
     <div class="report-lite-v2" id="report-lite">
       <div class="lv2-header">
         <div class="lv2-brand">Ecosistema de Salud EcoRadAi</div>
         <h2>Mi informe de salud</h2>
-        <div class="lv2-meta">${esc(nombrePaciente)}${empresa ? " · " + esc(empresa) : ""} · ${esc(f)}</div>
+        <div class="lv2-meta">${esc(pdc.nombre)}${empresa ? " · " + esc(empresa) : ""} · ${esc(f)}</div>
       </div>
 
       <div class="lv2-semaforo">
@@ -5990,8 +6049,8 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
       </div>
     </div>
   `;
+  return limpiarTextoPDF(htmlFinal);
 }
-
 /* ═══════════════════════════════════════════════════════════
    AUXILIARES PARA LA TABLA DEL LITE
    ═══════════════════════════════════════════════════════════ */
@@ -6108,6 +6167,12 @@ async function descargarPDF(tipo) {
   const id = tipo === "medico" ? "report-medico" : "report-lite";
   const el = document.getElementById(id);
   if (!el) { showStatus("Genera primero el informe", "error"); return; }
+
+  const limpio = document.createElement("div");
+  limpio.innerHTML = limpiarTextoPDF(el.outerHTML);
+  limpio.style.cssText = "position:fixed;left:-99999px;top:0;width:800px;background:#fff;padding:0";
+  document.body.appendChild(limpio);
+
   showStatus("Generando PDF...", "info");
   try {
     const { jsPDF } = window.jspdf;
@@ -6117,7 +6182,8 @@ async function descargarPDF(tipo) {
     const mg = 10;
     const cw = pw - (mg * 2);
     let y = mg;
-    const header = el.querySelector(".report-header") || el.querySelector(".lite-header");
+
+    const header = limpio.querySelector(".report-header") || limpio.querySelector(".lv2-header");
     let headerImg = null, headerH = 0;
     if (header) {
       const c = await html2canvas(header, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
@@ -6128,7 +6194,8 @@ async function descargarPDF(tipo) {
       if (headerImg) { pdf.addImage(headerImg, "PNG", mg, y, cw, headerH); y += headerH + 3; }
     };
     addHeader();
-    const bloques = el.querySelectorAll(".report-section, .lite-section");
+
+    const bloques = limpio.querySelectorAll(".report-section, .lv2-section, .lv2-semaforo, .lv2-firma");
     for (const b of bloques) {
       const c = await html2canvas(b, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
       const imgW = cw, imgH = (c.height * imgW) / c.width;
@@ -6136,6 +6203,7 @@ async function descargarPDF(tipo) {
       pdf.addImage(c.toDataURL("image/png"), "PNG", mg, y, imgW, imgH);
       y += imgH + 3;
     }
+
     const total = pdf.internal.getNumberOfPages();
     for (let i = 1; i <= total; i++) {
       pdf.setPage(i);
@@ -6143,12 +6211,19 @@ async function descargarPDF(tipo) {
       pdf.text("EcoRadAi · " + new Date().toLocaleDateString("es-ES"), mg, ph - 5);
       pdf.text("Página " + i + " de " + total, pw - mg, ph - 5, { align: "right" });
     }
+
+    const pacNom = (obtenerDatosPaciente().nombre || "paciente").replace(/\s+/g, "_");
     const nombre = tipo === "medico"
-      ? "Informe_Medico_" + (document.getElementById("e-nombre")?.value || "paciente").replace(/\s+/g, "_") + "_" + new Date().toISOString().slice(0, 10) + ".pdf"
-      : "Informe_Lite_" + (document.getElementById("e-nombre")?.value || "paciente").replace(/\s+/g, "_") + "_" + new Date().toISOString().slice(0, 10) + ".pdf";
+      ? "Informe_Medico_" + pacNom + "_" + new Date().toISOString().slice(0, 10) + ".pdf"
+      : "Informe_Lite_" + pacNom + "_" + new Date().toISOString().slice(0, 10) + ".pdf";
     pdf.save(nombre);
     showStatus("PDF descargado (" + total + " páginas)", "success");
-  } catch (e) { console.error("[descargarPDF]", e); showStatus("Error: " + e.message, "error"); }
+  } catch (e) {
+    console.error("[descargarPDF]", e);
+    showStatus("Error: " + e.message, "error");
+  } finally {
+    document.body.removeChild(limpio);
+  }
 }
 async function descargarPNG() {
   const el = document.getElementById("report-lite");
@@ -6216,9 +6291,15 @@ function imprimirSoloReceta() {
 async function descargarRecetaPDF() {
   const r = document.getElementById("report-receta-separada");
   if (!r) { showStatus("No hay receta", "error"); return; }
+
+  const limpio = document.createElement("div");
+  limpio.innerHTML = limpiarTextoPDF(r.outerHTML);
+  limpio.style.cssText = "position:fixed;left:-99999px;top:0;width:800px;background:#fff;padding:0";
+  document.body.appendChild(limpio);
+
   try {
     const { jsPDF } = window.jspdf;
-    const cn = await html2canvas(r, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+    const cn = await html2canvas(limpio, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
     const pdf = new jsPDF("p", "mm", "a4");
     const pw = pdf.internal.pageSize.getWidth();
     const iw = pw - 20;
@@ -6226,19 +6307,33 @@ async function descargarRecetaPDF() {
     pdf.addImage(cn.toDataURL("image/png"), "PNG", 10, 10, iw, ih);
     pdf.save("Receta_" + new Date().toISOString().slice(0, 10) + ".pdf");
     showStatus("Receta PDF descargada", "success");
-  } catch (e) { showStatus("Error: " + e.message, "error"); }
+  } catch (e) {
+    showStatus("Error: " + e.message, "error");
+  } finally {
+    document.body.removeChild(limpio);
+  }
 }
 async function descargarRecetaPNG() {
   const r = document.getElementById("report-receta-separada");
   if (!r) { showStatus("No hay receta", "error"); return; }
+
+  const limpio = document.createElement("div");
+  limpio.innerHTML = limpiarTextoPDF(r.outerHTML);
+  limpio.style.cssText = "position:fixed;left:-99999px;top:0;width:800px;background:#fff;padding:0";
+  document.body.appendChild(limpio);
+
   try {
-    const cn = await html2canvas(r, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+    const cn = await html2canvas(limpio, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
     const l = document.createElement("a");
     l.download = "Receta_" + new Date().toISOString().slice(0, 10) + ".png";
     l.href = cn.toDataURL("image/png");
     l.click();
     showStatus("Receta PNG descargada", "success");
-  } catch (e) { showStatus("Error: " + e.message, "error"); }
+  } catch (e) {
+    showStatus("Error: " + e.message, "error");
+  } finally {
+    document.body.removeChild(limpio);
+  }
 }
 
 async function enviarEmail(tipo) {
