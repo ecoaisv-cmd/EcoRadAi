@@ -4032,17 +4032,88 @@ window.SECCIONES_POR_TAMIZAJE = SECCIONES_POR_TAMIZAJE;
    CONEXIÓN SUPABASE — EcoRadAi v23.4
    ═══════════════════════════════════════════════════════════ */
 
-const SUPABASE_URL = "https://hjlspgdkqenwlidcvlqc.supabase.co";
-const SUPABASE_KEY = "sb_publishable_m2MPW87L1T-1_ieakK7t5g_Xw4IBs5T";
+// ═══════════════════════════════════════════════════════════
+// R1 — Configuración dinámica desde el Worker
+// ═══════════════════════════════════════════════════════════
+let SUPABASE_URL = null;
+let SUPABASE_KEY = null;
+let SENTRY_DSN = null;
+let CONFIG_CARGADA = false;
 
+const WORKER_URL = "https://ecokimi2.emazzini2020.workers.dev"; // ← CAMBIA ESTO
+
+async function cargarConfiguracion() {
+  if (CONFIG_CARGADA) return true;
+
+  try {
+    console.log("[Config] Cargando desde Worker...");
+    const resp = await fetch(`${WORKER_URL}/config`, {
+      method: "GET",
+      headers: { "Accept": "application/json" }
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Worker respondió ${resp.status}`);
+    }
+
+    const cfg = await resp.json();
+
+    if (!cfg.supabase_url || !cfg.supabase_key) {
+      throw new Error("Configuración incompleta del Worker");
+    }
+
+    SUPABASE_URL = cfg.supabase_url;
+    SUPABASE_KEY = cfg.supabase_key;
+    SENTRY_DSN = cfg.sentry_dsn || null;
+    CONFIG_CARGADA = true;
+
+    console.log("[Config] ✓ Cargada. Entorno:", cfg.environment, "| Versión:", cfg.version);
+    return true;
+
+  } catch (e) {
+    console.error("[Config] Error crítico:", e);
+    // Fallback: pedir al usuario que reintente
+    mostrarErrorConfiguracion(e.message);
+    return false;
+  }
+}
+
+function mostrarErrorConfiguracion(msg) {
+  const overlay = document.getElementById("login-overlay");
+  if (overlay) {
+    overlay.innerHTML = `
+      <div style="background:var(--bg);border-radius:var(--radius-lg);max-width:400px;width:100%;padding:32px 28px;text-align:center">
+        <div style="font-size:42px;margin-bottom:8px">⚠️</div>
+        <h1 style="font-size:18px;font-weight:800;color:var(--danger);margin-bottom:8px">Error de conexión</h1>
+        <p style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-bottom:16px">
+          No se pudo cargar la configuración del servidor.<br>
+          <code style="font-size:10px;background:var(--bg-secondary);padding:2px 6px;border-radius:4px;display:inline-block;margin-top:8px">${escapeHtml(msg)}</code>
+        </p>
+        <button onclick="location.reload()" style="width:100%;padding:12px;background:var(--accent);color:white;border:none;border-radius:var(--radius-md);font-size:14px;font-weight:700;cursor:pointer">
+          Reintentar
+        </button>
+      </div>
+    `;
+  }
+}
+
+// Ahora el cliente Supabase se inicializa tras cargar la config
 let supabaseClient = null;
-let usuarioActual = null;   // { id, email, rol, nombre, paciente_id }
 
-if (typeof supabase !== "undefined") {
+async function initSupabase() {
+  if (!CONFIG_CARGADA) {
+    const ok = await cargarConfiguracion();
+    if (!ok) return null;
+  }
+
+  if (typeof supabase === "undefined") {
+    console.error("[Supabase] Librería no cargada");
+    return null;
+  }
+
   supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  console.log("[Supabase] Cliente inicializado");
-} else {
-  console.error("[Supabase] Librería no cargada. Revisa el <head>.");
+  console.log("[Supabase] ✓ Cliente inicializado");
+  return supabaseClient;
 }
 
 /* ───────────────────────────────────────────────────────────
@@ -4144,10 +4215,15 @@ function ajustarUIPorRol(rol) {
    ─────────────────────────────────────────────────────────── */
 
 async function verificarSesion() {
+  // Asegurar que Supabase esté listo
   if (!supabaseClient) {
-    mostrarErrorLogin("No se pudo conectar con el servidor.");
-    return;
+    await initSupabase();
   }
+
+  if (!supabaseClient) {
+    return; // ya se mostró el error
+  }
+
   const f = document.getElementById("login-form-container");
   const l = document.getElementById("login-loading");
   if (f) f.style.display = "none";
@@ -5339,8 +5415,6 @@ async function sendToAI() {
   generatedPromptText = ta ? ta.value.trim() : "";
   if (!generatedPromptText) { showStatus("El prompt está vacío", "error"); return; }
   if (apiMode === "manual") { copyPrompt(); return; }
-  const proxyUrl = document.getElementById("proxy-url")?.value.trim();
-  if (!proxyUrl) { showStatus("Configura la URL del proxy", "error"); return; }
   const btn = document.getElementById("btn-send");
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Enviando...'; }
   const ec = document.getElementById("ai-error-card");
@@ -5354,7 +5428,7 @@ async function sendToAI() {
 
 // ═══ v23.4: sendToProxyBasico con reintento si falta JSON ═══
 async function sendToProxyBasico() {
-  const proxyUrl = document.getElementById("proxy-url").value.trim();
+  const proxyUrl = `${WORKER_URL}/proxy-kimi`;
   localStorage.setItem("ecoradai234_proxy_url", proxyUrl);
   const model = document.getElementById("kimi-model").value;
   localStorage.setItem("ecoradai234_kimi_model", model);
@@ -6316,32 +6390,108 @@ async function runInterconsulta(caso, key) {
   const e = ESPECIALISTAS[key];
   const pb = PROMPTS_INTERCONSULTA[key];
   if (!pb) throw new Error("Sin prompt para " + key);
-  const ctx = { subject: { edad: caso.subject?.edad, sexo: caso.subject?.sexo, area: caso.subject?.area }, encounter: { estudio: caso.encounter?.estudio, fecha: caso.encounter?.fecha }, labs: compactarLabs(caso.labs || {}), clinica: compactarClinica(caso.clinica || {}), findings: caso.findings || {}, metrics: caso.metrics || [], plan_base: { riesgo_global: caso.riesgo_global, diagnostico_diferencial: caso.diagnostico_diferencial, no_farmacologico: caso.plan?.no_farmacologico || [], farmacologico: caso.plan?.farmacologico || [], metas: caso.plan?.metas || [] } };
+
+  // ═══════════════════════════════════════════════════════════
+  // Contexto que se envía a la IA
+  // ═══════════════════════════════════════════════════════════
+  const ctx = {
+    subject: {
+      edad: caso.subject?.edad,
+      sexo: caso.subject?.sexo,
+      area: caso.subject?.area
+    },
+    encounter: {
+      estudio: caso.encounter?.estudio,
+      fecha: caso.encounter?.fecha
+    },
+    labs: compactarLabs(caso.labs || {}),
+    clinica: compactarClinica(caso.clinica || {}),
+    findings: caso.findings || {},
+    metrics: caso.metrics || [],
+    plan_base: {
+      riesgo_global: caso.riesgo_global,
+      diagnostico_diferencial: caso.diagnostico_diferencial,
+      no_farmacologico: caso.plan?.no_farmacologico || [],
+      farmacologico: caso.plan?.farmacologico || [],
+      metas: caso.plan?.metas || []
+    }
+  };
+
   const pf = pb.replace(/{CONTEXTO_JSON}/g, JSON.stringify(ctx, null, 2));
-  const pu = document.getElementById("proxy-url")?.value.trim();
-  if (!pu) throw new Error("Configura URL del proxy");
+
+  // ═══════════════════════════════════════════════════════════
+  // ✅ R1: Usar el Worker en lugar del input del DOM
+  // ═══════════════════════════════════════════════════════════
+  const pu = `${WORKER_URL}/proxy-kimi`;
+
   const m = document.getElementById("kimi-model")?.value || "kimi-k2-5";
+
   const t0 = Date.now();
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), 90000);
+
   let resp;
   try {
-    resp = await fetch(pu, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m, messages: [{ role: "system", content: "Devuelve SIEMPRE JSON válido con ortografía española correcta. Sin markdown." }, { role: "user", content: pf }], max_tokens: 8192, reasoning_effort: "low", response_format: { type: "json_object" } }), signal: ctrl.signal });
-  } catch (err) { clearTimeout(tid); if (err.name === "AbortError") throw new Error("Timeout 90s en " + key); throw err; }
+    resp = await fetch(pu, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: m,
+        messages: [
+          {
+            role: "system",
+            content: "Devuelve SIEMPRE JSON válido con ortografía española correcta. Sin markdown."
+          },
+          { role: "user", content: pf }
+        ],
+        max_tokens: 8192,
+        reasoning_effort: "low",
+        response_format: { type: "json_object" }
+      }),
+      signal: ctrl.signal
+    });
+  } catch (err) {
+    clearTimeout(tid);
+    if (err.name === "AbortError") throw new Error("Timeout 90s en " + key);
+    throw err;
+  }
+
   clearTimeout(tid);
   const el = Date.now() - t0;
+
   if (!resp.ok) throw new Error("HTTP " + resp.status);
+
   const data = await resp.json();
   if (data.error) throw new Error(data.error.message || "Error de Kimi");
+
   let content = data.choices?.[0]?.message?.content || "{}";
   content = content.replace(/```json\s*/gi, "").replace(/```\s*$/g, "").trim();
+
   let parsed;
-  try { parsed = JSON.parse(content); } catch (e) {
+  try {
+    parsed = JSON.parse(content);
+  } catch (e) {
+    // Fallback: extraer el primer bloque JSON válido
     const mm = content.match(/\{[\s\S]*\}/);
-    if (mm) { try { parsed = JSON.parse(mm[0]); } catch (e2) { throw new Error("JSON inválido en " + key); } }
-    else throw new Error("Sin JSON en " + key);
+    if (mm) {
+      try {
+        parsed = JSON.parse(mm[0]);
+      } catch (e2) {
+        throw new Error("JSON inválido en " + key);
+      }
+    } else {
+      throw new Error("Sin JSON en " + key);
+    }
   }
-  return { especialista: key, nombre: e.nombre, rol: e.rol, timestamp: new Date().toISOString(), _meta: { elapsed_ms: el }, ...parsed };
+
+  return {
+    especialista: key,
+    nombre: e.nombre,
+    rol: e.rol,
+    timestamp: new Date().toISOString(),
+    _meta: { elapsed_ms: el },
+    ...parsed
+  };
 }
 
 function cargarEditorTratamiento() {
@@ -7119,8 +7269,7 @@ function resetAll() {
 async function parsearLabsConIA() {
   const raw = document.getElementById("labs-raw")?.value.trim();
   if (!raw) { showStatus("Pega primero el reporte", "error"); return; }
-  const pu = document.getElementById("proxy-url")?.value.trim();
-  if (!pu) { showStatus("Configura URL del proxy", "error"); return; }
+  const pu = `${WORKER_URL}/proxy-kimi`;
   const b = document.getElementById("btn-parse-labs");
   if (b) { b.disabled = true; b.innerHTML = '<span class="spinner"></span> Parseando...'; }
   try {
@@ -7165,8 +7314,6 @@ function loadSavedConfig() {
   }
   const se = localStorage.getItem("ecoradai234_estudio");
   if (se && TAMIZAJES_REGISTRY.obtener(se)) estudioActual = se;
-  const p = localStorage.getItem("ecoradai234_proxy_url");
-  if (p) { const el = document.getElementById("proxy-url"); if (el) el.value = p; }
   const m = localStorage.getItem("ecoradai234_kimi_model");
   if (m) { const el = document.getElementById("kimi-model"); if (el) el.value = m; }
   const b = localStorage.getItem("ecoradai234_backend_url");
