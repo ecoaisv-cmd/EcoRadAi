@@ -5135,47 +5135,93 @@ function buildPrompt() {
   if (!selectedPromptKey) selectedPromptKey = estudioActual || "corporativo_metabolico";
   const ta = document.getElementById("generated-prompt");
   if (!ta) return;
+
   let txt = obtenerPromptActual(selectedPromptKey);
-  const g = id => document.getElementById(id) ? document.getElementById(id).value : "No especificado";
+
+  // ═══════════════════════════════════════════════════════════════
+  // g(id) — Lee un input por ID, con fallback
+  // ═══════════════════════════════════════════════════════════════
+  const g = id => {
+    const el = document.getElementById(id);
+    if (!el) return "No especificado";
+    const v = (el.value || "").trim();
+    return v === "" ? "No especificado" : v;
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // ✅ v23.5: Datos del paciente — primero de la ficha, luego del input
+  // ═══════════════════════════════════════════════════════════════
+  const pac = _pacienteActual || null;
+
+  const pacNombre       = pac?.nombre       || g("ficha-nombre")       || g("e-nombre");
+  const pacSubjectId    = pac?.subject_id   || g("ficha-subject_id")   || g("e-id");
+  const pacEdad         = pac?.edad         || (document.getElementById("ficha-edad")?.value || "").replace(" años", "") || g("e-edad");
+  const pacSexo         = pac?.sexo         || g("ficha-sexo")         || g("e-sexo");
+  const pacDepartamento = pac?.departamento || g("ficha-departamento") || g("e-area");
+  const pacMunicipio    = pac?.municipio    || g("ficha-municipio");
+  const pacZona         = pac?.zona_geografica || g("ficha-zona_geografica");
+  const pacEmail        = pac?.email        || g("ficha-email")        || g("c-email-empleado");
+  const pacTelefono     = pac?.telefono     || g("ficha-telefono")     || g("c-telefono-empleado");
+
+  // Construir ubicación combinada
+  const pacUbicacion = [pacDepartamento, pacMunicipio].filter(x => x && x !== "No especificado").join(", ") || pacZona || "No especificado";
+
+  // ═══════════════════════════════════════════════════════════════
+  // Factores de riesgo (vienen del formulario de la ficha)
+  // ═══════════════════════════════════════════════════════════════
   const fac = [];
   document.querySelectorAll("#factores-riesgo-container input[type=checkbox]:checked").forEach(cb => fac.push(cb.value));
+
   const fecha = new Date().toLocaleDateString("es-ES");
   const labs = recogerLabs();
   const clinica = recogerClinica();
   const tamizaje = TAMIZAJES_REGISTRY.obtener(selectedPromptKey);
   const instruccionJSON = construirInstruccionJSON(tamizaje);
+
+  // ═══════════════════════════════════════════════════════════════
+  // Reemplazos
+  // ═══════════════════════════════════════════════════════════════
   txt = txt
+    // ── Contexto del programa ──
     .replace(/{EMPRESA}/g, g("c-empresa"))
-    .replace(/{JORNADA_ID}/g, g("c-jornada") || "JORNADA-" + new Date().toISOString().slice(0, 10))
-    .replace(/{OPERADOR}/g, g("c-operador") || "No especificado")
-    .replace(/{MEDICO_VALIDADOR}/g, g("c-medico") || "No especificado")
-    .replace(/{CSSPM}/g, g("c-csspm") || "No especificado")
+    .replace(/{JORNADA_ID}/g, g("c-jornada") !== "No especificado" ? g("c-jornada") : "JORNADA-" + new Date().toISOString().slice(0, 10))
+    .replace(/{OPERADOR}/g, g("c-operador"))
+    .replace(/{MEDICO_VALIDADOR}/g, g("c-medico"))
+    .replace(/{CSSPM}/g, g("c-csspm"))
     .replace(/{FECHA}/g, fecha)
-    .replace(/{NOMBRE}/g, g("e-nombre"))
-    .replace(/{EMPLEADO_ID}/g, g("e-id"))
-    .replace(/{EDAD}/g, g("e-edad"))
-    .replace(/{SEXO}/g, g("e-sexo"))
-    .replace(/{DEPARTAMENTO}/g, g("e-area") || "No especificado")
-    .replace(/{MOTIVO}/g, g("e-motivo") || "Tamizaje programado")
-    .replace(/{ANTECEDENTES}/g, g("e-antecedentes") || "Ninguno")
+    // ── Datos del paciente (desde _pacienteActual) ──
+    .replace(/{NOMBRE}/g, pacNombre)
+    .replace(/{EMPLEADO_ID}/g, pacSubjectId)
+    .replace(/{EDAD}/g, String(pacEdad || "No especificado"))
+    .replace(/{SEXO}/g, pacSexo)
+    .replace(/{DEPARTAMENTO}/g, pacUbicacion)
+    // ── Datos clínicos del caso ──
+    .replace(/{MOTIVO}/g, g("e-motivo"))
+    .replace(/{ANTECEDENTES}/g, g("e-antecedentes"))
     .replace(/{FACTORES_RIESGO}/g, fac.length > 0 ? fac.join(", ") : "Ninguno")
-    .replace(/{MEDICACION_ACTUAL}/g, g("e-medicacion") || "Ninguna")
+    .replace(/{MEDICACION_ACTUAL}/g, g("e-medicacion"))
+    // ── Datos técnicos ──
     .replace(/{LABS_JSON}/g, JSON.stringify(compactarLabs(labs), null, 2))
     .replace(/{CLINICA_JSON}/g, JSON.stringify(compactarClinica(clinica), null, 2))
     .replace(/{EQUIPO}/g, g("e-equipo"))
     .replace(/{TRANSDUCTOR}/g, g("e-transductor"));
+
   txt += instruccionJSON;
   generatedPromptText = txt;
   ta.value = txt;
+
   const c = document.getElementById("generated-prompt-card");
   if (c) c.style.display = "block";
+
+  // Estimación de costo
   const ic = capturedImages.length;
   const tk = Math.ceil(txt.length / 4) + (ic * 800);
   const co = (tk / 1000000 * 0.95).toFixed(3);
   const ce = document.getElementById("cost-estimate");
   if (ce) ce.textContent = "~" + tk + " tokens | ~$" + co + " | " + ic + " imágenes";
-}
 
+  console.log("[buildPrompt] ✓ Prompt generado con paciente:", pacNombre, "| ID:", pacSubjectId);
+}
 function recogerLabs() {
   const o = { fecha_toma: document.getElementById("labs-fecha")?.value || null, notas: document.getElementById("labs-notas")?.value || null };
   LABS_REGISTRY._items.forEach(l => {
