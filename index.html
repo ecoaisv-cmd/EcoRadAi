@@ -6084,24 +6084,7 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
     labsHTML = `<div class="lv2-section"><h4>🔬 Exámenes de seguimiento</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px">${renderTextoLibre(cor(rLabs.contenido))}</div></div>`;
   }
 
-  /* ─── Plan sugerido (suscripción) ─── 
-  let sugerenciaHTML = "";
-  try {
-    const sug = sugerirPlanSuscripcion(caso);
-    if (sug && sug.plan) {
-      sugerenciaHTML = `
-        <div class="lv2-section">
-          <div class="lv2-plan-sug">
-            <div class="sug-titulo">🎯 Recomendación de seguimiento</div>
-            <div class="sug-nombre">${esc(sug.nombre)}</div>
-            <div class="sug-precio">${sug.precio.modo === "empresa" ? sug.precio.empresa : sug.precio.individual}</div>
-            ${sug.precio.modo === "empresa" ? '<div style="font-size:11px;color:#8a6a00;margin-bottom:8px;padding:4px 12px;background:#fff9e6;border-radius:100px;display:inline-block">💼 Tu empresa lo cubre</div>' : ''}
-            <div class="sug-razones">${sug.razones.map(r => "• " + esc(r)).join("<br>")}</div>
-          </div>
-        </div>
-      `;
-    }
-  } catch (e) { /* silencioso */ }*/
+  
   /* ─── Plan sugerido: DESACTIVADO en v23.4.2 (no mostrar en informe paciente) ─── */
   const sugerenciaHTML = "";
   /* ─── Firma ─── */
