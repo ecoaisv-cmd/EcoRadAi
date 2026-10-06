@@ -6373,9 +6373,10 @@ async function descargarPDF(tipo) {
   }
 }
 // ═══════════════════════════════════════════════════════════
-// descargarPDFLite — v23.5 FINAL
-// Captura el informe lite COMPLETO como UNA imagen y lo pagina
-// NO toca el informe médico ni la receta
+// descargarPDFLite — v23.6 FINAL con SECCIONADO ATÓMICO
+// Captura cada sección del informe lite como un bloque atómico
+// Si una sección no cabe en la página actual, salta a la siguiente
+// NUNCA corta tablas ni secciones a la mitad
 // ═══════════════════════════════════════════════════════════
 async function descargarPDFLite() {
   const el = document.getElementById("report-lite");
@@ -6383,13 +6384,13 @@ async function descargarPDFLite() {
 
   showStatus("Generando PDF lite...", "info");
 
-  // Clonar el informe
+  // Clonar el informe para no afectar el DOM original
   const clon = el.cloneNode(true);
   clon.style.cssText = "position:fixed;left:-99999px;top:0;width:700px;background:#fff;padding:0";
   document.body.appendChild(clon);
 
   try {
-    // Convertir Data URLs → Blob URLs (evita "Incomplete or corrupt PNG")
+    // ═══ Convertir Data URLs → Blob URLs ═══
     const imagenes = clon.querySelectorAll('img');
     for (const img of imagenes) {
       const src = img.getAttribute('src');
@@ -6403,71 +6404,65 @@ async function descargarPDFLite() {
         } catch (e) { console.warn('[PDF Lite] Imagen no convertida:', e); }
       }
     }
-
-    // Esperar a que todas las imágenes carguen
     await Promise.all(Array.from(imagenes).map(img => {
       if (img.complete) return Promise.resolve();
       return new Promise(res => { img.onload = res; img.onerror = res; });
     }));
 
-    // ═══ CLAVE: capturar el informe COMPLETO como UNA sola imagen ═══
-    const canvas = await html2canvas(clon, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      windowWidth: 700,
-      scrollY: -window.scrollY,
-      height: clon.scrollHeight,
-      width: clon.scrollWidth
-    });
-
+    // ═══ Configurar PDF ═══
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF("p", "mm", "a4");
     const pw = pdf.internal.pageSize.getWidth();
     const ph = pdf.internal.pageSize.getHeight();
-    const mg = 10;
+    const mg = 8;
     const cw = pw - (mg * 2);
+    let y = mg;
 
-    const imgW = cw;
-    const imgHTotal = (canvas.height * imgW) / canvas.width;
+    // ═══ Identificar bloques atómicos ═══
+    // El header (.lv2-header), el semáforo (.lv2-semaforo),
+    // cada sección (.lv2-section) y la firma (.lv2-firma)
+    // se tratan como bloques independientes.
+    const bloques = [];
+    const header = clon.querySelector(".lv2-header");
+    if (header) bloques.push(header);
+    const semaforo = clon.querySelector(".lv2-semaforo");
+    if (semaforo) bloques.push(semaforo);
+    clon.querySelectorAll(".lv2-body > .lv2-section").forEach(sec => bloques.push(sec));
+    const firma = clon.querySelector(".lv2-firma");
+    if (firma) bloques.push(firma);
 
-    if (imgHTotal <= ph - 2 * mg) {
-      // Cabe en una sola página
-      pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, mg, imgW, imgHTotal);
-    } else {
-      // Paginar la imagen larga en cortes limpios
-      const pxPorMm = canvas.width / imgW;
-      const altoPaginaPx = (ph - 2 * mg) * pxPorMm;
-      let offsetY = 0;
-      let pagina = 0;
+    console.log("[descargarPDFLite] Bloques a procesar:", bloques.length);
 
-      while (offsetY < canvas.height) {
-        if (pagina > 0) pdf.addPage();
-        const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
+    // ═══ Procesar cada bloque ═══
+    for (const bloque of bloques) {
+      const canvas = await html2canvas(bloque, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        windowWidth: 700
+      });
 
-        const temp = document.createElement("canvas");
-        temp.width = canvas.width;
-        temp.height = altoCorte;
-        const ctx = temp.getContext("2d");
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, temp.width, temp.height);
-        ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
+      const imgW = cw;
+      const imgH = (canvas.height * imgW) / canvas.width;
 
-        const altoMm = altoCorte / pxPorMm;
-        pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoMm);
-
-        offsetY += altoCorte;
-        pagina++;
+      // Si NO cabe en la página actual, saltar de página
+      if (y + imgH > ph - mg) {
+        pdf.addPage();
+        y = mg;
       }
+
+      // Agregar el bloque completo (nunca se corta a la mitad)
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, y, imgW, imgH);
+      y += imgH + 2; // pequeño espacio entre bloques
     }
 
-    // Pie de página
+    // ═══ Pie de página ═══
     const total = pdf.internal.getNumberOfPages();
     for (let i = 1; i <= total; i++) {
       pdf.setPage(i);
       pdf.setFontSize(8); pdf.setTextColor(150);
-      pdf.text("EcoRadAi · " + new Date().toLocaleDateString("es-ES"), mg, ph - 5);
-      pdf.text("Página " + i + " de " + total, pw - mg, ph - 5, { align: "right" });
+      pdf.text("EcoRadAi · " + new Date().toLocaleDateString("es-ES"), mg, ph - 4);
+      pdf.text("Página " + i + " de " + total, pw - mg, ph - 4, { align: "right" });
     }
 
     const pacNom = (obtenerDatosPaciente().nombre || "paciente").replace(/\s+/g, "_");
