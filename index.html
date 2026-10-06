@@ -4439,6 +4439,19 @@ async function initDB() {
 
 async function guardarCasoDB(caso) {
   if (!supabaseClient) return false;
+
+  // ═══════════════════════════════════════════════════════════
+  // v23.4.2 — VALIDACIÓN PREVIA: subject_id válido obligatorio
+  // ═══════════════════════════════════════════════════════════
+  if (!caso.subject?.subject_id ||
+      caso.subject.subject_id === "N/E" ||
+      caso.subject.subject_id.includes("????") ||
+      caso.subject.subject_id.trim() === "") {
+    console.error("[guardarCasoDB] subject_id inválido:", caso.subject?.subject_id);
+    showStatus("Error: el caso no tiene subject_id válido. Guarda la ficha primero.", "error");
+    return false;
+  }
+
   try {
     // ═══════════════════════════════════════════════════════
     // 1) SUBIR IMÁGENES A STORAGE
@@ -4453,28 +4466,23 @@ async function guardarCasoDB(caso) {
           ? ("Vista " + (i + 1))
           : (img.tag || ("Vista " + (i + 1)));
 
-        // Si ya es URL pública, no resubir
         if (dataUrl && dataUrl.startsWith("http")) {
           imagenesSubidas.push({ tag, url: dataUrl });
           continue;
         }
 
-        // Si no hay data URL válida, saltar
         if (!dataUrl || !dataUrl.startsWith("data:")) {
           console.warn("[Storage] Imagen sin data URL válida, saltando:", tag);
           continue;
         }
 
         try {
-          // Data URL → Blob
           const resp = await fetch(dataUrl);
           const blob = await resp.blob();
 
-          // Path: {subject_id}/{case_id}/img_01.jpg
-          const subjectId = caso.subject?.subject_id || "SIN-ID";
+          const subjectId = caso.subject.subject_id || "SIN-ID";
           const path = `${subjectId}/${caso.case_id}/img_${String(i + 1).padStart(2, "0")}.jpg`;
 
-          // Subir (upsert para permitir re-guardado)
           const { error: upErr } = await supabaseClient.storage
             .from("casos-imagenes")
             .upload(path, blob, {
@@ -4488,7 +4496,6 @@ async function guardarCasoDB(caso) {
             continue;
           }
 
-          // Obtener URL pública
           const { data: pub } = supabaseClient.storage
             .from("casos-imagenes")
             .getPublicUrl(path);
@@ -4505,28 +4512,36 @@ async function guardarCasoDB(caso) {
         }
       }
 
-      // Reemplazar Data URLs por URLs públicas en el caso
       caso.acquisition.imagenes = imagenesSubidas;
       console.log("[Storage] Imágenes subidas:", imagenesSubidas.length);
     }
 
     // ═══════════════════════════════════════════════════════
-    // 2) UPSERT DEL PACIENTE
+    // 2) UPSERT DEL PACIENTE — AHORA ES BLOQUEANTE
     // ═══════════════════════════════════════════════════════
     const { error: errPac } = await supabaseClient
       .from("patients")
       .upsert({
         subject_id: caso.subject.subject_id,
         nombre: caso.subject.nombre,
+        fecha_nacimiento: caso.subject.fecha_nacimiento || null,
         edad: caso.subject.edad,
         sexo: caso.subject.sexo,
+        dui: caso.subject.dui || null,
         empresa: caso.subject.empresa || null,
         area: caso.subject.area || null,
-        email: caso.subject.contacto?.email || null,
-        telefono: caso.subject.contacto?.telefono || null
+        email: caso.subject.email || null,
+        telefono: caso.subject.telefono || null,
+        departamento: caso.subject.departamento || null,
+        municipio: caso.subject.municipio || null,
+        zona_geografica: caso.subject.zona_geografica || null,
+        updated_at: new Date().toISOString()
       }, { onConflict: "subject_id" });
 
-    if (errPac) console.warn("[patients upsert]", errPac);
+    if (errPac) {
+      console.error("[patients upsert]", errPac);
+      throw new Error("No se pudo guardar el paciente: " + (errPac.message || "error desconocido"));
+    }
 
     // ═══════════════════════════════════════════════════════
     // 3) UPSERT DEL CASO
@@ -4555,11 +4570,12 @@ async function guardarCasoDB(caso) {
       case_id: caso.case_id,
       detalle: {
         estudio: caso.encounter?.estudio,
-        n_imagenes: caso.acquisition?.imagenes?.length || 0
+        n_imagenes: caso.acquisition?.imagenes?.length || 0,
+        subject_id: caso.subject.subject_id
       }
     });
 
-    console.log("[Supabase] ✓ Caso guardado:", caso.case_id);
+    console.log("[Supabase] ✓ Caso guardado:", caso.case_id, "→ paciente:", caso.subject.subject_id);
     return true;
 
   } catch (e) {
@@ -5264,20 +5280,43 @@ function generarCaseId(est, sid) {
   return "ECO-" + tp + "-" + f + "-" + h + "-" + r;
 }
 function construirCaso(ai, ctx) {
+  // ═══════════════════════════════════════════════════════════
+  // v23.4.2 — GUARD CLAUSE: subject_id válido obligatorio
+  // ═══════════════════════════════════════════════════════════
+  if (!ctx.subject?.subject_id ||
+      ctx.subject.subject_id === "N/E" ||
+      ctx.subject.subject_id.includes("????") ||
+      ctx.subject.subject_id.trim() === "") {
+    console.error("[construirCaso] subject_id inválido:", ctx.subject?.subject_id);
+    throw new Error("No se puede construir el caso: falta subject_id válido del paciente. Guarda la ficha primero.");
+  }
+
   const narr = separarNarrativa(ai);
   const js = extraerBloqueJSON(ai);
   if (!ctx.encounter) ctx.encounter = {};
   if (!ctx.encounter.estudio) ctx.encounter.estudio = ctx.estudio || estudioActual;
+
   return {
-    schema_version: "4.4", case_id: generarCaseId(ctx.estudio, ctx.subject.subject_id),
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    subject: ctx.subject, encounter: ctx.encounter, acquisition: ctx.acquisition,
-    labs: ctx.labs, clinica: ctx.clinica,
-    findings: js?.findings || {}, metrics: js?.metrics || [], plan: js?.plan || {},
-    riesgo_global: js?.riesgo_global || null, diagnostico_diferencial: js?.diagnostico_diferencial || [],
+    schema_version: "4.4",
+    case_id: generarCaseId(ctx.estudio, ctx.subject.subject_id),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    subject: ctx.subject,
+    encounter: ctx.encounter,
+    acquisition: ctx.acquisition,
+    labs: ctx.labs,
+    clinica: ctx.clinica,
+    findings: js?.findings || {},
+    metrics: js?.metrics || [],
+    plan: js?.plan || {},
+    riesgo_global: js?.riesgo_global || null,
+    diagnostico_diferencial: js?.diagnostico_diferencial || [],
     narrativa_completa: narr,
-    interconsultas_sugeridas: [], interconsultas_autorizadas: [], interconsultas_ejecutadas: [],
-    artifacts: {}, signatures: {},
+    interconsultas_sugeridas: [],
+    interconsultas_autorizadas: [],
+    interconsultas_ejecutadas: [],
+    artifacts: {},
+    signatures: {},
     timeline: { prev_case_id: null, next_case_id: null, delta_vs_prev: {} },
     enfoque: enfoqueActual
   };
@@ -5342,11 +5381,19 @@ function buildPrompt() {
   const ta = document.getElementById("generated-prompt");
   if (!ta) return;
 
+  // ═══════════════════════════════════════════════════════════
+  // v23.4.2 — BLOQUEO: sin paciente no hay prompt
+  // ═══════════════════════════════════════════════════════════
+  if (!_pacienteActual || !_pacienteActual.subject_id) {
+    ta.value = "⚠️ Debes guardar la ficha del paciente primero para generar el prompt.";
+    const c = document.getElementById("generated-prompt-card");
+    if (c) c.style.display = "block";
+    showStatus("Falta la ficha del paciente", "error");
+    return;
+  }
+
   let txt = obtenerPromptActual(selectedPromptKey);
 
-  // ═══════════════════════════════════════════════════════════════
-  // g(id) — Lee un input por ID, con fallback
-  // ═══════════════════════════════════════════════════════════════
   const g = id => {
     const el = document.getElementById(id);
     if (!el) return "No especificado";
@@ -5354,29 +5401,28 @@ function buildPrompt() {
     return v === "" ? "No especificado" : v;
   };
 
-  // ═══════════════════════════════════════════════════════════════
-  // ✅ v23.5: Datos del paciente — primero de la ficha, luego del input
-  // ═══════════════════════════════════════════════════════════════
-  const pac = _pacienteActual || null;
+  // ═══════════════════════════════════════════════════════════
+  // v23.4.2 — Datos del paciente desde _pacienteActual (ficha)
+  // ═══════════════════════════════════════════════════════════
+  const pac = _pacienteActual;
 
-  const pacNombre       = pac?.nombre       || g("ficha-nombre")       || g("e-nombre");
-  const pacSubjectId    = pac?.subject_id   || g("ficha-subject_id")   || g("e-id");
-  const pacEdad         = pac?.edad         || (document.getElementById("ficha-edad")?.value || "").replace(" años", "") || g("e-edad");
-  const pacSexo         = pac?.sexo         || g("ficha-sexo")         || g("e-sexo");
-  const pacDepartamento = pac?.departamento || g("ficha-departamento") || g("e-area");
-  const pacMunicipio    = pac?.municipio    || g("ficha-municipio");
-  const pacZona         = pac?.zona_geografica || g("ficha-zona_geografica");
-  const pacEmail        = pac?.email        || g("ficha-email")        || g("c-email-empleado");
-  const pacTelefono     = pac?.telefono     || g("ficha-telefono")     || g("c-telefono-empleado");
+  const pacNombre       = pac?.nombre       || "No especificado";
+  const pacSubjectId    = pac?.subject_id   || "No especificado";
+  const pacEdad         = pac?.edad         || "";
+  const pacSexo         = pac?.sexo         || "";
+  const pacDepartamento = pac?.departamento || "";
+  const pacMunicipio    = pac?.municipio    || "";
+  const pacZona         = pac?.zona_geografica || "";
+  const pacEmail        = pac?.email        || "";
+  const pacTelefono     = pac?.telefono     || "";
 
-  // Construir ubicación combinada
-  const pacUbicacion = [pacDepartamento, pacMunicipio].filter(x => x && x !== "No especificado").join(", ") || pacZona || "No especificado";
+  const pacUbicacion = [pacDepartamento, pacMunicipio]
+    .filter(x => x && x !== "No especificado")
+    .join(", ") || pacZona || "No especificado";
 
-  // ═══════════════════════════════════════════════════════════════
-  // Factores de riesgo (vienen del formulario de la ficha)
-  // ═══════════════════════════════════════════════════════════════
   const fac = [];
-  document.querySelectorAll("#factores-riesgo-container input[type=checkbox]:checked").forEach(cb => fac.push(cb.value));
+  document.querySelectorAll("#factores-riesgo-container input[type=checkbox]:checked")
+    .forEach(cb => fac.push(cb.value));
 
   const fecha = new Date().toLocaleDateString("es-ES");
   const labs = recogerLabs();
@@ -5384,29 +5430,22 @@ function buildPrompt() {
   const tamizaje = TAMIZAJES_REGISTRY.obtener(selectedPromptKey);
   const instruccionJSON = construirInstruccionJSON(tamizaje);
 
-  // ═══════════════════════════════════════════════════════════════
-  // Reemplazos
-  // ═══════════════════════════════════════════════════════════════
   txt = txt
-    // ── Contexto del programa ──
     .replace(/{EMPRESA}/g, g("c-empresa"))
     .replace(/{JORNADA_ID}/g, g("c-jornada") !== "No especificado" ? g("c-jornada") : "JORNADA-" + new Date().toISOString().slice(0, 10))
     .replace(/{OPERADOR}/g, g("c-operador"))
     .replace(/{MEDICO_VALIDADOR}/g, g("c-medico"))
     .replace(/{CSSPM}/g, g("c-csspm"))
     .replace(/{FECHA}/g, fecha)
-    // ── Datos del paciente (desde _pacienteActual) ──
     .replace(/{NOMBRE}/g, pacNombre)
     .replace(/{EMPLEADO_ID}/g, pacSubjectId)
     .replace(/{EDAD}/g, String(pacEdad || "No especificado"))
     .replace(/{SEXO}/g, pacSexo)
     .replace(/{DEPARTAMENTO}/g, pacUbicacion)
-    // ── Datos clínicos del caso ──
     .replace(/{MOTIVO}/g, g("e-motivo"))
     .replace(/{ANTECEDENTES}/g, g("e-antecedentes"))
     .replace(/{FACTORES_RIESGO}/g, fac.length > 0 ? fac.join(", ") : "Ninguno")
     .replace(/{MEDICACION_ACTUAL}/g, g("e-medicacion"))
-    // ── Datos técnicos ──
     .replace(/{LABS_JSON}/g, JSON.stringify(compactarLabs(labs), null, 2))
     .replace(/{CLINICA_JSON}/g, JSON.stringify(compactarClinica(clinica), null, 2))
     .replace(/{EQUIPO}/g, g("e-equipo"))
@@ -5419,7 +5458,6 @@ function buildPrompt() {
   const c = document.getElementById("generated-prompt-card");
   if (c) c.style.display = "block";
 
-  // Estimación de costo
   const ic = capturedImages.length;
   const tk = Math.ceil(txt.length / 4) + (ic * 800);
   const co = (tk / 1000000 * 0.95).toFixed(3);
@@ -6896,49 +6934,174 @@ function leerPlanEditado() {
 }
 
 async function generarInformeBase() {
-  if (!aiResponseText || aiResponseText.trim() === "") { showStatus("No hay respuesta de la IA.", "error"); return; }
-  if (!estudioActual || !TAMIZAJES_REGISTRY.obtener(estudioActual)) { showStatus("Tamizaje no válido.", "error"); return; }
-  const g = id => document.getElementById(id) ? document.getElementById(id).value : "N/E";
-  if (!g("e-id") || !g("e-nombre") || !g("e-edad") || !g("e-sexo")) { showStatus("Completa los datos del paciente.", "error"); return; }
+  // ═══════════════════════════════════════════════════════════
+  // v23.4.2 — VALIDACIÓN CRÍTICA: paciente con ID válido
+  // ═══════════════════════════════════════════════════════════
+  if (!_pacienteActual || !_pacienteActual.subject_id || _pacienteActual.subject_id.includes("????")) {
+    showStatus("❌ No hay paciente con ID válido. Guarda la ficha primero.", "error");
+    // Forzar scroll a la ficha si existe
+    const card = document.getElementById("ficha-paciente-card");
+    if (card && card.style.display !== "none") {
+      card.scrollIntoView({ behavior: "smooth" });
+    }
+    return;
+  }
+
+  if (!aiResponseText || aiResponseText.trim() === "") {
+    showStatus("No hay respuesta de la IA.", "error");
+    return;
+  }
+
+  if (!estudioActual || !TAMIZAJES_REGISTRY.obtener(estudioActual)) {
+    showStatus("Tamizaje no válido.", "error");
+    return;
+  }
+
   showStatus("Construyendo caso canónico...", "info");
-  const fac = Array.from(document.querySelectorAll("#factores-riesgo-container input[type=checkbox]:checked")).map(cb => cb.value);
-  const ctx = {
-    subject: { subject_id: g("e-id"), nombre: g("e-nombre"), edad: parseInt(g("e-edad")) || 0, sexo: g("e-sexo"), empresa: g("c-empresa"), area: g("e-area"), contacto: { email: g("c-email-empleado"), telefono: g("c-telefono-empleado") } },
-    encounter: { tipo: "tamizaje_corporativo", tipo_pago: (g("c-empresa") && g("c-empresa") !== "N/E") ? "empresa" : "individual", estudio: estudioActual, jornada_id: g("c-jornada"), operador: g("c-operador"), medico_validador: g("c-medico"), csspm: g("c-csspm"), fecha: new Date().toLocaleDateString("es-ES"), motivo: g("e-motivo"), antecedentes: g("e-antecedentes"), factores_riesgo: fac, medicacion_actual: g("e-medicacion") },
-    acquisition: { equipo: g("e-equipo"), transductor: g("e-transductor"), frecuencia_mhz: g("e-frecuencia"), profundidad_cm: g("e-profundidad"), ganancia: g("e-ganancia"), imagenes: capturedImages.map((d, i) => ({ id: "img_" + String(i + 1).padStart(2, "0"), tag: capturedImageTags[i] || "Vista", dataUrl: d })) },
-    labs: recogerLabs(), clinica: recogerClinica(), estudio: estudioActual
+
+  const g = id => document.getElementById(id) ? document.getElementById(id).value : "N/E";
+  const fac = Array.from(document.querySelectorAll("#factores-riesgo-container input[type=checkbox]:checked"))
+    .map(cb => cb.value);
+
+  // ═══════════════════════════════════════════════════════════
+  // ✅ FIX v23.4.2 — subject viene de _pacienteActual (ficha)
+  // ═══════════════════════════════════════════════════════════
+  const subjectData = {
+    subject_id: _pacienteActual.subject_id,
+    nombre: _pacienteActual.nombre,
+    edad: parseInt(_pacienteActual.edad) || 0,
+    sexo: _pacienteActual.sexo,
+    fecha_nacimiento: _pacienteActual.fecha_nacimiento || null,
+    dui: _pacienteActual.dui || null,
+    departamento: _pacienteActual.departamento || null,
+    municipio: _pacienteActual.municipio || null,
+    zona_geografica: _pacienteActual.zona_geografica || null,
+    nivel_educativo: _pacienteActual.nivel_educativo || null,
+    ocupacion: _pacienteActual.ocupacion || null,
+    estado_civil: _pacienteActual.estado_civil || null,
+    numero_hijos: _pacienteActual.numero_hijos || null,
+    empresa: g("c-empresa"),
+    area: g("e-area"),
+    email: _pacienteActual.email || g("c-email-empleado"),
+    telefono: _pacienteActual.telefono || g("c-telefono-empleado"),
+    contacto: {
+      email: _pacienteActual.email || g("c-email-empleado"),
+      telefono: _pacienteActual.telefono || g("c-telefono-empleado")
+    }
   };
+
+  const ctx = {
+    subject: subjectData,
+    encounter: {
+      tipo: "tamizaje_corporativo",
+      tipo_pago: (g("c-empresa") && g("c-empresa") !== "N/E") ? "empresa" : "individual",
+      estudio: estudioActual,
+      jornada_id: g("c-jornada"),
+      operador: g("c-operador"),
+      medico_validador: g("c-medico"),
+      csspm: g("c-csspm"),
+      fecha: new Date().toLocaleDateString("es-ES"),
+      motivo: g("e-motivo"),
+      antecedentes: g("e-antecedentes"),
+      factores_riesgo: fac,
+      medicacion_actual: g("e-medicacion")
+    },
+    acquisition: {
+      equipo: g("e-equipo"),
+      transductor: g("e-transductor"),
+      frecuencia_mhz: g("e-frecuencia"),
+      profundidad_cm: g("e-profundidad"),
+      ganancia: g("e-ganancia"),
+      imagenes: capturedImages.map((d, i) => ({
+        id: "img_" + String(i + 1).padStart(2, "0"),
+        tag: capturedImageTags[i] || "Vista",
+        dataUrl: d
+      }))
+    },
+    labs: recogerLabs(),
+    clinica: recogerClinica(),
+    estudio: estudioActual
+  };
+
   try {
     casoActual = construirCaso(aiResponseText, ctx);
     casoActual.artifacts.imagenes = capturedImages;
+
     const delta = await calcularDeltaVsPrevio(casoActual);
     casoActual.timeline.delta_vs_prev = delta;
+
     const loc = calcularInterconsultasLocales(casoActual);
     let ia = [];
-    try { const js = extraerBloqueJSON(aiResponseText); if (js?.interconsultas_sugeridas && Array.isArray(js.interconsultas_sugeridas)) ia = js.interconsultas_sugeridas; } catch (e) {}
+    try {
+      const js = extraerBloqueJSON(aiResponseText);
+      if (js?.interconsultas_sugeridas && Array.isArray(js.interconsultas_sugeridas)) {
+        ia = js.interconsultas_sugeridas;
+      }
+    } catch (e) {}
+
     interconsultasSugeridas = fusionarSugerencias(loc, ia);
+
     if (interconsultasSugeridas.length === 0) {
       const t = TAMIZAJES_REGISTRY.obtener(estudioActual);
       const bas = (t.especialistas.interconsultas_disponibles || []).slice(0, 3);
-      interconsultasSugeridas = bas.map(k => ({ especialista: k, nombre: ESPECIALISTAS[k]?.nombre || k, rol: ESPECIALISTAS[k]?.rol || "", prioridad: "media", justificacion: "Sugerida por defecto.", hallazgos_relacionados: [], costo_estimado: ESPECIALISTAS[k]?.costo_estimado || 0.005, tiempo_estimado_seg: ESPECIALISTAS[k]?.tiempo_estimado_seg || 20, origen: "fallback" }));
+      interconsultasSugeridas = bas.map(k => ({
+        especialista: k,
+        nombre: ESPECIALISTAS[k]?.nombre || k,
+        rol: ESPECIALISTAS[k]?.rol || "",
+        prioridad: "media",
+        justificacion: "Sugerida por defecto.",
+        hallazgos_relacionados: [],
+        costo_estimado: ESPECIALISTAS[k]?.costo_estimado || 0.005,
+        tiempo_estimado_seg: ESPECIALISTAS[k]?.tiempo_estimado_seg || 20,
+        origen: "fallback"
+      }));
     }
+
     casoActual.interconsultas_sugeridas = interconsultasSugeridas;
-    planPropuesto = { farmacologico: casoActual.plan?.farmacologico || [], no_farmacologico: casoActual.plan?.no_farmacologico || [], metas: casoActual.plan?.metas || [], laboratorios: casoActual.plan?.laboratorios || [], seguimiento: casoActual.plan?.seguimiento || { proxima_cita: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), intervalo_dias: 90 } };
-    // ✅ v23.4.1 — Recalcular escalas justo antes de guardar el caso
+
+    planPropuesto = {
+      farmacologico: casoActual.plan?.farmacologico || [],
+      no_farmacologico: casoActual.plan?.no_farmacologico || [],
+      metas: casoActual.plan?.metas || [],
+      laboratorios: casoActual.plan?.laboratorios || [],
+      seguimiento: casoActual.plan?.seguimiento || {
+        proxima_cita: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        intervalo_dias: 90
+      }
+    };
+
     try { recalcularTodasLasEscalas(); } catch (e) {}
+
     await guardarCasoDB(casoActual);
     renderInterconsultasSugeridas();
     cargarEditorTratamiento();
+
     const btn = document.getElementById("btn-generar-informe-final");
-    if (btn) { btn.disabled = false; btn.style.opacity = "1"; btn.style.cursor = "pointer"; }
+    if (btn) {
+      btn.disabled = false;
+      btn.style.opacity = "1";
+      btn.style.cursor = "pointer";
+    }
+
     const seq = getStepSequence();
     const iT = seq.indexOf("sec-tratamiento");
+
     if (planActual === "PLUS" || planActual === "PREMIUM") {
       const iI = seq.indexOf("sec-interconsultas");
-      if (iI >= 0) { showStatus("✓ Informe base listo. " + interconsultasSugeridas.length + " interconsultas sugeridas.", "success"); goTo(iI); }
-      else goTo(iT);
-    } else { showStatus("✓ Informe base listo. Valida el plan.", "success"); goTo(iT); }
-  } catch (err) { console.error("[generarInformeBase]", err); showStatus("Error: " + err.message, "error"); }
+      if (iI >= 0) {
+        showStatus("✓ Informe base listo. " + interconsultasSugeridas.length + " interconsultas sugeridas.", "success");
+        goTo(iI);
+      } else {
+        goTo(iT);
+      }
+    } else {
+      showStatus("✓ Informe base listo. Valida el plan.", "success");
+      goTo(iT);
+    }
+  } catch (err) {
+    console.error("[generarInformeBase]", err);
+    showStatus("Error: " + err.message, "error");
+  }
 }
 async function calcularDeltaVsPrevio(caso) {
   if (!caso.subject?.subject_id) return {};
@@ -8950,6 +9113,27 @@ function recalcularTodasLasEscalas() {
 }
 window.recalcularTodasLasEscalas = recalcularTodasLasEscalas;
 
+/* ═══════════════════════════════════════════════════════════════════
+   v23.4.2 — SINCRONIZAR INPUTS LEGACY
+   Copia los datos de _pacienteActual a los inputs viejos (e-*)
+   para compatibilidad con código que aún los lee.
+   ═══════════════════════════════════════════════════════════════════ */
+function sincronizarInputsLegacy() {
+  if (!_pacienteActual) return;
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.value = v ?? "";
+  };
+  set("e-id", _pacienteActual.subject_id);
+  set("e-nombre", _pacienteActual.nombre);
+  set("e-edad", _pacienteActual.edad);
+  set("e-sexo", _pacienteActual.sexo);
+  set("c-email-empleado", _pacienteActual.email);
+  set("c-telefono-empleado", _pacienteActual.telefono);
+  console.log("[sincronizarInputsLegacy] ✓ Inputs legacy sincronizados con", _pacienteActual.subject_id);
+}
+window.sincronizarInputsLegacy = sincronizarInputsLegacy;
+
 async function guardarFichaPaciente() {
   if (!supabaseClient) { showStatus("Sin conexión", "error"); return; }
 
@@ -8967,11 +9151,19 @@ async function guardarFichaPaciente() {
   if (esMenorDeEdad()) {
     const tutor = document.getElementById("ficha-firma-tutor")?.value?.trim();
     const parentesco = document.getElementById("ficha-firma-parentesco")?.value;
-    if (!tutor || !parentesco) { showStatus("Para menores, se requiere firma del tutor", "error"); return; }
+    if (!tutor || !parentesco) {
+      showStatus("Para menores, se requiere firma del tutor", "error");
+      return;
+    }
   }
 
   const statusEl = document.getElementById("ficha-status");
-  const setStatus = (msg, color) => { if (statusEl) { statusEl.textContent = msg; statusEl.style.color = color || "var(--text-secondary)"; } };
+  const setStatus = (msg, color) => {
+    if (statusEl) {
+      statusEl.textContent = msg;
+      statusEl.style.color = color || "var(--text-secondary)";
+    }
+  };
 
   setStatus("💾 Guardando ficha...", "var(--accent)");
 
@@ -8983,6 +9175,10 @@ async function guardarFichaPaciente() {
     } else {
       const { data, error } = await supabaseClient.rpc("generar_subject_id", { p_nombre: nombre });
       if (error) throw error;
+      // v23.4.2 — Validación del RPC
+      if (!data || String(data).includes("????") || String(data).trim() === "") {
+        throw new Error("El servidor no generó un subject_id válido.");
+      }
       subjectId = data;
     }
 
@@ -9010,7 +9206,9 @@ async function guardarFichaPaciente() {
       updated_at: new Date().toISOString()
     };
 
-    const { error: errPac } = await supabaseClient.from("patients").upsert(pacienteData, { onConflict: "subject_id" });
+    const { error: errPac } = await supabaseClient
+      .from("patients")
+      .upsert(pacienteData, { onConflict: "subject_id" });
     if (errPac) throw errPac;
 
     setStatus("🔐 Registrando consentimiento...", "var(--accent)");
@@ -9018,12 +9216,15 @@ async function guardarFichaPaciente() {
     const okConsent = await guardarConsentimientoPaciente(subjectId);
     if (!okConsent) throw new Error("Error al guardar consentimiento");
 
+    // ✅ v23.4.2 — Actualizar _pacienteActual con TODO lo guardado
     _pacienteActual = { ...pacienteData };
 
-       setStatus("✅ Ficha guardada. Continuando...", "var(--positive)");
+    // ✅ v23.4.2 — Sincronizar inputs legacy para compatibilidad
+    sincronizarInputsLegacy();
+
+    setStatus("✅ Ficha guardada. Continuando...", "var(--positive)");
     showStatus("✓ Ficha guardada: " + subjectId, "success");
 
-    // ✅ v23.4.1 — Recalcular todas las escalas con los datos del paciente recién guardados
     setTimeout(() => { try { recalcularTodasLasEscalas(); } catch (e) {} }, 150);
 
     setTimeout(() => {
@@ -9037,7 +9238,6 @@ async function guardarFichaPaciente() {
     showStatus("Error: " + (e.message || "Desconocido"), "error");
   }
 }
-
 /* ═══════════════════════════════════════════════════════════════════
    FIN DE LA ENTREGA A
    ═══════════════════════════════════════════════════════════════════ */
@@ -9076,14 +9276,23 @@ function validateStepExtendido(n) {
   const sid = seq[n];
 
   if (sid === "sec-empleado") {
-    if (_pacienteActual && _pacienteActual.subject_id) return true;
-    showStatus("Completa la ficha del paciente antes de continuar", "error");
-    return false;
+    // v23.4.2 — Validación robusta
+    const idValido = _pacienteActual?.subject_id &&
+                     !_pacienteActual.subject_id.includes("????") &&
+                     _pacienteActual.subject_id !== "N/E" &&
+                     _pacienteActual.subject_id.trim() !== "";
+
+    if (!idValido) {
+      showStatus("⚠️ Debes guardar la ficha del paciente antes de continuar", "error");
+      const card = document.getElementById("ficha-paciente-card");
+      if (card) card.scrollIntoView({ behavior: "smooth" });
+      return false;
+    }
+    return true;
   }
 
   return _validateStepOriginal(n);
 }
-
 /* ─── Extender generarInformeBase() para usar subject_id de la ficha ─── */
 const _generarInformeBaseOriginal = window.generarInformeBase || generarInformeBase;
 async function generarInformeBaseExtendido() {
