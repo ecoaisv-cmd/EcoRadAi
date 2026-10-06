@@ -6419,17 +6419,15 @@ async function descargarPDFLite() {
     let y = mg;
 
     // ═══ Identificar bloques atómicos ═══
-    // El header (.lv2-header), el semáforo (.lv2-semaforo),
-    // cada sección (.lv2-section) y la firma (.lv2-firma)
-    // se tratan como bloques independientes.
+    // El header (.lv2-header), el semáforo (.lv2-semaforo)
+    // y cada sección (.lv2-section) se tratan como bloques independientes.
+    // ⚠️ La firma YA está dentro de una .lv2-section, así que NO se agrega por separado.
     const bloques = [];
     const header = clon.querySelector(".lv2-header");
     if (header) bloques.push(header);
     const semaforo = clon.querySelector(".lv2-semaforo");
     if (semaforo) bloques.push(semaforo);
     clon.querySelectorAll(".lv2-body > .lv2-section").forEach(sec => bloques.push(sec));
-    const firma = clon.querySelector(".lv2-firma");
-    if (firma) bloques.push(firma);
 
     console.log("[descargarPDFLite] Bloques a procesar:", bloques.length);
 
@@ -6453,7 +6451,7 @@ async function descargarPDFLite() {
 
       // Agregar el bloque completo (nunca se corta a la mitad)
       pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, y, imgW, imgH);
-      y += imgH + 2; // pequeño espacio entre bloques
+      y += imgH + 2;
     }
 
     // ═══ Pie de página ═══
