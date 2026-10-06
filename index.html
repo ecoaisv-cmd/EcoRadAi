@@ -6372,11 +6372,9 @@ async function descargarPDF(tipo) {
     document.body.removeChild(limpio);
   }
 }
-
 // ═══════════════════════════════════════════════════════════
 // descargarPDFLite — EXCLUSIVA del informe lite
-// Captura el informe completo como una sola imagen y lo pagina
-// NO toca el informe médico ni la receta
+// Captura el informe COMPLETO como una sola imagen y lo pagina
 // ═══════════════════════════════════════════════════════════
 async function descargarPDFLite() {
   const el = document.getElementById("report-lite");
@@ -6384,13 +6382,12 @@ async function descargarPDFLite() {
 
   showStatus("Generando PDF lite...", "info");
 
-  // Clonar para no afectar el DOM original
   const clon = el.cloneNode(true);
-  clon.style.cssText = "position:fixed;left:-99999px;top:0;width:800px;background:#fff;padding:0";
+  clon.style.cssText = "position:fixed;left:-99999px;top:0;width:700px;background:#fff;padding:0";
   document.body.appendChild(clon);
 
   try {
-    // Convertir Data URLs → Blob URLs (evita "Incomplete or corrupt PNG")
+    // Convertir Data URLs → Blob URLs
     const imagenes = clon.querySelectorAll('img');
     for (const img of imagenes) {
       const src = img.getAttribute('src');
@@ -6401,22 +6398,23 @@ async function descargarPDFLite() {
           const blobUrl = URL.createObjectURL(blob);
           img.setAttribute('src', blobUrl);
           img.dataset.blobUrl = blobUrl;
-        } catch (e) { console.warn('[PDF Lite] Imagen no convertida:', e); }
+        } catch (e) {}
       }
     }
-
     await Promise.all(Array.from(imagenes).map(img => {
       if (img.complete) return Promise.resolve();
       return new Promise(res => { img.onload = res; img.onerror = res; });
     }));
 
-    // Capturar el informe lite COMPLETO como una sola imagen
+    // ═══ CLAVE: capturar el informe COMPLETO como UNA sola imagen ═══
     const canvas = await html2canvas(clon, {
       scale: 2,
       useCORS: true,
       backgroundColor: "#ffffff",
-      windowWidth: 800,
-      scrollY: -window.scrollY
+      windowWidth: 700,
+      scrollY: -window.scrollY,
+      height: clon.scrollHeight,
+      width: clon.scrollWidth
     });
 
     const { jsPDF } = window.jspdf;
@@ -6430,10 +6428,10 @@ async function descargarPDFLite() {
     const imgHTotal = (canvas.height * imgW) / canvas.width;
 
     if (imgHTotal <= ph - 2 * mg) {
-      // Cabe en una sola página
+      // Cabe en una página
       pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, mg, imgW, imgHTotal);
     } else {
-      // Paginar en cortes limpios
+      // Paginar la imagen larga en cortes limpios
       const pxPorMm = canvas.width / imgW;
       const altoPaginaPx = (ph - 2 * mg) * pxPorMm;
       let offsetY = 0;
@@ -6459,7 +6457,6 @@ async function descargarPDFLite() {
       }
     }
 
-    // Pie de página
     const total = pdf.internal.getNumberOfPages();
     for (let i = 1; i <= total; i++) {
       pdf.setPage(i);
@@ -6482,6 +6479,9 @@ async function descargarPDFLite() {
     document.body.removeChild(clon);
   }
 }
+
+window.descargarPDFLite = descargarPDFLite;
+
 async function descargarPNG() {
   const el = document.getElementById("report-lite");
   if (!el) { showStatus("Genera el informe lite", "error"); return; }
