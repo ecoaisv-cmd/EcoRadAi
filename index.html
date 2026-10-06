@@ -6372,6 +6372,122 @@ async function descargarPDF(tipo) {
     document.body.removeChild(limpio);
   }
 }
+// ═══════════════════════════════════════════════════════════
+// descargarPDFLite — EXCLUSIVA para el informe lite
+// Captura el informe completo como UNA imagen y lo pagina
+// No afecta al informe médico ni a la receta
+// ═══════════════════════════════════════════════════════════
+async function descargarPDFLite() {
+  const el = document.getElementById("report-lite");
+  if (!el) { showStatus("Genera primero el informe lite", "error"); return; }
+
+  showStatus("Generando PDF lite...", "info");
+
+  // 1. Clonar el elemento para no tocar el DOM original
+  const clon = el.cloneNode(true);
+  clon.style.cssText = "position:fixed;left:-99999px;top:0;width:800px;background:#fff;padding:0";
+  document.body.appendChild(clon);
+
+  try {
+    // 2. Convertir Data URLs → Blob URLs (evita "Incomplete or corrupt PNG")
+    const imagenes = clon.querySelectorAll('img');
+    for (const img of imagenes) {
+      const src = img.getAttribute('src');
+      if (src && src.startsWith('data:image')) {
+        try {
+          const resp = await fetch(src);
+          const blob = await resp.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          img.setAttribute('src', blobUrl);
+          img.dataset.blobUrl = blobUrl;
+        } catch (e) { console.warn('[PDF Lite] Imagen no convertida:', e); }
+      }
+    }
+
+    // 3. Esperar a que todas las imágenes carguen
+    await Promise.all(Array.from(imagenes).map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise(res => { img.onload = res; img.onerror = res; });
+    }));
+
+    // 4. Capturar el informe lite COMPLETO como una sola imagen
+    const canvas = await html2canvas(clon, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      windowWidth: 800,
+      scrollY: -window.scrollY
+    });
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+    const mg = 10;
+    const cw = pw - (mg * 2);
+
+    // 5. Paginar la imagen larga
+    const imgW = cw;
+    const imgHTotal = (canvas.height * imgW) / canvas.width;
+
+    if (imgHTotal <= ph - 2 * mg) {
+      // Cabe en una sola página
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, mg, imgW, imgHTotal);
+    } else {
+      // Paginar en cortes limpios
+      const pxPorMm = canvas.width / imgW;
+      const altoPaginaPx = (ph - 2 * mg) * pxPorMm;
+      let offsetY = 0;
+      let pagina = 0;
+
+      while (offsetY < canvas.height) {
+        if (pagina > 0) pdf.addPage();
+        const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
+
+        // Canvas temporal para recortar
+        const temp = document.createElement("canvas");
+        temp.width = canvas.width;
+        temp.height = altoCorte;
+        const ctx = temp.getContext("2d");
+        // Rellenar de blanco para evitar fondos transparentes
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, temp.width, temp.height);
+        ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
+
+        const altoMm = altoCorte / pxPorMm;
+        pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoMm);
+
+        offsetY += altoCorte;
+        pagina++;
+      }
+    }
+
+    // 6. Pie de página
+    const total = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= total; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(8); pdf.setTextColor(150);
+      pdf.text("EcoRadAi · " + new Date().toLocaleDateString("es-ES"), mg, ph - 5);
+      pdf.text("Página " + i + " de " + total, pw - mg, ph - 5, { align: "right" });
+    }
+
+    // 7. Guardar
+    const pacNom = (obtenerDatosPaciente().nombre || "paciente").replace(/\s+/g, "_");
+    pdf.save("Informe_Lite_" + pacNom + "_" + new Date().toISOString().slice(0, 10) + ".pdf");
+    showStatus("PDF lite descargado (" + total + " página" + (total > 1 ? "s" : "") + ")", "success");
+
+  } catch (e) {
+    console.error("[descargarPDFLite]", e);
+    showStatus("Error: " + e.message, "error");
+  } finally {
+    // Limpiar Blob URLs y el clon
+    clon.querySelectorAll('img[data-blob-url]').forEach(img => {
+      if (img.dataset.blobUrl) URL.revokeObjectURL(img.dataset.blobUrl);
+    });
+    document.body.removeChild(clon);
+  }
+}
+
 async function descargarPNG() {
   const el = document.getElementById("report-lite");
   if (!el) { showStatus("Genera el informe lite", "error"); return; }
@@ -7603,7 +7719,7 @@ function setupEventListeners() {
   on("btn-pdf-medico", "click", () => descargarPDF("medico"));
   on("btn-word-medico", "click", () => descargarDOCX("medico"));
   on("btn-print-medico", "click", imprimirTodo);
-  on("btn-pdf-lite", "click", () => descargarPDF("lite"));
+  on("btn-pdf-lite", "click", descargarPDFLite);
   on("btn-png-lite", "click", descargarPNG);
   on("btn-print-lite", "click", () => imprimir("lite"));
   on("btn-print-imagenes", "click", imprimirSoloImagenes);
@@ -7670,6 +7786,7 @@ window.editarPrompt = editarPrompt;
 window.verificarCalidad = verificarCalidad;
 window.activarPlanSugerido = activarPlanSugerido;
 window.descargarPDF = descargarPDF;
+window.descargarPDFLite = descargarPDFLite;
 window.descargarDOCX = descargarDOCX;
 window.descargarPNG = descargarPNG;
 window.descargarRecetaPDF = descargarRecetaPDF;
@@ -7714,6 +7831,7 @@ window.verArtefacto = verArtefacto;
 window.descargarArtefactoPDF = descargarArtefactoPDF;
 window.verImagenes = verImagenes;
 window.ampliarImagen = ampliarImagen;
+
 // Funciones admin (idénticas a v23.3)
 function cambiarSubtabAdmin(subtab) {
   document.querySelectorAll(".admin-subtab").forEach(t => { t.classList.remove("active"); if (t.dataset.subtab === subtab) t.classList.add("active"); });
