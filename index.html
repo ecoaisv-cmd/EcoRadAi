@@ -7549,6 +7549,19 @@ async function abrirCasoGuardado(id) {
     const art = await obtenerArtifactsPorCasoDB(id);
     const m = {};
     art.forEach(a => { m[a.tipo] = a.html; });
+
+// ═══════════════════════════════════════════════════════════
+// v23.4.3 — Limpiar headers de tabla residuales
+// ═══════════════════════════════════════════════════════════
+Object.keys(m).forEach(k => {
+  if (typeof m[k] === "string") {
+    m[k] = m[k]
+      .replace(/<tr>\s*<td>\s*M[ée]trica\s*<\/td>\s*<td>\s*Valor\s*<\/td>\s*<td>\s*Referencia\s*<\/td>\s*<td>\s*(Estado|Flag)\s*<\/td>\s*<\/tr>/gi, "")
+      .replace(/<tr>\s*<td>\s*Par[áa]metro\s*<\/td>\s*<td>\s*Valor\s*<\/td>\s*<td>\s*Referencia\s*<\/td>\s*<td>\s*(Estado|Flag)\s*<\/td>\s*<\/tr>/gi, "")
+      .replace(/<p>\s*M[ée]trica\s*[|I\/]\s*Valor\s*[|I\/]\s*Referencia\s*[|I\/]\s*(Estado|Flag)\s*<\/p>/gi, "")
+      .replace(/<p>\s*Par[áa]metro\s*[|I\/]\s*Valor\s*[|I\/]\s*Referencia\s*[|I\/]\s*(Estado|Flag)\s*<\/p>/gi, "");
+  }
+});
     casoActual = caso;
     window._casoActual = caso;
     window._artifactsActuales = m;
