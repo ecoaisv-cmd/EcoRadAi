@@ -6012,8 +6012,7 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
     const estudioNombre = esc((caso.encounter?.estudio || "").replace(/_/g, " "));
     resumenHTML = `<div class="lv2-section"><h4>📋 Resumen ejecutivo</h4><div class="lv2-resumen"><p>Se realizó un tamizaje <strong>${estudioNombre}</strong> el ${esc(f)}.</p><p>Resultado global: <strong>${nNorm}</strong>. ${descNivel[nNorm] || ""}</p></div></div>`;
   }
-
-    /* ─── Tabla de valores ─── */
+  /* ─── Tabla de valores ─── */
   let tablaHTML = "";
   if (caso.metrics && caso.metrics.length > 0) {
     // v23.4.2 — Preferir siempre la tabla estructurada compacta
@@ -6022,7 +6021,6 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
     // Fallback: parsear texto narrativo con |
     tablaHTML = `<div class="lv2-section"><h4>📊 Tus valores</h4>${renderTablaLite(rTabla.contenido)}</div>`;
   }
-
   /* ─── Clasificación de riesgo ─── */
   let riesgoHTML = "";
   if (rRiesgo && rRiesgo.contenido.trim()) {
@@ -6084,7 +6082,6 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
     labsHTML = `<div class="lv2-section"><h4>🔬 Exámenes de seguimiento</h4><div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:8px;padding:12px 14px">${renderTextoLibre(cor(rLabs.contenido))}</div></div>`;
   }
 
-  
   /* ─── Plan sugerido: DESACTIVADO en v23.4.2 (no mostrar en informe paciente) ─── */
   const sugerenciaHTML = "";
   /* ─── Firma ─── */
@@ -6125,6 +6122,7 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
         ${recetaRefHTML}
         ${metasHTML}
         ${labsHTML}
+        ${sugerenciaHTML}
         ${firmaHTML}
       </div>
 
@@ -6344,52 +6342,13 @@ async function descargarPDF(tipo) {
     };
     addHeader();
 
-        const bloques = limpio.querySelectorAll(".report-section, .lv2-section, .lv2-semaforo, .lv2-firma");
+       const bloques = limpio.querySelectorAll(".report-section, .lv2-section, .lv2-semaforo, .lv2-firma");
     for (const b of bloques) {
       const c = await html2canvas(b, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-      const imgW = cw;
-      const imgHTotal = (c.height * imgW) / c.width;
-
-      // Si la sección cabe completa en la página restante, la agregamos tal cual
-      if (y + imgHTotal <= ph - mg) {
-        pdf.addImage(c.toDataURL("image/png"), "PNG", mg, y, imgW, imgHTotal);
-        y += imgHTotal + 3;
-        continue;
-      }
-
-      // Si NO cabe: la dividimos en porciones que sí quepan
-      const altoDisponibleMm = ph - mg - y;
-      if (altoDisponibleMm < 20) {
-        // Poco espacio, saltamos de página
-        pdf.addPage();
-        y = mg;
-        addHeader();
-      }
-
-      const pxPorMm = c.width / imgW;
-      const altoPaginaPx = (ph - mg - y) * pxPorMm;
-      let offsetY = 0;
-
-      while (offsetY < c.height) {
-        const altoCorte = Math.min(altoPaginaPx, c.height - offsetY);
-        const temp = document.createElement("canvas");
-        temp.width = c.width;
-        temp.height = altoCorte;
-        const ctx = temp.getContext("2d");
-        ctx.drawImage(c, 0, offsetY, c.width, altoCorte, 0, 0, c.width, altoCorte);
-
-        const altoMm = altoCorte / pxPorMm;
-        pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, y, imgW, altoMm);
-
-        offsetY += altoCorte;
-        y += altoMm + 2;
-
-        if (offsetY < c.height) {
-          pdf.addPage();
-          y = mg;
-          addHeader();
-        }
-      }
+      const imgW = cw, imgH = (c.height * imgW) / c.width;
+      if (y + imgH > ph - mg) { pdf.addPage(); y = mg; addHeader(); }
+      pdf.addImage(c.toDataURL("image/png"), "PNG", mg, y, imgW, imgH);
+      y += imgH + 3;
     }
 
     const total = pdf.internal.getNumberOfPages();
