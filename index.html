@@ -12325,118 +12325,994 @@ window.consultaNueva = function() {
    RENDERIZADORES DE DOCUMENTOS (placeholder — Entrega C)
    ═══════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════
+   C.1 — RENDERIZADORES COMPLETOS DE DOCUMENTOS
+   ═══════════════════════════════════════════════════════════ */
+
 function renderNotaClinicaHTML(s, firma) {
-  return `<div style="padding:24px;font-family:Arial;font-size:11px;line-height:1.55;color:#333">
-    <h2 style="text-align:center;color:#1a3a5c;font-size:16px;margin-bottom:6px">NOTA CLÍNICA</h2>
-    <p style="text-align:center;font-size:10px;color:#666;margin-bottom:20px">EcoRadAi — Consulta Médica Tradicional</p>
-    <p><strong>Fecha:</strong> ${new Date().toLocaleDateString("es-ES")}</p>
-    <p><strong>Paciente:</strong> ${escapeHtml(s.paciente.nombre)} (${s.paciente.subject_id})</p>
-    <p><strong>Médico:</strong> ${escapeHtml(firma.nombre)} — CSSPM ${escapeHtml(firma.csspm)}</p>
-    <hr style="margin:14px 0;border:none;border-top:1px solid #ddd">
-    <p style="color:#888;font-style:italic">Documento en construcción — se completará en la Entrega C con el formato SOAP completo.</p>
-    <div style="margin-top:20px;padding-top:12px;border-top:1px solid #ddd;font-size:9px;color:#999">
-      <p>Hash de firma: <code>${escapeHtml(firma.hash)}</code></p>
+  const cor = corregirOrtografia;
+  const esc = escapeHtml;
+  const p = s.paciente;
+  const fecha = new Date().toLocaleDateString("es-ES", {
+    year: "numeric", month: "long", day: "numeric"
+  });
+
+  const sys = Object.entries(s.S_subjetivo.revision_sistemas || {})
+    .map(([k, v]) => {
+      const label = CONSULTA_SISTEMAS.find(x => x.id === k)?.label || k;
+      return `<p><strong>${esc(label)}:</strong> ${esc(cor(v))}</p>`;
+    }).join("") || "<p><em>Sin hallazgos referidos.</em></p>";
+
+  const ant = Object.entries(s.S_subjetivo.antecedentes || {})
+    .map(([k, v]) => {
+      const label = CONSULTA_ANTECEDENTES.find(x => x.id === k)?.label || k;
+      return `<p><strong>${esc(label)}:</strong> ${esc(cor(v))}</p>`;
+    }).join("") || "<p><em>Sin antecedentes relevantes.</em></p>";
+
+  const hab = s.S_subjetivo.habitos || {};
+  const habTxt = [
+    hab.tabaco && `Tabaco: ${esc(hab.tabaco)}`,
+    hab.alcohol && `Alcohol: ${esc(hab.alcohol)}`,
+    hab.ejercicio && `Ejercicio: ${esc(hab.ejercicio)}`,
+    hab.sueno && `Sueño: ${esc(hab.sueno)}`
+  ].filter(Boolean).join(" · ") || "No especificados";
+
+  const vit = s.O_objetivo.signos_vitales || {};
+  const vitHTML = Object.entries(vit).length > 0
+    ? `<table style="width:100%;border-collapse:collapse;font-size:11px;margin:6px 0">
+        <tbody>
+          ${Object.entries(vit).map(([k, v]) => {
+            const label = CONSULTA_VITALES.find(x => x.id === k)?.label || k;
+            const unidad = CONSULTA_VITALES.find(x => x.id === k)?.unidad || "";
+            return `<tr>
+              <td style="padding:4px 6px;border-bottom:1px solid #eee;font-weight:600">${esc(label)}</td>
+              <td style="padding:4px 6px;border-bottom:1px solid #eee">${v} ${esc(unidad)}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>`
+    : "<p><em>No registrados.</em></p>";
+
+  const ef = Object.entries(s.O_objetivo.examen_fisico || {})
+    .map(([k, v]) => {
+      const label = CONSULTA_EXAMEN_FISICO.find(x => x.id === k)?.label || k;
+      return `<p><strong>${esc(label)}:</strong> ${esc(cor(v))}</p>`;
+    }).join("") || "<p><em>Sin hallazgos anormales.</em></p>";
+
+  const labs = Object.entries(s.O_objetivo.labs_resultados || {});
+  const labsHTML = labs.length > 0
+    ? `<table style="width:100%;border-collapse:collapse;font-size:11px;margin:6px 0">
+        <thead><tr style="background:#f0f7ff">
+          <th style="padding:5px 6px;text-align:left;border-bottom:1px solid #0071e3">Examen</th>
+          <th style="padding:5px 6px;text-align:left;border-bottom:1px solid #0071e3">Valor</th>
+        </tr></thead>
+        <tbody>
+          ${labs.map(([k, v]) => `<tr>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee">${esc(k.replace(/_/g, " "))}</td>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee"><strong>${esc(String(v))}</strong></td>
+          </tr>`).join("")}
+        </tbody>
+      </table>`
+    : "<p><em>Sin laboratorios.</em></p>";
+
+  const dxHTML = (s.A_analisis.diagnosticos || []).length > 0
+    ? `<table style="width:100%;border-collapse:collapse;font-size:11px;margin:6px 0">
+        <thead><tr style="background:#f0f7ff">
+          <th style="padding:5px 6px;text-align:left">CIE-10</th>
+          <th style="padding:5px 6px;text-align:left">Descripción</th>
+          <th style="padding:5px 6px;text-align:left">Tipo</th>
+          <th style="padding:5px 6px;text-align:left">Certeza</th>
+        </tr></thead>
+        <tbody>
+          ${s.A_analisis.diagnosticos.map(d => `<tr>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee"><code>${esc(d.cie10 || "—")}</code></td>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee"><strong>${esc(cor(d.descripcion || ""))}</strong></td>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee">${esc(d.tipo || "")}</td>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee">${esc(d.certeza || "")}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>`
+    : "<p><em>Sin diagnósticos registrados.</em></p>";
+
+  const dd = (s.A_analisis.diagnostico_diferencial || []);
+  const ddHTML = dd.length > 0
+    ? `<ul style="margin-left:18px;font-size:11px">${dd.map(d =>
+        `<li>${esc(d.cie10 || "")} ${esc(cor(d.descripcion || ""))} (prob. ${Math.round((d.prob || 0) * 100)}%)</li>`
+      ).join("")}</ul>`
+    : "";
+
+  const banderas = (s.A_analisis.banderas_rojas || []);
+  const banderasHTML = banderas.length > 0
+    ? `<div style="background:#fff3f3;border-left:4px solid #ff3b30;padding:8px 12px;margin:8px 0;border-radius:0 6px 6px 0">
+        <strong style="color:#7a1a1a">⚠️ BANDERAS ROJAS:</strong>
+        <ul style="margin:4px 0 0 18px;font-size:11px;color:#7a1a1a">
+          ${banderas.map(b => `<li>${esc(cor(typeof b === "string" ? b : b.descripcion || JSON.stringify(b)))}</li>`).join("")}
+        </ul>
+      </div>`
+    : "";
+
+  const farm = (s.P_plan.farmacologico || []);
+  const farmHTML = farm.length > 0
+    ? `<table style="width:100%;border-collapse:collapse;font-size:10px;margin:6px 0">
+        <thead><tr style="background:#f0f7ff">
+          <th style="padding:5px 6px;text-align:left">Fármaco</th>
+          <th style="padding:5px 6px;text-align:left">Dosis/Vía</th>
+          <th style="padding:5px 6px;text-align:left">Frecuencia</th>
+          <th style="padding:5px 6px;text-align:left">Duración</th>
+        </tr></thead>
+        <tbody>
+          ${farm.map(f => `<tr>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee"><strong>${esc(cor(f.farmaco || ""))}</strong></td>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee">${esc(f.dosis || "")} ${esc(f.via || "")}</td>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee">${esc(f.frecuencia || "")}</td>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee">${esc(f.duracion || "")}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>`
+    : "<p><em>Sin tratamiento farmacológico.</em></p>";
+
+  const noFarm = (s.P_plan.no_farmacologico || []);
+  const noFarmHTML = noFarm.length > 0
+    ? `<ul style="margin-left:18px;font-size:11px">${noFarm.map(n =>
+        `<li><strong>${esc(n.categoria || "")}:</strong> ${esc(cor(n.intervencion || ""))}${n.meta ? " — " + esc(cor(n.meta)) : ""}</li>`
+      ).join("")}</ul>`
+    : "";
+
+  const ordenesLab = (s.P_plan.ordenes_laboratorio || []);
+  const ordenesImg = (s.P_plan.ordenes_imagen || []);
+  const refs = (s.P_plan.referencias || []);
+  const educ = (s.P_plan.educacion_paciente || []);
+  const seg = s.P_plan.seguimiento || {};
+
+  return limpiarTextoPDF(`<div class="report-medico" id="report-nota-clinica" style="background:#fff;color:#1d1d1f;border-radius:12px;padding:0;border:1px solid #d2d2d7;overflow:hidden;max-width:800px;margin:0 auto;font-family:Helvetica,Arial,sans-serif;font-size:11px;line-height:1.55">
+
+    <div style="background:linear-gradient(135deg,#1a3a5c 0%,#0071e3 100%);color:#fff;padding:20px 24px;text-align:center">
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85">Ecosistema de Salud EcoRadAi</div>
+      <h2 style="font-size:18px;font-weight:700;margin:6px 0;letter-spacing:-0.3px">NOTA CLÍNICA — CONSULTA MÉDICA</h2>
+      <div style="font-size:11px;opacity:0.9;margin-top:4px">
+        ${esc(p.nombre)} · ${esc(String(p.edad))} años · ${esc(p.sexo)} · ID ${esc(p.subject_id)}
+      </div>
+      <div style="font-size:10px;opacity:0.85;margin-top:3px">
+        Fecha: ${esc(fecha)} · Tipo: ${esc((s.tipo || "").replace("_", " "))} · ${esc(s.modalidad || "presencial")}
+      </div>
     </div>
-  </div>`;
+
+    <div style="padding:20px 24px">
+
+      <div style="margin-bottom:16px">
+        <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">S — SUBJETIVO</h4>
+        <p><strong>Motivo de consulta:</strong> ${esc(cor(s.S_subjetivo.motivo_consulta || ""))}</p>
+        <p><strong>Enfermedad actual:</strong> ${esc(cor(s.S_subjetivo.enfermedad_actual || ""))}</p>
+        ${s.S_subjetivo.eva_dolor != null ? `<p><strong>EVA:</strong> ${s.S_subjetivo.eva_dolor}/10</p>` : ""}
+        ${s.S_subjetivo.evolucion ? `<p><strong>Evolución:</strong> ${esc(s.S_subjetivo.evolucion)}</p>` : ""}
+        <p style="margin-top:8px"><strong>Revisión por sistemas:</strong></p>
+        ${sys}
+        <p style="margin-top:8px"><strong>Antecedentes:</strong></p>
+        ${ant}
+        <p style="margin-top:8px"><strong>Alergias:</strong> ${esc(cor(s.S_subjetivo.alergias || "Ninguna conocida"))}</p>
+        <p><strong>Medicamentos:</strong> ${esc(cor(s.S_subjetivo.medicamentos || "Ninguno"))}</p>
+        <p><strong>Hábitos:</strong> ${esc(habTxt)}</p>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">O — OBJETIVO</h4>
+        <p><strong>Signos vitales:</strong></p>
+        ${vitHTML}
+        <p style="margin-top:8px"><strong>Examen físico:</strong></p>
+        ${ef}
+        <p style="margin-top:8px"><strong>Laboratorios:</strong></p>
+        ${labsHTML}
+        ${s.O_objetivo.otros_estudios ? `<p style="margin-top:8px"><strong>Otros estudios:</strong> ${esc(cor(s.O_objetivo.otros_estudios))}</p>` : ""}
+      </div>
+
+      <div style="margin-bottom:16px">
+        <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">A — ANÁLISIS</h4>
+        <p><strong>Impresión clínica:</strong></p>
+        <p>${esc(cor(s.A_analisis.impresion_clinica || ""))}</p>
+        <p style="margin-top:8px"><strong>Diagnósticos:</strong></p>
+        ${dxHTML}
+        ${ddHTML ? `<p style="margin-top:8px"><strong>Diagnóstico diferencial:</strong></p>${ddHTML}` : ""}
+        ${banderasHTML}
+        <p style="margin-top:8px"><strong>Nivel de riesgo:</strong> ${esc(s.A_analisis.nivel_riesgo || "MODERADO")}</p>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">P — PLAN</h4>
+        <p><strong>Tratamiento farmacológico:</strong></p>
+        ${farmHTML}
+        ${noFarmHTML ? `<p style="margin-top:8px"><strong>Tratamiento no farmacológico:</strong></p>${noFarmHTML}` : ""}
+        ${ordenesLab.length > 0 ? `<p style="margin-top:8px"><strong>Órdenes de laboratorio:</strong></p><ul style="margin-left:18px;font-size:11px">${ordenesLab.map(o => `<li>${esc(cor(o.estudio))}${o.urgente ? " — URGENTE" : ""}${o.plazo_dias ? ` (${o.plazo_dias} días)` : ""}</li>`).join("")}</ul>` : ""}
+        ${ordenesImg.length > 0 ? `<p style="margin-top:8px"><strong>Órdenes de imagen:</strong></p><ul style="margin-left:18px;font-size:11px">${ordenesImg.map(o => `<li>${esc(cor(o.estudio))}${o.urgente ? " — URGENTE" : ""}${o.plazo_dias ? ` (${o.plazo_dias} días)` : ""}</li>`).join("")}</ul>` : ""}
+        ${refs.length > 0 ? `<p style="margin-top:8px"><strong>Referencias:</strong></p><ul style="margin-left:18px;font-size:11px">${refs.map(r => `<li>${esc(cor(r.especialidad))} — ${esc(r.prioridad)}${r.motivo ? ": " + esc(cor(r.motivo)) : ""}</li>`).join("")}</ul>` : ""}
+        ${educ.length > 0 ? `<p style="margin-top:8px"><strong>Educación al paciente:</strong></p><ul style="margin-left:18px;font-size:11px">${educ.map(e => `<li>${esc(cor(e))}</li>`).join("")}</ul>` : ""}
+        ${seg.proxima_cita_dias ? `<p style="margin-top:8px"><strong>Próxima cita:</strong> en ${seg.proxima_cita_dias} días (${esc(seg.proxima_cita_tipo || "control")})</p>` : ""}
+      </div>
+
+      <div style="background:#f8fbff;padding:20px;border-radius:8px;border:1px solid #d0d8e0;text-align:center;margin-top:16px">
+        <div style="max-width:420px;margin:0 auto;border:2px solid #1a3a5c;border-radius:8px;padding:20px 24px;background:#fff">
+          <div style="border-bottom:1.5px solid #1a3a5c;padding-bottom:10px;margin-bottom:14px;font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1.2px;font-weight:700">Médico Tratante</div>
+          <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:36px auto 8px"></div>
+          <div style="font-size:13px;color:#1a3a5c;font-weight:700;margin-bottom:4px">${esc(firma.nombre)}</div>
+          <div style="font-size:11px;color:#333">${esc(firma.especialidad || "Médico Responsable")}</div>
+          <div style="font-size:11px;color:#1a3a5c;font-weight:600;margin-top:4px">CSSPM: ${esc(firma.csspm)}</div>
+          <div style="font-size:10px;color:#86868b;margin-top:6px">Fecha: ${esc(fecha)}</div>
+          <div style="font-size:8px;color:#999;font-family:monospace;word-break:break-all;margin-top:10px;padding-top:10px;border-top:1px solid #d0d8e0">
+            SHA-256: ${esc(firma.hash || "pendiente")}
+          </div>
+        </div>
+        <div style="margin-top:14px;padding:10px 14px;background:#f0f7ff;border-left:3px solid #0071e3;border-radius:0 6px 6px 0;font-size:10px;color:#1a3a5c;text-align:left;line-height:1.5">
+          <strong>Aviso:</strong> Esta nota clínica es un documento médico-legal confidencial. Contiene información protegida por el secreto médico y la Ley de Protección de Datos Personales. Su divulgación no autorizada está prohibida.
+        </div>
+      </div>
+
+    </div>
+  </div>`);
 }
 
 function renderRecetaHTML(s, firma) {
-  const far = s.farmacologico.filter(f => f.farmaco);
+  const cor = corregirOrtografia;
+  const esc = escapeHtml;
+  const p = s.paciente;
+  const far = (s.P_plan.farmacologico || []).filter(f => f.farmaco);
   if (far.length === 0) return null;
-  
-  return `<div style="padding:24px;font-family:Arial;color:#333">
-    <div style="text-align:center;border-bottom:2px solid #1a3a5c;padding-bottom:12px;margin-bottom:16px">
-      <h2 style="color:#1a3a5c;font-size:18px;letter-spacing:1.5px;margin:0">RECETA MÉDICA</h2>
-      <p style="font-size:10px;color:#666;margin:6px 0 0">EcoRadAi</p>
+
+  const recetaId = (s.caseId || "CONS") + "-RX";
+
+  return limpiarTextoPDF(`<div class="report-receta-separada" id="report-receta-consulta" style="background:#fff;color:#1d1d1f;width:100%;max-width:800px;margin:0 auto;border:2px solid #1a3a5c;border-radius:12px;overflow:hidden">
+
+    <div style="background:#1a3a5c;color:#fff;text-align:center;padding:16px">
+      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85">Ecosistema de Salud EcoRadAi</div>
+      <h2 style="font-size:20px;font-weight:700;letter-spacing:2px;margin:6px 0">RECETA MÉDICA</h2>
+      <div style="font-size:10px;opacity:0.85">Documento válido para prescripción</div>
     </div>
-    <p style="font-size:11px"><strong>Paciente:</strong> ${escapeHtml(s.paciente.nombre)} — ${s.paciente.edad} años</p>
-    <p style="font-size:11px"><strong>Fecha:</strong> ${new Date().toLocaleDateString("es-ES")}</p>
-    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:16px">
-      <thead>
-        <tr style="background:#f0f7ff">
-          <th style="padding:8px;text-align:left;border-bottom:1px solid #0071e3">Fármaco</th>
-          <th style="padding:8px;text-align:left;border-bottom:1px solid #0071e3">Dosis</th>
-          <th style="padding:8px;text-align:left;border-bottom:1px solid #0071e3">Frecuencia</th>
-          <th style="padding:8px;text-align:left;border-bottom:1px solid #0071e3">Duración</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${far.map(f => `
-          <tr>
-            <td style="padding:8px;border-bottom:1px solid #eee"><strong>${escapeHtml(f.farmaco)}</strong></td>
-            <td style="padding:8px;border-bottom:1px solid #eee">${escapeHtml(f.dosis)} ${escapeHtml(f.via)}</td>
-            <td style="padding:8px;border-bottom:1px solid #eee">${escapeHtml(f.frecuencia)}</td>
-            <td style="padding:8px;border-bottom:1px solid #eee">${escapeHtml(f.duracion)}</td>
+
+    <div style="padding:22px 26px">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;background:#f8f9fa;border-left:4px solid #0071e3;border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:18px;font-size:11px">
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Paciente</span>${esc(p.nombre)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">ID</span>${esc(p.subject_id)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Edad / Sexo</span>${esc(String(p.edad))} años · ${esc(p.sexo)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Fecha</span>${new Date().toLocaleDateString("es-ES")}</div>
+        ${p.telefono ? `<div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Teléfono</span>${esc(p.telefono)}</div>` : ""}
+        ${p.empresa && p.empresa !== "N/E" ? `<div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Empresa</span>${esc(p.empresa)}</div>` : ""}
+      </div>
+
+      ${s.S_subjetivo.alergias && !s.S_subjetivo.alergias.toLowerCase().includes("ningun")
+        ? `<div style="background:#fff3f3;border-left:4px solid #ff3b30;padding:8px 12px;border-radius:0 6px 6px 0;margin-bottom:14px;font-size:11px">
+            <strong style="color:#7a1a1a">⚠️ ALERGIAS:</strong> ${esc(cor(s.S_subjetivo.alergias))}
+          </div>`
+        : ""}
+
+      <table style="width:100%;border-collapse:collapse;font-size:10px;margin:10px 0">
+        <thead>
+          <tr style="background:#f0f7ff">
+            <th style="padding:6px 8px;text-align:left;border-bottom:1.5px solid #0071e3;font-size:9px;text-transform:uppercase">Fármaco</th>
+            <th style="padding:6px 8px;text-align:left;border-bottom:1.5px solid #0071e3;font-size:9px;text-transform:uppercase">Dosis / Vía</th>
+            <th style="padding:6px 8px;text-align:left;border-bottom:1.5px solid #0071e3;font-size:9px;text-transform:uppercase">Frecuencia</th>
+            <th style="padding:6px 8px;text-align:left;border-bottom:1.5px solid #0071e3;font-size:9px;text-transform:uppercase">Duración</th>
+            <th style="padding:6px 8px;text-align:left;border-bottom:1.5px solid #0071e3;font-size:9px;text-transform:uppercase">Indicación</th>
           </tr>
-        `).join("")}
-      </tbody>
-    </table>
-    <div style="text-align:center;margin-top:40px;padding-top:12px;border-top:1px solid #1a3a5c;width:60%;margin-left:auto;margin-right:auto">
-      <p style="font-size:11px;font-weight:700;color:#1a3a5c">${escapeHtml(firma.nombre)}</p>
-      <p style="font-size:10px;color:#666">CSSPM: ${escapeHtml(firma.csspm)}</p>
+        </thead>
+        <tbody>
+          ${far.map(f => `<tr>
+            <td style="padding:6px 8px;border-bottom:1px solid #e8e8ed"><strong>${esc(cor(f.farmaco))}</strong><br><span style="font-size:9px;color:#666">${esc(f.presentacion || "")}</span></td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e8e8ed">${esc(f.dosis)} ${esc(f.via)}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e8e8ed">${esc(f.frecuencia)}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e8e8ed">${esc(f.duracion)}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e8e8ed">${esc(cor(f.indicacion || ""))}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+
+      ${(s.P_plan.no_farmacologico || []).length > 0
+        ? `<div style="background:#f0fff4;border-left:4px solid #34c759;padding:10px 14px;border-radius:0 6px 6px 0;margin-top:14px;font-size:11px">
+            <strong style="color:#1a4a2a;display:block;margin-bottom:4px">Recomendaciones no farmacológicas:</strong>
+            <ul style="margin:4px 0 0 18px;color:#1a4a2a">
+              ${s.P_plan.no_farmacologico.map(n => `<li>${esc(cor(n.intervencion))}${n.meta ? " — Meta: " + esc(cor(n.meta)) : ""}</li>`).join("")}
+            </ul>
+          </div>`
+        : ""}
+
+      <div style="max-width:420px;margin:36px auto 0;padding:20px 24px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;text-align:center">
+        <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:36px auto 8px"></div>
+        <p style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(firma.nombre)}</p>
+        <p style="font-size:11px;color:#333;margin-bottom:3px">${esc(firma.especialidad || "Médico Tratante")}</p>
+        <p style="font-size:11px;color:#1a3a5c;font-weight:600">CSSPM: ${esc(firma.csspm)}</p>
+        <p style="font-size:10px;color:#86868b;margin-top:6px">Fecha: ${new Date().toLocaleDateString("es-ES")}</p>
+      </div>
+
+      <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace;word-break:break-all">
+        <div style="max-width:70%">SHA-256: ${esc(firma.hash || "pendiente")}</div>
+        <div>Receta: ${esc(recetaId)}</div>
+      </div>
+
     </div>
-  </div>`;
+  </div>`);
 }
 
 function renderOrdenesLabHTML(s, firma) {
-  const ordenes = s.ordenesLab.filter(o => o.estudio);
+  const cor = corregirOrtografia;
+  const esc = escapeHtml;
+  const p = s.paciente;
+  const ordenes = (s.P_plan.ordenes_laboratorio || []).filter(o => o.estudio);
   if (ordenes.length === 0) return null;
-  
-  return `<div style="padding:24px;font-family:Arial;color:#333">
-    <h2 style="text-align:center;color:#1a3a5c;font-size:16px;margin-bottom:16px">ORDEN DE LABORATORIO</h2>
-    <p style="font-size:11px"><strong>Paciente:</strong> ${escapeHtml(s.paciente.nombre)} — ${s.paciente.edad} años</p>
-    <p style="font-size:11px"><strong>Fecha:</strong> ${new Date().toLocaleDateString("es-ES")}</p>
-    <ol style="font-size:12px;margin-top:16px;line-height:1.8">
-      ${ordenes.map(o => `<li><strong>${escapeHtml(o.estudio)}</strong>${o.urgente ? " — URGENTE" : ""}</li>`).join("")}
-    </ol>
-    <div style="margin-top:40px;text-align:center">
-      <p style="font-size:11px;font-weight:700;color:#1a3a5c">${escapeHtml(firma.nombre)}</p>
-      <p style="font-size:10px;color:#666">CSSPM: ${escapeHtml(firma.csspm)}</p>
+
+  const ordenId = (s.caseId || "CONS") + "-LAB";
+  const urgentes = ordenes.filter(o => o.urgente);
+
+  return limpiarTextoPDF(`<div class="report-receta-separada" id="report-orden-lab" style="background:#fff;color:#1d1d1f;width:100%;max-width:800px;margin:0 auto;border:2px solid #1a3a5c;border-radius:12px;overflow:hidden">
+
+    <div style="background:#1a3a5c;color:#fff;text-align:center;padding:16px">
+      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85">Ecosistema de Salud EcoRadAi</div>
+      <h2 style="font-size:18px;font-weight:700;letter-spacing:1.5px;margin:6px 0">ORDEN DE LABORATORIO</h2>
+      ${urgentes.length > 0 ? `<div style="display:inline-block;background:#ff3b30;color:#fff;font-size:10px;font-weight:700;padding:3px 10px;border-radius:100px;margin-top:4px">⚠️ ${urgentes.length} ESTUDIO(S) URGENTE(S)</div>` : ""}
     </div>
-  </div>`;
+
+    <div style="padding:22px 26px">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;background:#f8f9fa;border-left:4px solid #0071e3;border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:18px;font-size:11px">
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Paciente</span>${esc(p.nombre)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">ID</span>${esc(p.subject_id)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Edad / Sexo</span>${esc(String(p.edad))} años · ${esc(p.sexo)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Fecha</span>${new Date().toLocaleDateString("es-ES")}</div>
+        ${p.telefono ? `<div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Teléfono</span>${esc(p.telefono)}</div>` : ""}
+        ${p.empresa && p.empresa !== "N/E" ? `<div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Empresa</span>${esc(p.empresa)}</div>` : ""}
+      </div>
+
+      <p style="font-size:11px;margin-bottom:10px"><strong>Diagnóstico presuntivo:</strong> ${esc(cor(s.A_analisis.diagnosticos?.[0]?.descripcion || "No especificado"))}</p>
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">ESTUDIOS SOLICITADOS</h3>
+
+      <ol style="font-size:12px;line-height:1.9;margin-left:20px">
+        ${ordenes.map(o => `<li>
+          <strong>${esc(cor(o.estudio))}</strong>
+          ${o.urgente ? '<span style="background:#ff3b30;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px">URGENTE</span>' : ""}
+          ${o.plazo_dias ? `<span style="color:#666;font-size:10px;margin-left:6px">(realizar en ${o.plazo_dias} días)</span>` : ""}
+        </li>`).join("")}
+      </ol>
+
+      <div style="background:#f0f7ff;border-left:4px solid #0071e3;padding:10px 14px;border-radius:0 6px 6px 0;margin-top:16px;font-size:10px;color:#1a3a5c;line-height:1.5">
+        <strong>Instrucciones al laboratorio:</strong>
+        <ul style="margin:4px 0 0 18px">
+          <li>Realizar los estudios en ayunas si aplica según protocolo del examen.</li>
+          <li>Reportar resultados en un plazo máximo según lo indicado por estudio.</li>
+          <li>En caso de valores críticos, contactar inmediatamente al médico solicitante.</li>
+        </ul>
+      </div>
+
+      <div style="max-width:420px;margin:36px auto 0;padding:20px 24px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;text-align:center">
+        <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:36px auto 8px"></div>
+        <p style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(firma.nombre)}</p>
+        <p style="font-size:11px;color:#333;margin-bottom:3px">${esc(firma.especialidad || "Médico Tratante")}</p>
+        <p style="font-size:11px;color:#1a3a5c;font-weight:600">CSSPM: ${esc(firma.csspm)}</p>
+      </div>
+
+      <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
+        <div>SHA-256: ${esc(firma.hash || "pendiente")}</div>
+        <div>Orden: ${esc(ordenId)}</div>
+      </div>
+
+    </div>
+  </div>`);
 }
 
 function renderOrdenesImagenHTML(s, firma) {
-  const ordenes = s.ordenesImagen.filter(o => o.estudio);
+  const cor = corregirOrtografia;
+  const esc = escapeHtml;
+  const p = s.paciente;
+  const ordenes = (s.P_plan.ordenes_imagen || []).filter(o => o.estudio);
   if (ordenes.length === 0) return null;
-  
-  return `<div style="padding:24px;font-family:Arial;color:#333">
-    <h2 style="text-align:center;color:#1a3a5c;font-size:16px;margin-bottom:16px">ORDEN DE ESTUDIO DE IMAGEN</h2>
-    <p style="font-size:11px"><strong>Paciente:</strong> ${escapeHtml(s.paciente.nombre)} — ${s.paciente.edad} años</p>
-    <ol style="font-size:12px;margin-top:16px;line-height:1.8">
-      ${ordenes.map(o => `<li><strong>${escapeHtml(o.estudio)}</strong>${o.urgente ? " — URGENTE" : ""}</li>`).join("")}
-    </ol>
-    <div style="margin-top:40px;text-align:center">
-      <p style="font-size:11px;font-weight:700;color:#1a3a5c">${escapeHtml(firma.nombre)}</p>
-      <p style="font-size:10px;color:#666">CSSPM: ${escapeHtml(firma.csspm)}</p>
+
+  const ordenId = (s.caseId || "CONS") + "-IMG";
+  const urgentes = ordenes.filter(o => o.urgente);
+
+  return limpiarTextoPDF(`<div class="report-receta-separada" id="report-orden-imagen" style="background:#fff;color:#1d1d1f;width:100%;max-width:800px;margin:0 auto;border:2px solid #1a3a5c;border-radius:12px;overflow:hidden">
+
+    <div style="background:#1a3a5c;color:#fff;text-align:center;padding:16px">
+      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85">Ecosistema de Salud EcoRadAi</div>
+      <h2 style="font-size:18px;font-weight:700;letter-spacing:1.5px;margin:6px 0">ORDEN DE ESTUDIO DE IMAGEN</h2>
+      ${urgentes.length > 0 ? `<div style="display:inline-block;background:#ff3b30;color:#fff;font-size:10px;font-weight:700;padding:3px 10px;border-radius:100px;margin-top:4px">⚠️ ${urgentes.length} ESTUDIO(S) URGENTE(S)</div>` : ""}
     </div>
-  </div>`;
+
+    <div style="padding:22px 26px">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;background:#f8f9fa;border-left:4px solid #0071e3;border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:18px;font-size:11px">
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Paciente</span>${esc(p.nombre)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">ID</span>${esc(p.subject_id)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Edad / Sexo</span>${esc(String(p.edad))} años · ${esc(p.sexo)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Fecha</span>${new Date().toLocaleDateString("es-ES")}</div>
+      </div>
+
+      <p style="font-size:11px;margin-bottom:10px"><strong>Diagnóstico presuntivo:</strong> ${esc(cor(s.A_analisis.diagnosticos?.[0]?.descripcion || "No especificado"))}</p>
+      ${s.A_analisis.impresion_clinica ? `<p style="font-size:11px;margin-bottom:10px"><strong>Resumen clínico:</strong> ${esc(cor(s.A_analisis.impresion_clinica.substring(0, 200)))}</p>` : ""}
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">ESTUDIOS SOLICITADOS</h3>
+
+      <ol style="font-size:12px;line-height:1.9;margin-left:20px">
+        ${ordenes.map(o => `<li>
+          <strong>${esc(cor(o.estudio))}</strong>
+          ${o.urgente ? '<span style="background:#ff3b30;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px">URGENTE</span>' : ""}
+          ${o.plazo_dias ? `<span style="color:#666;font-size:10px;margin-left:6px">(realizar en ${o.plazo_dias} días)</span>` : ""}
+        </li>`).join("")}
+      </ol>
+
+      <div style="background:#f0f7ff;border-left:4px solid #0071e3;padding:10px 14px;border-radius:0 6px 6px 0;margin-top:16px;font-size:10px;color:#1a3a5c;line-height:1.5">
+        <strong>Instrucciones al servicio de imagenología:</strong>
+        <ul style="margin:4px 0 0 18px">
+          <li>Realizar los estudios según protocolo estándar del servicio.</li>
+          <li>Reportar hallazgos incidentales relevantes.</li>
+          <li>En caso de hallazgos críticos, contactar al médico solicitante de inmediato.</li>
+        </ul>
+      </div>
+
+      <div style="max-width:420px;margin:36px auto 0;padding:20px 24px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;text-align:center">
+        <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:36px auto 8px"></div>
+        <p style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(firma.nombre)}</p>
+        <p style="font-size:11px;color:#333;margin-bottom:3px">${esc(firma.especialidad || "Médico Tratante")}</p>
+        <p style="font-size:11px;color:#1a3a5c;font-weight:600">CSSPM: ${esc(firma.csspm)}</p>
+      </div>
+
+      <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
+        <div>SHA-256: ${esc(firma.hash || "pendiente")}</div>
+        <div>Orden: ${esc(ordenId)}</div>
+      </div>
+
+    </div>
+  </div>`);
 }
 
 function renderHojaReferenciaHTML(s, firma) {
-  const refs = s.referencias.filter(r => r.especialidad);
+  const cor = corregirOrtografia;
+  const esc = escapeHtml;
+  const p = s.paciente;
+  const refs = (s.P_plan.referencias || []).filter(r => r.especialidad);
   if (refs.length === 0) return null;
-  
-  return `<div style="padding:24px;font-family:Arial;color:#333">
-    <h2 style="text-align:center;color:#1a3a5c;font-size:16px;margin-bottom:16px">HOJA DE REFERENCIA</h2>
-    <p style="font-size:11px"><strong>Paciente:</strong> ${escapeHtml(s.paciente.nombre)} — ${s.paciente.edad} años</p>
-    <p style="font-size:11px"><strong>Fecha:</strong> ${new Date().toLocaleDateString("es-ES")}</p>
-    <hr style="margin:12px 0;border:none;border-top:1px solid #ddd">
-    ${refs.map((r, i) => `
-      <div style="margin-bottom:16px">
-        <p style="font-size:12px;font-weight:700;color:#0071e3">Referencia ${i + 1}: ${escapeHtml(r.especialidad)}</p>
-        <p style="font-size:11px"><strong>Prioridad:</strong> ${escapeHtml(r.prioridad)}</p>
-        <p style="font-size:11px"><strong>Plazo:</strong> ${r.plazo_dias} días</p>
-        <p style="font-size:11px"><strong>Motivo:</strong> ${escapeHtml(r.motivo)}</p>
-      </div>
-    `).join("")}
-    <div style="margin-top:40px;text-align:center">
-      <p style="font-size:11px;font-weight:700;color:#1a3a5c">${escapeHtml(firma.nombre)}</p>
-      <p style="font-size:10px;color:#666">CSSPM: ${escapeHtml(firma.csspm)}</p>
+
+  const refId = (s.caseId || "CONS") + "-REF";
+  const dxPrincipal = s.A_analisis.diagnosticos?.find(d => d.tipo === "principal") || s.A_analisis.diagnosticos?.[0];
+  const dxSecundarios = (s.A_analisis.diagnosticos || []).filter(d => d !== dxPrincipal);
+
+  return limpiarTextoPDF(`<div class="report-receta-separada" id="report-referencia" style="background:#fff;color:#1d1d1f;width:100%;max-width:800px;margin:0 auto;border:2px solid #1a3a5c;border-radius:12px;overflow:hidden">
+
+    <div style="background:#1a3a5c;color:#fff;text-align:center;padding:16px">
+      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85">Ecosistema de Salud EcoRadAi</div>
+      <h2 style="font-size:18px;font-weight:700;letter-spacing:1.5px;margin:6px 0">HOJA DE REFERENCIA MÉDICA</h2>
     </div>
-  </div>`;
+
+    <div style="padding:22px 26px">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;background:#f8f9fa;border-left:4px solid #0071e3;border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:18px;font-size:11px">
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Paciente</span>${esc(p.nombre)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">ID</span>${esc(p.subject_id)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Edad / Sexo</span>${esc(String(p.edad))} años · ${esc(p.sexo)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Fecha</span>${new Date().toLocaleDateString("es-ES")}</div>
+        ${p.dui ? `<div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">DUI</span>${esc(p.dui)}</div>` : ""}
+        ${p.telefono ? `<div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Teléfono</span>${esc(p.telefono)}</div>` : ""}
+      </div>
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">MOTIVO DE REFERENCIA</h3>
+      <div style="font-size:11px;line-height:1.6">
+        ${refs.map((r, i) => `
+          <div style="margin-bottom:12px;padding:10px 12px;background:#f8f9fa;border-radius:6px;border-left:3px solid ${r.prioridad === "alta" ? "#ff3b30" : r.prioridad === "media" ? "#ff9500" : "#0071e3"}">
+            <p style="margin-bottom:4px">
+              <strong>${esc(cor(r.especialidad))}</strong>
+              <span style="background:${r.prioridad === "alta" ? "#fff3f3" : r.prioridad === "media" ? "#fff9e6" : "#e8f4fd"};color:${r.prioridad === "alta" ? "#7a1a1a" : r.prioridad === "media" ? "#8a6a00" : "#0051a3"};font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px;margin-left:6px;text-transform:uppercase">${esc(r.prioridad)}</span>
+            </p>
+            <p><strong>Plazo:</strong> ${r.plazo_dias || 30} días</p>
+            <p><strong>Motivo:</strong> ${esc(cor(r.motivo || ""))}</p>
+          </div>
+        `).join("")}
+      </div>
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">RESUMEN CLÍNICO</h3>
+      <div style="font-size:11px;line-height:1.6">
+        <p><strong>Motivo de consulta original:</strong> ${esc(cor(s.S_subjetivo.motivo_consulta || ""))}</p>
+        <p style="margin-top:6px"><strong>Enfermedad actual:</strong> ${esc(cor(s.S_subjetivo.enfermedad_actual || ""))}</p>
+        ${dxPrincipal ? `<p style="margin-top:6px"><strong>Diagnóstico principal:</strong> ${esc(dxPrincipal.cie10 || "")} ${esc(cor(dxPrincipal.descripcion || ""))}</p>` : ""}
+        ${dxSecundarios.length > 0 ? `<p style="margin-top:4px"><strong>Diagnósticos secundarios:</strong> ${dxSecundarios.map(d => `${esc(d.cie10 || "")} ${esc(cor(d.descripcion || ""))}`).join("; ")}</p>` : ""}
+      </div>
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">HALLAZGOS RELEVANTES</h3>
+      <div style="font-size:11px;line-height:1.6">
+        ${s.A_analisis.impresion_clinica ? `<p>${esc(cor(s.A_analisis.impresion_clinica))}</p>` : ""}
+      </div>
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">ESTUDIOS REALIZADOS</h3>
+      <div style="font-size:11px;line-height:1.6">
+        ${Object.keys(s.O_objetivo.labs_resultados || {}).length > 0
+          ? `<p><strong>Laboratorios:</strong> ${Object.entries(s.O_objetivo.labs_resultados).map(([k, v]) => `${esc(k.replace(/_/g, " "))}: ${esc(String(v))}`).join(", ")}</p>`
+          : "<p>Sin laboratorios recientes.</p>"}
+      </div>
+
+      ${(s.S_subjetivo.alergias && !s.S_subjetivo.alergias.toLowerCase().includes("ningun"))
+        ? `<div style="background:#fff3f3;border-left:4px solid #ff3b30;padding:8px 12px;border-radius:0 6px 6px 0;margin-top:14px;font-size:11px">
+            <strong style="color:#7a1a1a">⚠️ ALERGIAS:</strong> ${esc(cor(s.S_subjetivo.alergias))}
+          </div>`
+        : ""}
+
+      <div style="max-width:420px;margin:36px auto 0;padding:20px 24px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;text-align:center">
+        <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:36px auto 8px"></div>
+        <p style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(firma.nombre)}</p>
+        <p style="font-size:11px;color:#333;margin-bottom:3px">${esc(firma.especialidad || "Médico Tratante")}</p>
+        <p style="font-size:11px;color:#1a3a5c;font-weight:600">CSSPM: ${esc(firma.csspm)}</p>
+      </div>
+
+      <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
+        <div>SHA-256: ${esc(firma.hash || "pendiente")}</div>
+        <div>Ref: ${esc(refId)}</div>
+      </div>
+
+    </div>
+  </div>`);
 }
 
+/* ═══════════════════════════════════════════════════════════
+   C.2 — GESTIÓN DE BORRADORES + TIMELINE UNIFICADO
+   ═══════════════════════════════════════════════════════════ */
+
+window.listarConsultasPaciente = async function(subjectId) {
+  if (!window.supabaseClient) return [];
+  try {
+    const { data, error } = await window.supabaseClient
+      .from("consultas")
+      .select("consulta_id, case_id, fecha_consulta, tipo, estado, motivo_consulta, cie10_principal, nivel_riesgo, complejidad, medico_nombre")
+      .eq("subject_id", subjectId)
+      .order("fecha_consulta", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.error("[listarConsultasPaciente]", e);
+    return [];
+  }
+};
+
+window.abrirConsultaBorrador = async function(consultaId) {
+  if (!window.supabaseClient) { showStatus("Sin conexión", "error"); return; }
+  
+  try {
+    const { data, error } = await window.supabaseClient
+      .from("consultas")
+      .select("*")
+      .eq("consulta_id", consultaId)
+      .single();
+    if (error || !data) throw new Error("Consulta no encontrada");
+    
+    if (data.estado === "firmada" || data.estado === "rectificada") {
+      showStatus("Esta consulta ya está firmada. Solo puede visualizarse.", "warning");
+      await verConsultaFirmada(consultaId);
+      return;
+    }
+    
+    if (typeof cambiarTab === "function") cambiarTab("consulta");
+    consultaReset();
+    
+    const s = window._consultaState;
+    s.consultaId = consultaId;
+    s.caseId = data.case_id;
+    s.tipoConsulta = data.tipo;
+    
+    const { data: pac } = await window.supabaseClient
+      .from("patients")
+      .select("*")
+      .eq("subject_id", data.subject_id)
+      .single();
+    
+    if (pac) {
+      s.paciente = pac;
+      window._pacienteActual = pac;
+      renderInfoPacienteConsulta(pac);
+      await cargarContextoClinico(pac.subject_id);
+    }
+    
+    cargarConsultaEnFormulario(data.payload);
+    mostrarPaso(data.estado === "borrador" ? 3 : 5);
+    
+    showStatus(`✓ Borrador ${data.case_id} cargado`, "success");
+  } catch (e) {
+    console.error("[abrirConsultaBorrador]", e);
+    showStatus("Error: " + e.message, "error");
+  }
+};
+
+window.cargarConsultaEnFormulario = function(payload) {
+  if (!payload) return;
+  const s = window._consultaState;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ""; };
+  
+  set("cons-motivo", payload.S_subjetivo?.motivo_consulta);
+  set("cons-enfermedad-actual", payload.S_subjetivo?.enfermedad_actual);
+  set("cons-eva", payload.S_subjetivo?.eva_dolor);
+  set("cons-evolucion", payload.S_subjetivo?.evolucion);
+  Object.entries(payload.S_subjetivo?.revision_sistemas || {}).forEach(([k, v]) => set("cons-sys-" + k, v));
+  Object.entries(payload.S_subjetivo?.antecedentes || {}).forEach(([k, v]) => set("cons-ant-" + k, v));
+  set("cons-alergias", payload.S_subjetivo?.alergias);
+  set("cons-medicamentos", payload.S_subjetivo?.medicamentos);
+  set("cons-habito-tabaco", payload.S_subjetivo?.habitos?.tabaco);
+  set("cons-habito-alcohol", payload.S_subjetivo?.habitos?.alcohol);
+  set("cons-habito-ejercicio", payload.S_subjetivo?.habitos?.ejercicio);
+  set("cons-habito-sueno", payload.S_subjetivo?.habitos?.sueno);
+  
+  Object.entries(payload.O_objetivo?.signos_vitales || {}).forEach(([k, v]) => set("cons-vit-" + k, v));
+  Object.entries(payload.O_objetivo?.examen_fisico || {}).forEach(([k, v]) => set("cons-ef-" + k, v));
+  set("cons-labs-fecha", payload.O_objetivo?.labs_fecha);
+  Object.entries(payload.O_objetivo?.labs_resultados || {}).forEach(([k, v]) => {
+    const lab = typeof LABS_REGISTRY !== "undefined" 
+      ? LABS_REGISTRY._items.find(l => l.id.replace(/^lab-/, "").replace(/-/g, "_") === k)
+      : null;
+    if (lab) set("cons-" + lab.id, v);
+  });
+  set("cons-otros-estudios", payload.O_objetivo?.otros_estudios);
+  
+  set("cons-impresion-final", payload.A_analisis?.impresion_clinica);
+  set("cons-nivel-riesgo", payload.A_analisis?.nivel_riesgo || "MODERADO");
+  s.diagnosticos = payload.A_analisis?.diagnosticos || [];
+  renderDiagnosticos();
+  
+  s.iaJSON = {
+    diagnostico_diferencial: payload.A_analisis?.diagnostico_diferencial || [],
+    banderas_rojas: payload.A_analisis?.banderas_rojas || [],
+    interacciones_medicamentosas: payload.A_analisis?.interacciones || []
+  };
+  
+  s.farmacologico = payload.P_plan?.farmacologico || [];
+  s.noFarmacologico = payload.P_plan?.no_farmacologico || [];
+  s.ordenesLab = payload.P_plan?.ordenes_laboratorio || [];
+  s.ordenesImagen = payload.P_plan?.ordenes_imagen || [];
+  s.referencias = payload.P_plan?.referencias || [];
+  renderFarmacologicos();
+  renderNoFarmacologicos();
+  renderOrdenesLab();
+  renderOrdenesImagen();
+  renderReferencias();
+  
+  set("cons-educacion", (payload.P_plan?.educacion_paciente || []).join("\n"));
+  set("cons-proxima-cita-dias", payload.P_plan?.seguimiento?.proxima_cita_dias);
+  set("cons-proxima-cita-tipo", payload.P_plan?.seguimiento?.proxima_cita_tipo || "control");
+  
+  s.complejidadCalculada = payload.metadata?.complejidad_calculada;
+  s.complejidadFinal = payload.metadata?.complejidad_final;
+  
+  calcularIMCConsulta();
+};
+
+window.verConsultaFirmada = async function(consultaId) {
+  if (!window.supabaseClient) return;
+  try {
+    const { data: arts } = await window.supabaseClient
+      .from("artifacts")
+      .select("tipo, html")
+      .like("artifact_id", consultaId + ":%");
+    
+    if (!arts || arts.length === 0) {
+      showStatus("No se encontraron documentos", "warning");
+      return;
+    }
+    
+    const docs = {};
+    arts.forEach(a => { docs[a.tipo] = a.html; });
+    
+    const normalized = {
+      notaClinica: docs.notaClinica || docs.nota_clinica,
+      receta: docs.receta,
+      ordenesLab: docs.orden_laboratorio || docs.ordenesLab,
+      ordenesImagen: docs.orden_imagen || docs.ordenesImagen,
+      referencia: docs.referencia
+    };
+    
+    window._consultaState.docsGenerados = normalized;
+    mostrarDocumentosGenerados(normalized);
+  } catch (e) {
+    console.error("[verConsultaFirmada]", e);
+    showStatus("Error: " + e.message, "error");
+  }
+};
+
+window.renderTimelineUnificado = async function(subjectId) {
+  const cont = document.getElementById("timeline-container");
+  if (!cont || !window.supabaseClient) return;
+  
+  try {
+    const [tamizajes, consultas] = await Promise.all([
+      window.supabaseClient.from("cases")
+        .select("case_id, payload, created_at")
+        .eq("subject_id", subjectId)
+        .then(r => r.data || []),
+      window.supabaseClient.from("consultas")
+        .select("consulta_id, case_id, fecha_consulta, tipo, estado, motivo_consulta, cie10_principal, nivel_riesgo, complejidad, medico_nombre")
+        .eq("subject_id", subjectId)
+        .in("estado", ["firmada", "rectificada"])
+        .then(r => r.data || [])
+    ]);
+    
+    const eventos = [
+      ...tamizajes.map(t => ({
+        tipo: "tamizaje",
+        fecha: t.payload?.encounter?.fecha || t.created_at?.slice(0, 10),
+        icono: "🩺",
+        color: "#0071e3",
+        titulo: "Tamizaje",
+        subtitulo: t.payload?.encounter?.estudio?.replace(/_/g, " ") || "Tamizaje",
+        nivel: t.payload?.riesgo_global?.nivel || "MODERADO",
+        caseId: t.case_id,
+        onClick: `abrirCasoGuardado('${t.case_id}')`
+      })),
+      ...consultas.map(c => ({
+        tipo: "consulta",
+        fecha: c.fecha_consulta,
+        icono: "📋",
+        color: "#34c759",
+        titulo: "Consulta médica",
+        subtitulo: `${(c.tipo || "").replace("_", " ")} — ${c.cie10_principal || "Sin CIE-10"}`,
+        nivel: c.nivel_riesgo || "MODERADO",
+        caseId: c.case_id,
+        medico: c.medico_nombre,
+        complejidad: c.complejidad,
+        onClick: `verConsultaFirmada('${c.consulta_id}')`
+      }))
+    ].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+    
+    if (eventos.length === 0) {
+      cont.innerHTML = '<div class="empty-state"><div class="icon">📅</div><p>Sin eventos registrados</p></div>';
+      return;
+    }
+    
+    cont.innerHTML = eventos.map(e => {
+      const nc = e.nivel === "MUY ALTO" ? "muy-alto" : e.nivel === "ALTO" ? "alto" : e.nivel === "MODERADO" ? "moderado" : "bajo";
+      return `<div class="timeline-item" style="border-left-color:${e.color}" onclick="${e.onClick}">
+        <div class="timeline-header">
+          <div>
+            <div class="timeline-date">${e.icono} ${e.fecha}</div>
+            <div class="timeline-study">${escapeHtml(e.subtitulo)}</div>
+            ${e.medico ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">Dr(a). ${escapeHtml(e.medico)}</div>` : ""}
+            ${e.complejidad ? `<div style="font-size:10px;color:var(--text-tertiary)">Complejidad: ${escapeHtml(e.complejidad)}</div>` : ""}
+          </div>
+          <div class="timeline-risk ${nc}">${e.nivel}</div>
+        </div>
+      </div>`;
+    }).join("");
+  } catch (e) {
+    console.error("[renderTimelineUnificado]", e);
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Error al cargar timeline</p></div>';
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   C.3 — INTEGRACIÓN CONSULTA → TAMIZAJE
+   ═══════════════════════════════════════════════════════════ */
+
+window.abrirModalSolicitarTamizaje = function() {
+  const s = window._consultaState;
+  if (!s.paciente) { showStatus("Primero selecciona un paciente", "error"); return; }
+  
+  const tamizajes = typeof TAMIZAJES_REGISTRY !== "undefined" 
+    ? TAMIZAJES_REGISTRY.listar() 
+    : [];
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-solicitar-tamizaje";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:99998;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:40px";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:var(--radius-lg);max-width:600px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">🩺 Solicitar tamizaje</h3>
+        <button onclick="document.getElementById('modal-solicitar-tamizaje').remove()" 
+                style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+      </div>
+      
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;line-height:1.5">
+        Selecciona los tamizajes que deseas solicitar para <strong>${escapeHtml(s.paciente.nombre)}</strong>.
+        Se generará una orden que aparecerá en el módulo de captura.
+      </p>
+      
+      <div style="background:#f0f7ff;border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 6px 6px 0;margin-bottom:14px;font-size:11px;color:var(--accent-dark)">
+        <strong>Diagnóstico actual:</strong> ${escapeHtml(s.diagnosticos?.[0]?.descripcion || "Sin diagnóstico principal")}
+      </div>
+      
+      <div style="max-height:400px;overflow-y:auto;margin-bottom:16px">
+        ${tamizajes.map(t => `
+          <label style="display:flex;align-items:flex-start;gap:10px;padding:10px;margin-bottom:6px;background:var(--bg-secondary);border-radius:8px;cursor:pointer;transition:all .2s"
+                 onmouseover="this.style.background='var(--accent-light)'"
+                 onmouseout="this.style.background='var(--bg-secondary)'">
+            <input type="checkbox" class="tamizaje-check" value="${t.id}" style="margin-top:3px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:700;color:var(--corp)">${t.meta.icono} ${escapeHtml(t.meta.nombre)}</div>
+              <div style="font-size:10px;color:var(--text-secondary);margin-top:2px">${escapeHtml(t.meta.descripcion)}</div>
+              <div style="font-size:10px;color:var(--accent);font-weight:600;margin-top:3px">~${t.meta.duracion_min} min</div>
+            </div>
+          </label>
+        `).join("")}
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Motivo de la solicitud (opcional)</label>
+        <textarea id="solicitud-tamizaje-motivo" placeholder="Ej: Paciente con factores de riesgo cardiovascular detectados en consulta..." 
+                  style="font-size:12px;min-height:60px"></textarea>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+        <div class="form-group" style="margin-bottom:0">
+          <label style="font-size:11px;font-weight:600">Prioridad</label>
+          <select id="solicitud-tamizaje-prioridad" style="font-size:12px">
+            <option value="baja">Baja</option>
+            <option value="media" selected>Media</option>
+            <option value="alta">Alta</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label style="font-size:11px;font-weight:600">Plazo (días)</label>
+          <input type="number" id="solicitud-tamizaje-plazo" value="30" min="1" style="font-size:12px">
+        </div>
+      </div>
+      
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-solicitar-tamizaje').remove()" style="flex:1;font-size:12px">Cancelar</button>
+        <button class="btn btn-primary" onclick="crearSolicitudTamizaje()" style="flex:1;font-size:12px">📤 Crear solicitud</button>
+      </div>
+    </div>
+  `;
+  
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+};
+
+window.crearSolicitudTamizaje = async function() {
+  const s = window._consultaState;
+  if (!s.paciente) { showStatus("Falta paciente", "error"); return; }
+  if (!window.supabaseClient) { showStatus("Sin conexión", "error"); return; }
+  
+  const checks = document.querySelectorAll(".tamizaje-check:checked");
+  const seleccionados = Array.from(checks).map(c => c.value);
+  
+  if (seleccionados.length === 0) {
+    showStatus("Selecciona al menos un tamizaje", "warning");
+    return;
+  }
+  
+  const motivo = document.getElementById("solicitud-tamizaje-motivo")?.value.trim() || "";
+  const prioridad = document.getElementById("solicitud-tamizaje-prioridad")?.value || "media";
+  const plazo = parseInt(document.getElementById("solicitud-tamizaje-plazo")?.value) || 30;
+  
+  try {
+    const registros = seleccionados.map(tId => ({
+      subject_id: s.paciente.subject_id,
+      consulta_origen: s.consultaId || null,
+      tamizaje_solicitado: tId,
+      motivo: motivo || `Solicitado desde consulta ${s.caseId || ""}`,
+      prioridad: prioridad,
+      plazo_dias: plazo,
+      estado: "pendiente",
+      created_by: window.usuarioActual?.id || null
+    }));
+    
+    const { error } = await window.supabaseClient.from("solicitudes_tamizaje").insert(registros);
+    if (error) throw error;
+    
+    await window.supabaseClient.from("notificaciones").insert({
+      tipo: "solicitud_tamizaje",
+      referencia_id: s.consultaId || null,
+      referencia_tipo: "consulta",
+      mensaje: `${seleccionados.length} tamizaje(s) solicitado(s) para ${s.paciente.nombre}`,
+      user_id: window.usuarioActual?.id || null
+    });
+    
+    document.getElementById("modal-solicitar-tamizaje")?.remove();
+    showStatus(`✓ ${seleccionados.length} solicitud(es) creada(s)`, "success");
+  } catch (e) {
+    console.error("[crearSolicitudTamizaje]", e);
+    showStatus("Error: " + e.message, "error");
+  }
+};
+
+window.mostrarSolicitudesPendientes = async function() {
+  const cont = document.getElementById("solicitudes-pendientes-banner");
+  if (!cont || !window.supabaseClient) return;
+  
+  try {
+    const { data, error } = await window.supabaseClient
+      .from("solicitudes_tamizaje")
+      .select("*")
+      .eq("estado", "pendiente")
+      .order("prioridad", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(5);
+    
+    if (error || !data || data.length === 0) {
+      cont.innerHTML = "";
+      cont.style.display = "none";
+      return;
+    }
+    
+    cont.innerHTML = `
+      <div style="background:#fff9e6;border-left:4px solid var(--warning);border-radius:8px;padding:12px 16px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div style="flex:1">
+            <div style="font-size:12px;font-weight:700;color:#8a6a00;margin-bottom:4px">
+              ⏳ ${data.length} solicitud(es) de tamizaje pendiente(s)
+            </div>
+            <div style="font-size:11px;color:#666">
+              ${data.slice(0, 2).map(s => escapeHtml(s.tamizaje_solicitado)).join(" · ")}
+              ${data.length > 2 ? ` · +${data.length - 2} más` : ""}
+            </div>
+          </div>
+          <button class="btn btn-warning btn-sm" onclick="verSolicitudesPendientes()" style="font-size:11px;width:auto">Ver todas</button>
+        </div>
+      </div>
+    `;
+    cont.style.display = "block";
+  } catch (e) {
+    console.error("[mostrarSolicitudesPendientes]", e);
+  }
+};
+
+window.verSolicitudesPendientes = async function() {
+  if (!window.supabaseClient) return;
+  
+  try {
+    const { data } = await window.supabaseClient
+      .from("solicitudes_tamizaje")
+      .select("*")
+      .eq("estado", "pendiente")
+      .order("created_at", { ascending: false });
+    
+    if (!data || data.length === 0) {
+      showStatus("Sin solicitudes pendientes", "info");
+      return;
+    }
+    
+    const overlay = document.createElement("div");
+    overlay.id = "modal-solicitudes";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99998;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:40px";
+    overlay.innerHTML = `
+      <div style="background:var(--bg);border-radius:var(--radius-lg);max-width:600px;width:100%;padding:24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">Solicitudes pendientes</h3>
+          <button onclick="document.getElementById('modal-solicitudes').remove()" 
+                  style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+        </div>
+        <div style="max-height:500px;overflow-y:auto">
+          ${data.map(s => `
+            <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ${s.prioridad === "alta" ? "#ff3b30" : s.prioridad === "media" ? "#ff9500" : "#0071e3"}">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:12px;font-weight:700;color:var(--corp)">${escapeHtml(s.tamizaje_solicitado)}</div>
+                  <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${escapeHtml(s.motivo || "")}</div>
+                  <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
+                    Prioridad: ${escapeHtml(s.prioridad)} · Plazo: ${s.plazo_dias} días
+                  </div>
+                </div>
+                <button class="btn btn-success btn-xs" onclick="marcarSolicitudCompletada('${s.solicitud_id}')" style="font-size:10px">✓ Completar</button>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  } catch (e) {
+    console.error("[verSolicitudesPendientes]", e);
+  }
+};
+
+window.marcarSolicitudCompletada = async function(solicitudId) {
+  if (!window.supabaseClient) return;
+  try {
+    const { error } = await window.supabaseClient
+      .from("solicitudes_tamizaje")
+      .update({ estado: "completada", completada_at: new Date().toISOString() })
+      .eq("solicitud_id", solicitudId);
+    if (error) throw error;
+    showStatus("✓ Solicitud completada", "success");
+    document.getElementById("modal-solicitudes")?.remove();
+    mostrarSolicitudesPendientes();
+  } catch (e) {
+    console.error("[marcarSolicitudCompletada]", e);
+    showStatus("Error: " + e.message, "error");
+  }
+};
+
+console.log("[Consulta] C.1 + C.2 + C.3 cargados correctamente");
 console.log("[Consulta] Cierre, firma y persistencia cargados");
 console.log("%c Módulo Consulta Médica v23.5 listo ", "background:#1a3a5c;color:white;padding:6px 12px;border-radius:4px;font-weight:bold;font-size:12px");
 </script>
