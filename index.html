@@ -10255,8 +10255,10 @@ window.consultaReset = function() {
   const feE = document.getElementById("consulta-ia-error");
   if (feE) feE.style.display = "none";
   
-  // Limpiar contenedores dinámicos
-  ["consulta-resultados", "consulta-contexto-clinico", "consulta-rev-sistemas",
+   // Limpiar contenedores dinámicos
+  // ⚠️ IMPORTANTE: NO incluir "consulta-resultados" aquí, porque contiene
+  // el hijo #consulta-resultados-lista que necesita preservarse.
+  ["consulta-contexto-clinico", "consulta-rev-sistemas",
    "consulta-antecedentes", "consulta-vitales", "consulta-examen-fisico",
    "consulta-labs", "consulta-diagnosticos", "consulta-farmacologico",
    "consulta-no-farmacologico", "consulta-ordenes-lab", "consulta-ordenes-imagen",
@@ -10266,6 +10268,13 @@ window.consultaReset = function() {
     if (el) el.innerHTML = "";
   });
   
+  // Reponer estructura interna de consulta-resultados por si se perdió
+  const contResultados = document.getElementById("consulta-resultados");
+  if (contResultados) {
+    contResultados.innerHTML = '<div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;margin-bottom:6px">Resultados</div><div id="consulta-resultados-lista"></div>';
+    contResultados.style.display = "none";
+  }
+  
   mostrarPaso(1);
   console.log("[Consulta] Estado reseteado");
 };
@@ -10274,109 +10283,59 @@ window.consultaReset = function() {
    PASO 1 — BÚSQUEDA DE PACIENTE
    ═══════════════════════════════════════════════════════════ */
 window.buscarPacienteConsulta = function(query) {
-  clearTimeout(_consultaBuscadorTimer);
-  const resultados = document.getElementById("consulta-resultados");
+  // Reparar contenedor si fue borrado por consultaReset
+  const cont = document.getElementById("consulta-resultados");
+  if (cont && !document.getElementById("consulta-resultados-lista")) {
+    cont.innerHTML = '<div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;margin-bottom:6px">Resultados</div><div id="consulta-resultados-lista"></div>';
+  }
+  
+  const lista = document.getElementById("consulta-resultados-lista");
   
   if (!query || query.trim().length < 2) {
-    if (resultados) resultados.style.display = "none";
+    if (cont) cont.style.display = "none";
     return;
   }
   
-  _consultaBuscadorTimer = setTimeout(async () => {
-    // ⬇⬇⬇ FALLBACK: intentar obtener cliente si no está en window ⬇⬇⬇
-    let cliente = window.supabaseClient;
-    
+  if (!lista) return;
+  
+  clearTimeout(window._buscarTimer);
+  window._buscarTimer = setTimeout(async () => {
+    const cliente = window.supabaseClient;
     if (!cliente) {
-      console.warn("[Consulta] supabaseClient no en window, intentando alternativa...");
-      
-      // Intento 1: usar variable global del scope principal (si está accesible)
-      if (typeof supabaseClient !== "undefined" && supabaseClient) {
-        cliente = supabaseClient;
-        window.supabaseClient = cliente;
-        console.log("[Consulta] supabaseClient recuperado del scope principal");
-      }
-      // Intento 2: esperar hasta 3 segundos a que se inicialice
-      else {
-        for (let i = 0; i < 30; i++) {
-          await new Promise(r => setTimeout(r, 100));
-          if (window.supabaseClient) {
-            cliente = window.supabaseClient;
-            console.log("[Consulta] supabaseClient apareció tras", i * 100, "ms");
-            break;
-          }
-        }
-      }
-    }
-    
-    if (!cliente) {
-      showStatus("Supabase aún no inicializado. Espera un momento y vuelve a escribir.", "warning");
+      showStatus("Sin conexión", "error");
       return;
     }
     
     try {
-      const { data, error } = await cliente
-        .rpc("buscar_pacientes", { query: query.trim() });
-      
+      const { data, error } = await cliente.rpc("buscar_pacientes", { query: query.trim() });
       if (error) throw error;
       
-      const lista = document.getElementById("consulta-resultados-lista");
-      if (!lista) return;
-      
       if (!data || data.length === 0) {
-        lista.innerHTML = `
-          <div style="padding:14px;text-align:center;background:var(--bg-secondary);border-radius:8px">
-            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">
-              No se encontró ningún paciente con "${escapeHtml(query)}"
-            </div>
-            <button class="btn btn-secondary btn-sm" onclick="cambiarTab('captura')">
-              Ir a Captura para registrar nuevo paciente
-            </button>
-          </div>
-        `;
-        if (resultados) resultados.style.display = "block";
+        lista.innerHTML = '<div style="padding:14px;text-align:center;background:var(--bg-secondary);border-radius:8px;font-size:11px">Sin resultados para "' + escapeHtml(query) + '"</div>';
+        if (cont) cont.style.display = "block";
         return;
       }
       
-      lista.innerHTML = data.map(p => {
-        const edad = p.edad || "—";
-        const nTam = p.n_tamizajes || 0;
-        const nCons = p.n_consultas || 0;
-        const historial = [];
-        if (nTam > 0) historial.push(nTam + " tamizaje" + (nTam !== 1 ? "s" : ""));
-        if (nCons > 0) historial.push(nCons + " consulta" + (nCons !== 1 ? "s" : ""));
-        const histTxt = historial.length ? historial.join(" · ") : "Sin historial";
-        
-        return `
-          <div class="consulta-paciente-card-result" onclick="seleccionarPacienteConsulta('${p.subject_id}')">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-              <div style="flex:1;min-width:0">
-                <div style="font-size:13px;font-weight:700;color:var(--corp);margin-bottom:2px">
-                  ${escapeHtml(p.nombre)}
-                </div>
-                <div style="font-size:10px;color:var(--text-secondary);font-family:var(--font-mono)">
-                  ${escapeHtml(p.subject_id)}
-                </div>
-                <div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">
-                  ${edad} años · ${escapeHtml(p.sexo || "—")}${p.dui ? " · DUI " + escapeHtml(p.dui) : ""}
-                </div>
-                <div style="font-size:10px;color:var(--accent);margin-top:2px;font-weight:600">
-                  ${histTxt}
-                </div>
-              </div>
-              <button class="btn btn-primary btn-xs">Usar →</button>
-            </div>
-          </div>
-        `;
+      lista.innerHTML = data.map(function(p) {
+        return '<div class="consulta-paciente-card-result" onclick="seleccionarPacienteConsulta(\'' + p.subject_id + '\')">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="font-size:13px;font-weight:700;color:var(--corp);margin-bottom:2px">' + escapeHtml(p.nombre) + '</div>' +
+              '<div style="font-size:10px;color:var(--text-secondary);font-family:monospace">' + escapeHtml(p.subject_id) + '</div>' +
+              '<div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">' + (p.edad || "—") + ' años · ' + escapeHtml(p.sexo || "—") + (p.dui ? " · DUI " + escapeHtml(p.dui) : "") + '</div>' +
+            '</div>' +
+            '<button class="btn btn-primary btn-xs">Usar →</button>' +
+          '</div>' +
+        '</div>';
       }).join("");
       
-      if (resultados) resultados.style.display = "block";
+      if (cont) cont.style.display = "block";
     } catch (e) {
-      console.error("[buscarPacienteConsulta]", e);
-      showStatus("Error al buscar: " + e.message, "error");
+      console.error("[Buscar]", e);
+      showStatus("Error: " + e.message, "error");
     }
   }, 350);
 };
-
 window.seleccionarPacienteConsulta = async function(subjectId) {
   if (!window.supabaseClient) return;
   
