@@ -10064,5 +10064,2365 @@ setTimeout(() => {
    ═══════════════════════════════════════════════════════════════════ */
 console.log("%c ✓ EcoRadAi v23.4 listo para usar ", "background:#1a3a5c;color:white;padding:6px 12px;border-radius:4px;font-weight:bold;font-size:12px");
 </script>
+<!-- ═══════════════════════════════════════════════════════════════
+     MÓDULO CONSULTA MÉDICA TRADICIONAL v23.5
+     Script aislado — se ejecuta después del script principal
+     ═══════════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+/* ═══════════════════════════════════════════════════════════
+   CONSTANTES DEL MÓDULO
+   ═══════════════════════════════════════════════════════════ */
+
+const CONSULTA_SISTEMAS = [
+  { id: "general",      label: "General",          placeholder: "Estado general, fiebre, astenia, apetito..." },
+  { id: "cardiovascular", label: "Cardiovascular", placeholder: "Dolor torácico, palpitaciones, disnea, edema..." },
+  { id: "respiratorio", label: "Respiratorio",     placeholder: "Tos, expectoración, disnea, sibilancias..." },
+  { id: "digestivo",    label: "Digestivo",        placeholder: "Dolor abdominal, náuseas, vómito, diarrea, estreñimiento..." },
+  { id: "genitourinario", label: "Genitourinario", placeholder: "Disuria, polaquiuria, hematuria, flujo..." },
+  { id: "neurologico",  label: "Neurológico",      placeholder: "Cefalea, mareo, parestesias, convulsiones..." },
+  { id: "musculoesqueletico", label: "Musculoesquelético", placeholder: "Artralgias, mialgias, limitación funcional..." },
+  { id: "piel",         label: "Piel y anexos",    placeholder: "Rash, prurito, lesiones, cambios de color..." },
+  { id: "psiquico",     label: "Psíquico",         placeholder: "Ánimo, ansiedad, sueño, concentración..." }
+];
+
+const CONSULTA_ANTECEDENTES = [
+  { id: "personales_patologicos", label: "Personales patológicos", placeholder: "HTA, DM2, asma, tuberculosis, cirugías previas..." },
+  { id: "personales_quirurgicos", label: "Personales quirúrgicos", placeholder: "Apendicectomía 2005, cesárea 2010..." },
+  { id: "personales_toxicologicos", label: "Tóxicos", placeholder: "Tabaco, alcohol, drogas..." },
+  { id: "ginecoobstetricos",      label: "Gineco-obstétricos",     placeholder: "Menarquia, FUM, gestas, partos, cesáreas, métodos anticonceptivos..." },
+  { id: "familiares",             label: "Familiares",             placeholder: "Madre DM2, padre HTA, hermano cardiopatía..." },
+  { id: "socioeconomicos",        label: "Socioeconómicos",        placeholder: "Ocupación, escolaridad, vivienda, servicios básicos..." }
+];
+
+const CONSULTA_EXAMEN_FISICO = [
+  { id: "general",           label: "Aspecto general",       placeholder: "Consciente, orientado, hidratado, palidez, ictericia..." },
+  { id: "cabeza_cuello",     label: "Cabeza y cuello",       placeholder: "Normocéfalo, no adenopatías, tiroides, mucosas..." },
+  { id: "torax_pulmones",    label: "Tórax — Pulmones",      placeholder: "Murmullo vesicular, ruidos agregados, expansión..." },
+  { id: "torax_corazon",     label: "Tórax — Corazón",       placeholder: "Ruidos rítmicos, soplos, ingurgitación yugular..." },
+  { id: "abdomen",           label: "Abdomen",               placeholder: "Blando, depresible, doloroso, RHA, masas, hepatomegalia..." },
+  { id: "extremidades",      label: "Extremidades",          placeholder: "Sin edema, pulsos presentes, reflejos..." },
+  { id: "neurologico",       label: "Neurológico",           placeholder: "Vigil, orientado, no focalización, Glasgow..." },
+  { id: "piel",              label: "Piel y anexos",         placeholder: "Sin lesiones, hidratación, llenado capilar..." }
+];
+
+const CONSULTA_VITALES = [
+  { id: "ta_sistolica",   label: "TA sistólica", unidad: "mmHg", tipo: "number" },
+  { id: "ta_diastolica",  label: "TA diastólica", unidad: "mmHg", tipo: "number" },
+  { id: "fc",             label: "FC",           unidad: "lpm",  tipo: "number" },
+  { id: "fr",             label: "FR",           unidad: "rpm",  tipo: "number" },
+  { id: "temperatura",    label: "Temperatura",  unidad: "°C",   tipo: "number", paso: 0.1 },
+  { id: "sato2",          label: "SatO2",        unidad: "%",    tipo: "number" },
+  { id: "peso_kg",        label: "Peso",         unidad: "kg",   tipo: "number", paso: 0.1 },
+  { id: "talla_cm",       label: "Talla",        unidad: "cm",   tipo: "number", paso: 0.1 },
+  { id: "imc_calc",       label: "IMC (auto)",   unidad: "kg/m²", tipo: "calculated" }
+];
+
+const COMPLEJIDAD_NIVELES = {
+  basica:      { codigo: "C1", nombre: "Básica",        descripcion: "Motivo único, sin comorbilidades",   duracion_min: 15 },
+  intermedia:  { codigo: "C2", nombre: "Intermedia",    descripcion: "1-2 diagnósticos, manejo ambulatorio", duracion_min: 30 },
+  alta:        { codigo: "C3", nombre: "Alta",          descripcion: "Múltiples comorbilidades, integrado", duracion_min: 45 },
+  critica:     { codigo: "C4", nombre: "Crítica / Urgencia", descripcion: "Riesgo vital, derivación urgente", duracion_min: 60 }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   ESTADO GLOBAL DEL MÓDULO
+   ═══════════════════════════════════════════════════════════ */
+
+window._consultaState = {
+  paciente:        null,     // objeto patients completo
+  tipoConsulta:    null,     // primera_vez | subsecuente | control | urgencia
+  paso:            1,        // 1-7
+  consultaId:      null,     // UUID si se está editando un borrador
+  caseId:          null,     // CONS-YYYYMMDD-NNNN
+  contextoCargado: false,    // si ya se cargó historial del paciente
+  iaRespuesta:     null,     // texto narrativo de la IA
+  iaJSON:          null,     // JSON estructurado de la IA
+  farmacologico:   [],
+  noFarmacologico: [],
+  ordenesLab:      [],
+  ordenesImagen:   [],
+  referencias:     [],
+  diagnosticos:    [],
+  complejidadCalculada: null,
+  complejidadFinal:     null,
+  docsGenerados:   null
+};
+
+let _consultaBuscadorTimer = null;
+
+console.log("[Consulta] Módulo cargado — constantes y estado global");
+</script>
+<script>
+"use strict";
+
+/* ═══════════════════════════════════════════════════════════
+   INICIALIZACIÓN
+   ═══════════════════════════════════════════════════════════ */
+
+window.consultaInit = function() {
+  console.log("[Consulta] Init");
+  const s = window._consultaState;
+  
+  // Reset suave si ya hay una consulta en curso
+  if (s.paciente && !s.docsGenerados) {
+    mostrarPaso(s.paso);
+    return;
+  }
+  
+  // Si ya generó documentos, no reiniciar hasta "Nueva consulta"
+  if (s.docsGenerados) return;
+  
+  // Estado limpio
+  consultaReset();
+};
+
+function mostrarPaso(n) {
+  const s = window._consultaState;
+  s.paso = n;
+  const pasos = [
+    "consulta-paciente-card",
+    "consulta-tipo-card",
+    "consulta-subjetivo-card",
+    "consulta-objetivo-card",
+    "consulta-analisis-card",
+    "consulta-plan-card",
+    "consulta-cierre-card"
+  ];
+  pasos.forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = (i + 1 === n) ? "block" : "none";
+  });
+  const dc = document.getElementById("consulta-documentos-card");
+  if (dc) dc.style.display = "none";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+window.consultaReset = function() {
+  const s = window._consultaState;
+  s.paciente = null;
+  s.tipoConsulta = null;
+  s.paso = 1;
+  s.consultaId = null;
+  s.caseId = null;
+  s.contextoCargado = false;
+  s.iaRespuesta = null;
+  s.iaJSON = null;
+  s.farmacologico = [];
+  s.noFarmacologico = [];
+  s.ordenesLab = [];
+  s.ordenesImagen = [];
+  s.referencias = [];
+  s.diagnosticos = [];
+  s.complejidadCalculada = null;
+  s.complejidadFinal = null;
+  s.docsGenerados = null;
+  
+  // Limpiar campos
+  ["consulta-buscador", "cons-motivo", "cons-enfermedad-actual", "cons-eva", "cons-evolucion",
+   "cons-alergias", "cons-medicamentos", "cons-habito-tabaco", "cons-habito-alcohol",
+   "cons-habito-ejercicio", "cons-habito-sueno", "cons-labs-raw", "cons-otros-estudios",
+   "cons-impresion-final", "cons-educacion", "cons-proxima-cita-dias",
+   "cons-medico-nombre", "cons-medico-csspm", "cons-medico-especialidad"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  
+  const niveles = ["cons-labs-fecha"];
+  niveles.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  
+  const lf = document.getElementById("cons-labs-fecha");
+  if (lf) lf.value = new Date().toISOString().slice(0, 10);
+  
+  ["cons-firma-check"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.checked = false;
+  });
+  
+  const fe = document.getElementById("consulta-ia-resultado");
+  if (fe) fe.style.display = "none";
+  const feE = document.getElementById("consulta-ia-error");
+  if (feE) feE.style.display = "none";
+  
+  // Limpiar contenedores dinámicos
+  ["consulta-resultados", "consulta-contexto-clinico", "consulta-rev-sistemas",
+   "consulta-antecedentes", "consulta-vitales", "consulta-examen-fisico",
+   "consulta-labs", "consulta-diagnosticos", "consulta-farmacologico",
+   "consulta-no-farmacologico", "consulta-ordenes-lab", "consulta-ordenes-imagen",
+   "consulta-referencias", "consulta-complejidad-card", "consulta-resumen-cierre",
+   "consulta-documentos-botones", "consulta-reporte-container"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = "";
+  });
+  
+  mostrarPaso(1);
+  console.log("[Consulta] Estado reseteado");
+};
+
+/* ═══════════════════════════════════════════════════════════
+   PASO 1 — BÚSQUEDA DE PACIENTE
+   ═══════════════════════════════════════════════════════════ */
+
+window.buscarPacienteConsulta = function(query) {
+  clearTimeout(_consultaBuscadorTimer);
+  const resultados = document.getElementById("consulta-resultados");
+  
+  if (!query || query.trim().length < 2) {
+    if (resultados) resultados.style.display = "none";
+    return;
+  }
+  
+  _consultaBuscadorTimer = setTimeout(async () => {
+    if (!window.supabaseClient) {
+      showStatus("Sin conexión a Supabase", "error");
+      return;
+    }
+    try {
+      const { data, error } = await window.supabaseClient
+        .rpc("buscar_pacientes", { query: query.trim() });
+      
+      if (error) throw error;
+      
+      const lista = document.getElementById("consulta-resultados-lista");
+      if (!lista) return;
+      
+      if (!data || data.length === 0) {
+        lista.innerHTML = `
+          <div style="padding:14px;text-align:center;background:var(--bg-secondary);border-radius:8px">
+            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">
+              No se encontró ningún paciente con "${escapeHtml(query)}"
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="cambiarTab('captura')">
+              Ir a Captura para registrar nuevo paciente
+            </button>
+          </div>
+        `;
+        if (resultados) resultados.style.display = "block";
+        return;
+      }
+      
+      lista.innerHTML = data.map(p => {
+        const edad = p.edad || "—";
+        const nTam = p.n_tamizajes || 0;
+        const nCons = p.n_consultas || 0;
+        const historial = [];
+        if (nTam > 0) historial.push(nTam + " tamizaje" + (nTam !== 1 ? "s" : ""));
+        if (nCons > 0) historial.push(nCons + " consulta" + (nCons !== 1 ? "s" : ""));
+        const histTxt = historial.length ? historial.join(" · ") : "Sin historial";
+        
+        return `
+          <div class="consulta-paciente-card-result" onclick="seleccionarPacienteConsulta('${p.subject_id}')">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:700;color:var(--corp);margin-bottom:2px">
+                  ${escapeHtml(p.nombre)}
+                </div>
+                <div style="font-size:10px;color:var(--text-secondary);font-family:var(--font-mono)">
+                  ${escapeHtml(p.subject_id)}
+                </div>
+                <div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">
+                  ${edad} años · ${escapeHtml(p.sexo || "—")}${p.dui ? " · DUI " + escapeHtml(p.dui) : ""}
+                </div>
+                <div style="font-size:10px;color:var(--accent);margin-top:2px;font-weight:600">
+                  ${histTxt}
+                </div>
+              </div>
+              <button class="btn btn-primary btn-xs">Usar →</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+      
+      if (resultados) resultados.style.display = "block";
+    } catch (e) {
+      console.error("[buscarPacienteConsulta]", e);
+      showStatus("Error al buscar: " + e.message, "error");
+    }
+  }, 350);
+};
+
+window.seleccionarPacienteConsulta = async function(subjectId) {
+  if (!window.supabaseClient) return;
+  
+  showStatus("Cargando paciente...", "info");
+  try {
+    const { data, error } = await window.supabaseClient
+      .from("patients")
+      .select("*")
+      .eq("subject_id", subjectId)
+      .single();
+    
+    if (error || !data) throw new Error("Paciente no encontrado");
+    
+    const s = window._consultaState;
+    s.paciente = data;
+    
+    // Guardar también en el global del sistema principal por si se usa
+    if (typeof _pacienteActual !== "undefined") {
+      window._pacienteActual = data;
+    }
+    
+    // Renderizar info del paciente
+    renderInfoPacienteConsulta(data);
+    
+    // Cargar contexto clínico (historial)
+    await cargarContextoClinico(data.subject_id);
+    
+    // Mostrar paso 2
+    mostrarPaso(2);
+    
+    showStatus("Paciente cargado", "success");
+  } catch (e) {
+    console.error("[seleccionarPacienteConsulta]", e);
+    showStatus("Error: " + e.message, "error");
+  }
+};
+
+function renderInfoPacienteConsulta(p) {
+  const cont = document.getElementById("consulta-paciente-info");
+  if (!cont) return;
+  
+  const edad = p.edad || "—";
+  const sexo = p.sexo || "—";
+  const empresa = p.empresa && p.empresa !== "N/E" ? p.empresa : "Sin empresa";
+  const zona = [p.departamento, p.municipio].filter(x => x).join(", ") || "—";
+  
+  cont.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:15px;font-weight:800;color:var(--corp);margin-bottom:3px">
+          ${escapeHtml(p.nombre)}
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);font-family:var(--font-mono)">
+          ${escapeHtml(p.subject_id)}
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">
+          ${edad} años · ${sexo}${p.dui ? " · DUI " + escapeHtml(p.dui) : ""}
+        </div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:var(--text-secondary)">
+        <div>${escapeHtml(empresa)}</div>
+        <div style="margin-top:2px">${escapeHtml(zona)}</div>
+      </div>
+    </div>
+  `;
+}
+
+async function cargarContextoClinico(subjectId) {
+  const s = window._consultaState;
+  if (s.contextoCargado) return;
+  
+  try {
+    // Paralelizar las 4 queries
+    const [problemas, alergias, medicamentos, stats] = await Promise.all([
+      window.supabaseClient.from("problemas_activos")
+        .select("*").eq("subject_id", subjectId)
+        .in("estado", ["activo", "cronico", "en_estudio"])
+        .order("fecha_inicio", { ascending: false })
+        .then(r => r.data || []),
+      window.supabaseClient.from("alergias")
+        .select("*").eq("subject_id", subjectId).eq("activa", true)
+        .then(r => r.data || []),
+      window.supabaseClient.from("medicamentos_cronicos")
+        .select("*").eq("subject_id", subjectId).eq("activo", true)
+        .then(r => r.data || []),
+      window.supabaseClient.rpc("estadisticas_paciente", { p_subject_id: subjectId })
+        .then(r => r.data || {})
+    ]);
+    
+    const cont = document.getElementById("consulta-contexto-clinico");
+    if (!cont) return;
+    
+    const tieneContexto = problemas.length > 0 || alergias.length > 0 || 
+                          medicamentos.length > 0 || (stats.tamizajes_total || 0) > 0 ||
+                          (stats.consultas_total || 0) > 0;
+    
+    if (!tieneContexto) {
+      cont.style.display = "none";
+      s.contextoCargado = true;
+      return;
+    }
+    
+    let html = `<div style="font-size:12px;font-weight:700;color:var(--corp);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📋 Contexto clínico del paciente</div>`;
+    
+    // Estadísticas
+    if (stats.tamizajes_total || stats.consultas_total) {
+      html += `
+        <div class="consulta-contexto-card">
+          <h5>📊 Historial</h5>
+          <div class="ctx-item">
+            <strong>${stats.tamizajes_total || 0}</strong> tamizajes · 
+            <strong>${stats.consultas_total || 0}</strong> consultas previas
+          </div>
+          ${stats.consultas_ultima ? `<div class="ctx-item">Última consulta: ${new Date(stats.consultas_ultima).toLocaleDateString("es-ES")}</div>` : ""}
+        </div>
+      `;
+    }
+    
+    // Alergias
+    if (alergias.length > 0) {
+      html += `
+        <div class="consulta-contexto-card" style="background:#fff3f3;border-color:var(--danger)">
+          <h5 style="color:var(--danger)">⚠️ Alergias activas (${alergias.length})</h5>
+          ${alergias.map(a => `
+            <div class="ctx-item">
+              <strong>${escapeHtml(a.tipo)}:</strong> ${escapeHtml(a.descripcion)}
+              ${a.severidad ? ` <span style="color:var(--danger);font-weight:700">(${escapeHtml(a.severidad)})</span>` : ""}
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+    
+    // Problemas activos
+    if (problemas.length > 0) {
+      html += `
+        <div class="consulta-contexto-card">
+          <h5>🎯 Problemas activos (${problemas.length})</h5>
+          ${problemas.slice(0, 8).map(p => `
+            <div class="ctx-item">
+              ${p.cie10 ? `<code style="font-size:10px;background:var(--bg-secondary);padding:1px 4px;border-radius:3px">${escapeHtml(p.cie10)}</code> ` : ""}
+              <strong>${escapeHtml(p.descripcion)}</strong>
+              <span style="font-size:10px;color:var(--text-tertiary)"> · ${escapeHtml(p.estado)}</span>
+            </div>
+          `).join("")}
+          ${problemas.length > 8 ? `<div class="ctx-item" style="text-align:center;color:var(--text-tertiary)">+${problemas.length - 8} más</div>` : ""}
+        </div>
+      `;
+    }
+    
+    // Medicamentos crónicos
+    if (medicamentos.length > 0) {
+      html += `
+        <div class="consulta-contexto-card">
+          <h5>💊 Medicamentos crónicos (${medicamentos.length})</h5>
+          ${medicamentos.map(m => `
+            <div class="ctx-item">
+              <strong>${escapeHtml(m.farmaco)}</strong>
+              ${m.dosis ? ` ${escapeHtml(m.dosis)}` : ""}
+              ${m.frecuencia ? ` · ${escapeHtml(m.frecuencia)}` : ""}
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+    
+    cont.innerHTML = html;
+    cont.style.display = "block";
+    
+    // Guardar en el estado
+    s.problemasActivos = problemas;
+    s.alergias = alergias;
+    s.medicamentosCronicos = medicamentos;
+    s.contextoCargado = true;
+    
+    // Pre-llenar campos de alergias/medicamentos en el formulario
+    if (alergias.length > 0 && !document.getElementById("cons-alergias").value) {
+      document.getElementById("cons-alergias").value = alergias
+        .map(a => `${a.tipo}: ${a.descripcion}${a.severidad ? " (" + a.severidad + ")" : ""}`)
+        .join("\n");
+    }
+    if (medicamentos.length > 0 && !document.getElementById("cons-medicamentos").value) {
+      document.getElementById("cons-medicamentos").value = medicamentos
+        .map(m => `${m.farmaco} ${m.dosis || ""} ${m.frecuencia || ""}`.trim())
+        .join("\n");
+    }
+  } catch (e) {
+    console.error("[cargarContextoClinico]", e);
+    s.contextoCargado = true;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PASO 2 — TIPO DE CONSULTA
+   ═══════════════════════════════════════════════════════════ */
+
+window.seleccionarTipoConsulta = function(tipo) {
+  const s = window._consultaState;
+  s.tipoConsulta = tipo;
+  
+  document.querySelectorAll("#consulta-tipo-card .estudio-card").forEach(c => {
+    c.classList.remove("active");
+    if (c.dataset.tipo === tipo) c.classList.add("active");
+  });
+  
+  // Renderizar formularios de los siguientes pasos
+  renderRevSistemas();
+  renderAntecedentes();
+  renderVitales();
+  renderExamenFisico();
+  renderLabsConsulta();
+  
+  // Pre-llenar motivo si es subsecuente/control
+  if ((tipo === "subsecuente" || tipo === "control") && s.problemasActivos?.length > 0) {
+    const motivo = document.getElementById("cons-motivo");
+    if (motivo && !motivo.value) {
+      motivo.placeholder = `Ej: Control de ${s.problemasActivos[0].descripcion}`;
+    }
+  }
+  
+  setTimeout(() => mostrarPaso(3), 200);
+  showStatus("Tipo: " + tipo.replace("_", " "), "success");
+};
+
+/* ═══════════════════════════════════════════════════════════
+   PASO 3 — SUBJETIVO
+   ═══════════════════════════════════════════════════════════ */
+
+function renderRevSistemas() {
+  const c = document.getElementById("consulta-rev-sistemas");
+  if (!c) return;
+  c.innerHTML = CONSULTA_SISTEMAS.map(sys => `
+    <div class="consulta-sistema-item">
+      <label>${sys.label}</label>
+      <input type="text" id="cons-sys-${sys.id}" placeholder="${sys.placeholder}">
+    </div>
+  `).join("");
+}
+
+function renderAntecedentes() {
+  const c = document.getElementById("consulta-antecedentes");
+  if (!c) return;
+  c.innerHTML = CONSULTA_ANTECEDENTES.map(a => `
+    <div class="consulta-antecedente-item">
+      <label>${a.label}</label>
+      <input type="text" id="cons-ant-${a.id}" placeholder="${a.placeholder}">
+    </div>
+  `).join("");
+}
+
+window.consultaIrAObjetivo = function() {
+  const motivo = document.getElementById("cons-motivo")?.value.trim();
+  if (!motivo) {
+    showStatus("El motivo de consulta es obligatorio", "error");
+    document.getElementById("cons-motivo")?.focus();
+    return;
+  }
+  mostrarPaso(4);
+};
+
+window.consultaVolverASubjetivo = function() {
+  mostrarPaso(3);
+};
+
+/* ═══════════════════════════════════════════════════════════
+   PASO 4 — OBJETIVO
+   ═══════════════════════════════════════════════════════════ */
+
+function renderVitales() {
+  const c = document.getElementById("consulta-vitales");
+  if (!c) return;
+  
+  let html = '<div class="lab-grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">';
+  CONSULTA_VITALES.forEach(v => {
+    if (v.tipo === "calculated") {
+      html += `
+        <div class="lab-input calculated">
+          <label>${v.label}</label>
+          <input type="text" id="cons-vit-${v.id}" readonly>
+          <span class="unit">${v.unidad}</span>
+        </div>
+      `;
+    } else {
+      const paso = v.paso !== undefined ? `step="${v.paso}"` : "";
+      html += `
+        <div class="lab-input">
+          <label>${v.label}</label>
+          <input type="number" id="cons-vit-${v.id}" ${paso}>
+          <span class="unit">${v.unidad}</span>
+        </div>
+      `;
+    }
+  });
+  html += '</div>';
+  c.innerHTML = html;
+  
+  // Listener para recalcular IMC
+  ["cons-vit-peso_kg", "cons-vit-talla_cm"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", calcularIMCConsulta);
+  });
+}
+
+function calcularIMCConsulta() {
+  const peso = parseFloat(document.getElementById("cons-vit-peso_kg")?.value);
+  const talla = parseFloat(document.getElementById("cons-vit-talla_cm")?.value);
+  const imc = document.getElementById("cons-vit-imc_calc");
+  if (!imc) return;
+  if (peso > 0 && talla > 0) {
+    imc.value = (peso / Math.pow(talla / 100, 2)).toFixed(1);
+  } else {
+    imc.value = "";
+  }
+}
+
+function renderExamenFisico() {
+  const c = document.getElementById("consulta-examen-fisico");
+  if (!c) return;
+  c.innerHTML = CONSULTA_EXAMEN_FISICO.map(e => `
+    <div class="consulta-examen-item">
+      <label>${e.label}</label>
+      <input type="text" id="cons-ef-${e.id}" placeholder="${e.placeholder}">
+    </div>
+  `).join("");
+}
+
+function renderLabsConsulta() {
+  const c = document.getElementById("consulta-labs");
+  if (!c) return;
+  
+  // Reutilizar LABS_REGISTRY del sistema principal
+  if (typeof LABS_REGISTRY === "undefined") {
+    c.innerHTML = '<div class="empty-state"><div class="icon">🔬</div><p>Registro de labs no disponible</p></div>';
+    return;
+  }
+  
+  const labs = LABS_REGISTRY._items.filter(l => !l._oculto);
+  const grupos = {};
+  labs.forEach(l => {
+    const g = l.grupo || "Otros";
+    if (!grupos[g]) grupos[g] = { icono: l.grupoIcono || "🔬", items: [] };
+    grupos[g].items.push(l);
+  });
+  
+  let html = "";
+  Object.entries(grupos).forEach(([nombre, data]) => {
+    html += `
+      <div style="margin-top:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">
+          ${data.icono} ${nombre}
+        </div>
+        <div class="lab-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+          ${data.items.map(l => {
+            const calc = l.tipo === "calculada" || l.readonly;
+            return `
+              <div class="lab-input ${calc ? "calculated" : ""}">
+                <label>${escapeHtml(l.nombre)}</label>
+                <input type="number" id="cons-${l.id}" ${calc ? "readonly" : ""}>
+                ${l.unidad ? `<span class="unit">${escapeHtml(l.unidad)}</span>` : ""}
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  });
+  
+  c.innerHTML = html || '<div class="empty-state"><div class="icon">🔬</div><p>Sin laboratorios configurados</p></div>';
+  
+  // Listener de parseo
+  const btn = document.getElementById("btn-cons-parse-labs");
+  if (btn) {
+    btn.addEventListener("click", parsearLabsConsulta);
+  }
+}
+
+async function parsearLabsConsulta() {
+  const raw = document.getElementById("cons-labs-raw")?.value.trim();
+  if (!raw) {
+    showStatus("Pega primero el reporte del laboratorio", "error");
+    return;
+  }
+  
+  const btn = document.getElementById("btn-cons-parse-labs");
+  const original = btn ? btn.textContent : "Parsear con IA";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Parseando...';
+  }
+  
+  try {
+    // Reutilizar el parser del sistema principal moviendo el texto al textarea original
+    const rawTamizaje = document.getElementById("labs-raw");
+    if (rawTamizaje) rawTamizaje.value = raw;
+    
+    if (typeof window.parsearLabsConIA === "function") {
+      await window.parsearLabsConIA();
+    }
+    
+    // Copiar valores parseados de los IDs del tamizaje a los IDs de consulta
+    let copiados = 0;
+    if (typeof LABS_REGISTRY !== "undefined") {
+      LABS_REGISTRY._items.forEach(l => {
+        const src = document.getElementById(l.id);
+        const dst = document.getElementById("cons-" + l.id);
+        if (src && dst && src.value) {
+          dst.value = src.value;
+          copiados++;
+        }
+      });
+    }
+    
+    showStatus(`✓ ${copiados} campos copiados`, "success");
+  } catch (e) {
+    console.error("[parsearLabsConsulta]", e);
+    showStatus("Error al parsear: " + e.message, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+}
+
+window.consultaIrAAnalisis = function() {
+  mostrarPaso(5);
+};
+
+window.consultaVolverAObjetivo = function() {
+  mostrarPaso(4);
+};
+
+console.log("[Consulta] Navegación y formularios cargados");
+</script>
+<script>
+"use strict";
+
+/* ═══════════════════════════════════════════════════════════
+   PASO 5 — ANÁLISIS (con IA)
+   ═══════════════════════════════════════════════════════════ */
+
+window.ejecutarAnalisisConsulta = async function() {
+  const s = window._consultaState;
+  if (!s.paciente) { showStatus("Falta paciente", "error"); return; }
+  if (!s.tipoConsulta) { showStatus("Falta tipo de consulta", "error"); return; }
+  
+  const btn = document.getElementById("btn-cons-ia");
+  const original = btn ? btn.textContent : "Ejecutar análisis con IA";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Analizando con IA...';
+  }
+  
+  const errCard = document.getElementById("consulta-ia-error");
+  const resCard = document.getElementById("consulta-ia-resultado");
+  if (errCard) errCard.style.display = "none";
+  if (resCard) resCard.style.display = "none";
+  
+  try {
+    const prompt = construirPromptConsulta();
+    const respuesta = await llamarKimiConsulta(prompt);
+    
+    // Separar narrativa y JSON
+    const narrativa = separarNarrativaConsulta(respuesta);
+    const json = extraerJSONConsulta(respuesta);
+    
+    s.iaRespuesta = narrativa;
+    s.iaJSON = json;
+    
+    // Renderizar narrativa
+    const contNarr = document.getElementById("cons-ia-narrativa");
+    if (contNarr) contNarr.textContent = narrativa;
+    if (resCard) resCard.style.display = "block";
+    
+    // Auto-poblar desde el JSON
+    if (json) {
+      autoPoblarDesdeJSON(json);
+    }
+    
+    // Si no hay diagnósticos, añadir uno vacío
+    if (s.diagnosticos.length === 0) {
+      agregarDiagnostico();
+    }
+    
+    showStatus("✓ Análisis completado", "success");
+  } catch (e) {
+    console.error("[ejecutarAnalisisConsulta]", e);
+    if (errCard) {
+      errCard.innerHTML = `
+        <div style="background:#fff3f3;border-left:4px solid var(--danger);border-radius:0 6px 6px 0;padding:12px">
+          <p style="font-size:12px;color:#7a1a1a;margin-bottom:8px"><strong>Error:</strong> ${escapeHtml(e.message)}</p>
+          <button class="btn btn-warning btn-sm" onclick="ejecutarAnalisisConsulta()">🔄 Reintentar</button>
+        </div>
+      `;
+      errCard.style.display = "block";
+    }
+    showStatus("Error: " + e.message, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+};
+
+function construirPromptConsulta() {
+  const s = window._consultaState;
+  const p = s.paciente;
+  
+  // Recolectar S
+  const motivo = document.getElementById("cons-motivo")?.value.trim() || "No especificado";
+  const enfermedadActual = document.getElementById("cons-enfermedad-actual")?.value.trim() || "No especificado";
+  const eva = document.getElementById("cons-eva")?.value || "";
+  const evolucion = document.getElementById("cons-evolucion")?.value.trim() || "";
+  const revSistemas = CONSULTA_SISTEMAS
+    .map(sys => ({ label: sys.label, val: document.getElementById("cons-sys-" + sys.id)?.value.trim() }))
+    .filter(x => x.val)
+    .map(x => `${x.label}: ${x.val}`)
+    .join("\n") || "Sin hallazgos";
+  const antecedentes = CONSULTA_ANTECEDENTES
+    .map(a => ({ label: a.label, val: document.getElementById("cons-ant-" + a.id)?.value.trim() }))
+    .filter(x => x.val)
+    .map(x => `${x.label}: ${x.val}`)
+    .join("\n") || "Sin antecedentes relevantes";
+  const alergias = document.getElementById("cons-alergias")?.value.trim() || "Ninguna conocida";
+  const medicamentos = document.getElementById("cons-medicamentos")?.value.trim() || "Ninguno";
+  const habitos = [
+    document.getElementById("cons-habito-tabaco")?.value.trim(),
+    document.getElementById("cons-habito-alcohol")?.value.trim(),
+    document.getElementById("cons-habito-ejercicio")?.value.trim(),
+    document.getElementById("cons-habito-sueno")?.value.trim()
+  ].filter(x => x).join(" | ") || "No especificados";
+  
+  // Recolectar O
+  const vitales = CONSULTA_VITALES
+    .filter(v => v.tipo !== "calculated")
+    .map(v => ({ label: v.label, val: document.getElementById("cons-vit-" + v.id)?.value }))
+    .filter(x => x.val)
+    .map(x => `${x.label}: ${x.val}`)
+    .join(", ") || "No registrados";
+  const imc = document.getElementById("cons-vit-imc_calc")?.value || "";
+  const examenFisico = CONSULTA_EXAMEN_FISICO
+    .map(e => ({ label: e.label, val: document.getElementById("cons-ef-" + e.id)?.value.trim() }))
+    .filter(x => x.val)
+    .map(x => `${x.label}: ${x.val}`)
+    .join("\n") || "Sin hallazgos anormales";
+  
+  // Labs
+  const labs = {};
+  if (typeof LABS_REGISTRY !== "undefined") {
+    LABS_REGISTRY._items.forEach(l => {
+      const el = document.getElementById("cons-" + l.id);
+      if (el && el.value) {
+        const key = l.id.replace(/^lab-/, "").replace(/-/g, "_");
+        labs[key] = parseFloat(el.value) || el.value;
+      }
+    });
+  }
+  const otrosEstudios = document.getElementById("cons-otros-estudios")?.value.trim() || "Ninguno";
+  
+  // Contexto previo
+  const problemasActivos = (s.problemasActivos || []).map(x => `${x.cie10 || ""} ${x.descripcion}`).join("; ") || "Ninguno";
+  const medsCronicos = (s.medicamentosCronicos || []).map(x => `${x.farmaco} ${x.dosis || ""} ${x.frecuencia || ""}`.trim()).join("; ") || "Ninguno";
+  
+  return `Actúa como médico internista con 15 años de experiencia en consulta externa y atención primaria. Tu rol es APOYAR al médico tratante con análisis diagnóstico, NO reemplazarlo.
+
+CONTEXTO DE LA CONSULTA:
+- Tipo: ${s.tipoConsulta}
+- Fecha: ${new Date().toLocaleDateString("es-ES")}
+
+DATOS DEL PACIENTE:
+- Nombre: ${p.nombre}
+- ID: ${p.subject_id}
+- Edad: ${p.edad} años
+- Sexo: ${p.sexo}
+- Departamento: ${p.departamento || "—"}, ${p.municipio || ""}
+- Empresa: ${p.empresa || "Sin empresa"}
+
+ANTECEDENTES PREVIOS (del sistema):
+- Problemas activos: ${problemasActivos}
+- Medicamentos crónicos: ${medsCronicos}
+
+SUBJETIVO:
+Motivo de consulta: ${motivo}
+Enfermedad actual: ${enfermedadActual}
+${eva ? `Intensidad EVA: ${eva}/10` : ""}
+${evolucion ? `Evolución: ${evolucion}` : ""}
+
+Revisión por sistemas:
+${revSistemas}
+
+Antecedentes:
+${antecedentes}
+
+Alergias: ${alergias}
+Medicamentos: ${medicamentos}
+Hábitos: ${habitos}
+
+OBJETIVO:
+Signos vitales: ${vitales}
+${imc ? `IMC: ${imc} kg/m²` : ""}
+
+Examen físico:
+${examenFisico}
+
+Laboratorios: ${JSON.stringify(labs, null, 2)}
+Otros estudios: ${otrosEstudios}
+
+INSTRUCCIONES:
+1. Genera una IMPRESIÓN CLÍNICA integrando S + O.
+2. Propón DIAGNÓSTICOS DIFERENCIALES con código CIE-10 y probabilidad estimada.
+3. Sugiere ESTUDIOS COMPLEMENTARIOS si son necesarios.
+4. Propón un PLAN TERAPÉUTICO inicial (farmacológico y no farmacológico).
+5. Identifica BANDERAS ROJAS que requieran derivación urgente.
+6. Verifica INTERACCIONES medicamentosas con los crónicos.
+7. Sé conservador: si no hay certeza, dilo.
+
+FORMATO DE RESPUESTA:
+BLOQUE 1: NARRATIVA CLÍNICA
+1. IMPRESIÓN CLÍNICA
+2. DIAGNÓSTICOS DIFERENCIALES
+3. ESTUDIOS COMPLEMENTARIOS SUGERIDOS
+4. PLAN TERAPÉUTICO SUGERIDO
+5. BANDERAS ROJAS
+6. INTERACCIONES MEDICAMENTOSAS
+7. REFERENCIAS Y GUÍAS
+
+BLOQUE 2: JSON ESTRUCTURADO (obligatorio)
+===JSON_ESTRUCTURADO===
+{
+  "impresion_clinica": "...",
+  "diagnosticos": [
+    { "cie10": "K29.7", "descripcion": "Gastritis", "tipo": "principal", "certeza": "clinico", "prob": 0.7 }
+  ],
+  "diagnostico_diferencial": [
+    { "cie10": "K27.9", "descripcion": "Úlcera péptica", "prob": 0.25, "justificacion": "..." }
+  ],
+  "estudios_sugeridos": [
+    { "tipo": "lab", "estudio": "Helicobacter pylori", "motivo": "..." }
+  ],
+  "plan_farmacologico": [
+    { "farmaco": "Omeprazol", "dosis": "20mg", "via": "oral", "frecuencia": "cada 24h", "duracion": "14 días", "indicacion": "Gastritis", "nivel_evidencia": "A", "guia": "ACG 2025" }
+  ],
+  "plan_no_farmacologico": [
+    { "categoria": "nutricion", "intervencion": "Dieta blanda", "meta": "..." }
+  ],
+  "ordenes_laboratorio": [
+    { "estudio": "Hemograma", "plazo_dias": 0, "urgente": false }
+  ],
+  "ordenes_imagen": [
+    { "estudio": "US abdominal", "plazo_dias": 30, "urgente": false }
+  ],
+  "referencias": [
+    { "especialidad": "Gastroenterología", "prioridad": "media", "motivo": "...", "plazo_dias": 30 }
+  ],
+  "educacion_paciente": ["...", "..."],
+  "seguimiento": {
+    "proxima_cita_dias": 30,
+    "proxima_cita_tipo": "control",
+    "metricas_monitorear": ["peso_kg"]
+  },
+  "banderas_rojas": [],
+  "interacciones_medicamentosas": [
+    { "farmaco_a": "...", "farmaco_b": "...", "severidad": "moderada", "descripcion": "..." }
+  ],
+  "nivel_riesgo": "MODERADO",
+  "complejidad_sugerida": "intermedia",
+  "referencias_bibliograficas": ["ACG 2025", "ADA 2026"]
+}
+===FIN_JSON===
+
+REGLAS ANTI-MARKDOWN:
+- NO uses asteriscos, ni dobles asteriscos, ni guiones bajos.
+- Para enumerar usa "1.", "2.".
+- Títulos en MAYÚSCULAS sin símbolos.
+
+REGLAS ORTOGRÁFICAS OBLIGATORIAS:
+- TODAS las palabras en español deben llevar tilde y eñe.
+- NUNCA reemplaces ñ por n: riñón, tamaño, año, niño, señal, muñeca, pequeño, dueño, España, compañía, montaña, campaña, sueño.
+- Tildes en -ción, -sión: hipertensión, diagnóstico, evaluación, presión, función, medicación, duración, validación, derivación, nutrición.`;
+}
+
+async function llamarKimiConsulta(prompt) {
+  if (typeof WORKER_URL === "undefined") {
+    throw new Error("WORKER_URL no definido");
+  }
+  const proxyUrl = `${WORKER_URL}/proxy-kimi`;
+  const model = document.getElementById("kimi-model")?.value || "kimi-k2-5";
+  
+  const ctrl = new AbortController();
+  let inactivityTimer = setTimeout(() => ctrl.abort(), 90000);
+  const resetInactivity = () => {
+    clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(() => ctrl.abort(), 90000);
+  };
+  
+  let resp;
+  try {
+    resp = await fetch(proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+        max_tokens: 16000,
+        reasoning_effort: "low"
+      }),
+      signal: ctrl.signal
+    });
+  } catch (e) {
+    clearTimeout(inactivityTimer);
+    if (e.name === "AbortError") throw new Error("Timeout: 90s sin respuesta");
+    throw e;
+  }
+  
+  if (!resp.ok) {
+    clearTimeout(inactivityTimer);
+    const txt = await resp.text();
+    if (resp.status === 402) throw new Error("Sin saldo en Moonshot");
+    if (resp.status === 429) throw new Error("Rate limit. Espera 1 minuto.");
+    throw new Error("HTTP " + resp.status + ": " + txt.substring(0, 200));
+  }
+  
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let content = "";
+  let buffer = "";
+  
+  while (true) {
+    let chunk;
+    try {
+      chunk = await reader.read();
+    } catch (e) {
+      clearTimeout(inactivityTimer);
+      throw new Error("Error leyendo stream: " + e.message);
+    }
+    if (chunk.done) break;
+    resetInactivity();
+    buffer += decoder.decode(chunk.value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t.startsWith("data:")) continue;
+      const payload = t.slice(5).trim();
+      if (payload === "[DONE]" || !payload) continue;
+      try {
+        const json = JSON.parse(payload);
+        if (json.error) throw new Error("Kimi: " + (json.error.message || JSON.stringify(json.error)));
+        const delta = json.choices?.[0]?.delta?.content;
+        if (delta) content += delta;
+      } catch (e) {
+        if (e.message?.startsWith("Kimi:")) throw e;
+      }
+    }
+  }
+  clearTimeout(inactivityTimer);
+  
+  if (!content || content.trim().length < 50) {
+    throw new Error("Respuesta vacía o muy corta");
+  }
+  return content;
+}
+
+function separarNarrativaConsulta(text) {
+  if (!text) return "";
+  const i = text.indexOf("===JSON_ESTRUCTURADO===");
+  return i >= 0 ? text.substring(0, i).trim() : text.trim();
+}
+
+function extraerJSONConsulta(text) {
+  if (!text) return null;
+  const m = text.match(/===JSON_ESTRUCTURADO===([\s\S]*?)===FIN_JSON===/);
+  if (!m) return null;
+  try {
+    return JSON.parse(m[1].trim());
+  } catch (e) {
+    console.warn("[extraerJSONConsulta] JSON inválido", e);
+    // Intento 2: extraer el primer bloque { ... }
+    const m2 = m[1].match(/\{[\s\S]*\}/);
+    if (m2) {
+      try { return JSON.parse(m2[0]); } catch (e2) { return null; }
+    }
+    return null;
+  }
+}
+
+function autoPoblarDesdeJSON(json) {
+  const s = window._consultaState;
+  
+  // Diagnósticos
+  if (Array.isArray(json.diagnosticos) && json.diagnosticos.length > 0) {
+    s.diagnosticos = json.diagnosticos.map(d => ({
+      cie10: d.cie10 || "",
+      descripcion: d.descripcion || "",
+      tipo: d.tipo || "principal",
+      certeza: d.certeza || "clinico",
+      prob: d.prob || 0
+    }));
+    renderDiagnosticos();
+  }
+  
+  // Plan farmacológico
+  if (Array.isArray(json.plan_farmacologico) && json.plan_farmacologico.length > 0) {
+    s.farmacologico = json.plan_farmacologico.map(f => ({
+      farmaco: f.farmaco || "",
+      presentacion: f.presentacion || "",
+      dosis: f.dosis || "",
+      via: f.via || "",
+      frecuencia: f.frecuencia || "",
+      duracion: f.duracion || "",
+      indicacion: f.indicacion || "",
+      nivel_evidencia: f.nivel_evidencia || "",
+      guia: f.guia || ""
+    }));
+    renderFarmacologicos();
+  }
+  
+  // Plan no farmacológico
+  if (Array.isArray(json.plan_no_farmacologico) && json.plan_no_farmacologico.length > 0) {
+    s.noFarmacologico = json.plan_no_farmacologico.map(n => ({
+      categoria: n.categoria || "otro",
+      intervencion: n.intervencion || "",
+      meta: n.meta || "",
+      responsable: n.responsable || ""
+    }));
+    renderNoFarmacologicos();
+  }
+  
+  // Órdenes de lab
+  if (Array.isArray(json.ordenes_laboratorio) && json.ordenes_laboratorio.length > 0) {
+    s.ordenesLab = json.ordenes_laboratorio.map(o => ({
+      estudio: o.estudio || "",
+      plazo_dias: o.plazo_dias || 0,
+      urgente: !!o.urgente
+    }));
+    renderOrdenesLab();
+  }
+  
+  // Órdenes de imagen
+  if (Array.isArray(json.ordenes_imagen) && json.ordenes_imagen.length > 0) {
+    s.ordenesImagen = json.ordenes_imagen.map(o => ({
+      estudio: o.estudio || "",
+      plazo_dias: o.plazo_dias || 0,
+      urgente: !!o.urgente
+    }));
+    renderOrdenesImagen();
+  }
+  
+  // Referencias
+  if (Array.isArray(json.referencias) && json.referencias.length > 0) {
+    s.referencias = json.referencias.map(r => ({
+      especialidad: r.especialidad || "",
+      prioridad: r.prioridad || "media",
+      motivo: r.motivo || "",
+      plazo_dias: r.plazo_dias || 30
+    }));
+    renderReferencias();
+  }
+  
+  // Educación
+  if (Array.isArray(json.educacion_paciente) && json.educacion_paciente.length > 0) {
+    const ed = document.getElementById("cons-educacion");
+    if (ed && !ed.value) ed.value = json.educacion_paciente.join("\n");
+  }
+  
+  // Impresión clínica
+  if (json.impresion_clinica) {
+    const imp = document.getElementById("cons-impresion-final");
+    if (imp && !imp.value) imp.value = json.impresion_clinica;
+  }
+  
+  // Nivel de riesgo
+  if (json.nivel_riesgo) {
+    const sel = document.getElementById("cons-nivel-riesgo");
+    if (sel) sel.value = json.nivel_riesgo;
+  }
+  
+  // Seguimiento
+  if (json.seguimiento) {
+    if (json.seguimiento.proxima_cita_dias) {
+      const el = document.getElementById("cons-proxima-cita-dias");
+      if (el) el.value = json.seguimiento.proxima_cita_dias;
+    }
+    if (json.seguimiento.proxima_cita_tipo) {
+      const sel = document.getElementById("cons-proxima-cita-tipo");
+      if (sel) sel.value = json.seguimiento.proxima_cita_tipo;
+    }
+  }
+  
+  // Complejidad calculada (guardamos la sugerida por IA)
+  if (json.complejidad_sugerida) {
+    s.complejidadCalculada = json.complejidad_sugerida;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DIAGNÓSTICOS
+   ═══════════════════════════════════════════════════════════ */
+
+function renderDiagnosticos() {
+  const c = document.getElementById("consulta-diagnosticos");
+  if (!c) return;
+  const s = window._consultaState;
+  
+  c.innerHTML = s.diagnosticos.map((d, i) => `
+    <div class="consulta-diagnostico-item">
+      <input type="text" placeholder="CIE-10" value="${escapeHtml(d.cie10)}" 
+             oninput="actualizarDiagnostico(${i}, 'cie10', this.value)">
+      <input type="text" placeholder="Descripción" value="${escapeHtml(d.descripcion)}"
+             oninput="actualizarDiagnostico(${i}, 'descripcion', this.value)">
+      <select onchange="actualizarDiagnostico(${i}, 'tipo', this.value)">
+        <option value="principal" ${d.tipo === "principal" ? "selected" : ""}>Principal</option>
+        <option value="secundario" ${d.tipo === "secundario" ? "selected" : ""}>Secundario</option>
+        <option value="cronico" ${d.tipo === "cronico" ? "selected" : ""}>Crónico</option>
+      </select>
+      <select onchange="actualizarDiagnostico(${i}, 'certeza', this.value)">
+        <option value="clinico" ${d.certeza === "clinico" ? "selected" : ""}>Clínico</option>
+        <option value="laboratorio" ${d.certeza === "laboratorio" ? "selected" : ""}>Laboratorio</option>
+        <option value="imagenologico" ${d.certeza === "imagenologico" ? "selected" : ""}>Imagen</option>
+        <option value="presuntivo" ${d.certeza === "presuntivo" ? "selected" : ""}>Presuntivo</option>
+      </select>
+      <button class="consulta-btn-del" onclick="eliminarDiagnostico(${i})">×</button>
+    </div>
+  `).join("");
+}
+
+window.agregarDiagnostico = function() {
+  const s = window._consultaState;
+  s.diagnosticos.push({ cie10: "", descripcion: "", tipo: s.diagnosticos.length === 0 ? "principal" : "secundario", certeza: "clinico" });
+  renderDiagnosticos();
+};
+
+window.eliminarDiagnostico = function(i) {
+  const s = window._consultaState;
+  s.diagnosticos.splice(i, 1);
+  renderDiagnosticos();
+};
+
+window.actualizarDiagnostico = function(i, campo, valor) {
+  const s = window._consultaState;
+  if (s.diagnosticos[i]) s.diagnosticos[i][campo] = valor;
+};
+
+/* ═══════════════════════════════════════════════════════════
+   PASO 6 — PLAN
+   ═══════════════════════════════════════════════════════════ */
+
+window.consultaIrAPlan = function() {
+  mostrarPaso(6);
+  calcularComplejidadLocal();
+  renderComplejidadCard();
+};
+
+window.consultaVolverAAnalisis = function() {
+  mostrarPaso(5);
+};
+
+/* ── Farmacológicos ── */
+function renderFarmacologicos() {
+  const c = document.getElementById("consulta-farmacologico");
+  if (!c) return;
+  const s = window._consultaState;
+  
+  c.innerHTML = s.farmacologico.map((f, i) => `
+    <div class="treatment-item">
+      <div class="t-header">
+        <span class="t-num">Fármaco #${i + 1}</span>
+        <button class="t-del" onclick="eliminarFarmacoConsulta(${i})">Eliminar</button>
+      </div>
+      <div class="t-row">
+        <input type="text" placeholder="Fármaco" value="${escapeHtml(f.farmaco)}" 
+               oninput="actualizarFarmacoConsulta(${i}, 'farmaco', this.value)">
+        <input type="text" placeholder="Presentación" value="${escapeHtml(f.presentacion)}"
+               oninput="actualizarFarmacoConsulta(${i}, 'presentacion', this.value)">
+      </div>
+      <div class="t-row">
+        <input type="text" placeholder="Dosis" value="${escapeHtml(f.dosis)}"
+               oninput="actualizarFarmacoConsulta(${i}, 'dosis', this.value)">
+        <input type="text" placeholder="Vía" value="${escapeHtml(f.via)}"
+               oninput="actualizarFarmacoConsulta(${i}, 'via', this.value)">
+      </div>
+      <div class="t-row">
+        <input type="text" placeholder="Frecuencia" value="${escapeHtml(f.frecuencia)}"
+               oninput="actualizarFarmacoConsulta(${i}, 'frecuencia', this.value)">
+        <input type="text" placeholder="Duración" value="${escapeHtml(f.duracion)}"
+               oninput="actualizarFarmacoConsulta(${i}, 'duracion', this.value)">
+      </div>
+      <div class="t-row full">
+        <input type="text" placeholder="Indicación" value="${escapeHtml(f.indicacion)}"
+               oninput="actualizarFarmacoConsulta(${i}, 'indicacion', this.value)">
+      </div>
+    </div>
+  `).join("");
+}
+
+window.agregarFarmacoConsulta = function() {
+  window._consultaState.farmacologico.push({ farmaco: "", presentacion: "", dosis: "", via: "", frecuencia: "", duracion: "", indicacion: "", nivel_evidencia: "", guia: "" });
+  renderFarmacologicos();
+};
+
+window.eliminarFarmacoConsulta = function(i) {
+  window._consultaState.farmacologico.splice(i, 1);
+  renderFarmacologicos();
+};
+
+window.actualizarFarmacoConsulta = function(i, campo, valor) {
+  const s = window._consultaState;
+  if (s.farmacologico[i]) s.farmacologico[i][campo] = valor;
+};
+
+/* ── No farmacológicos ── */
+function renderNoFarmacologicos() {
+  const c = document.getElementById("consulta-no-farmacologico");
+  if (!c) return;
+  const s = window._consultaState;
+  
+  c.innerHTML = s.noFarmacologico.map((n, i) => `
+    <div class="treatment-item">
+      <div class="t-header">
+        <span class="t-num">Intervención #${i + 1}</span>
+        <button class="t-del" onclick="eliminarNoFarmacoConsulta(${i})">Eliminar</button>
+      </div>
+      <div class="t-row">
+        <select onchange="actualizarNoFarmacoConsulta(${i}, 'categoria', this.value)">
+          <option value="nutricion" ${n.categoria === "nutricion" ? "selected" : ""}>Nutrición</option>
+          <option value="ejercicio" ${n.categoria === "ejercicio" ? "selected" : ""}>Ejercicio</option>
+          <option value="sueno" ${n.categoria === "sueno" ? "selected" : ""}>Sueño</option>
+          <option value="alcohol" ${n.categoria === "alcohol" ? "selected" : ""}>Alcohol</option>
+          <option value="tabaco" ${n.categoria === "tabaco" ? "selected" : ""}>Tabaco</option>
+          <option value="psicologia" ${n.categoria === "psicologia" ? "selected" : ""}>Psicología</option>
+          <option value="otro" ${n.categoria === "otro" ? "selected" : ""}>Otro</option>
+        </select>
+        <input type="text" placeholder="Responsable" value="${escapeHtml(n.responsable)}"
+               oninput="actualizarNoFarmacoConsulta(${i}, 'responsable', this.value)">
+      </div>
+      <div class="t-row full">
+        <input type="text" placeholder="Intervención" value="${escapeHtml(n.intervencion)}"
+               oninput="actualizarNoFarmacoConsulta(${i}, 'intervencion', this.value)">
+      </div>
+      <div class="t-row full">
+        <input type="text" placeholder="Meta" value="${escapeHtml(n.meta)}"
+               oninput="actualizarNoFarmacoConsulta(${i}, 'meta', this.value)">
+      </div>
+    </div>
+  `).join("");
+}
+
+window.agregarNoFarmacoConsulta = function() {
+  window._consultaState.noFarmacologico.push({ categoria: "nutricion", intervencion: "", meta: "", responsable: "" });
+  renderNoFarmacologicos();
+};
+
+window.eliminarNoFarmacoConsulta = function(i) {
+  window._consultaState.noFarmacologico.splice(i, 1);
+  renderNoFarmacologicos();
+};
+
+window.actualizarNoFarmacoConsulta = function(i, campo, valor) {
+  const s = window._consultaState;
+  if (s.noFarmacologico[i]) s.noFarmacologico[i][campo] = valor;
+};
+
+/* ── Órdenes de laboratorio ── */
+function renderOrdenesLab() {
+  const c = document.getElementById("consulta-ordenes-lab");
+  if (!c) return;
+  const s = window._consultaState;
+  
+  c.innerHTML = s.ordenesLab.map((o, i) => `
+    <div class="consulta-orden-item">
+      <input type="text" placeholder="Estudio" value="${escapeHtml(o.estudio)}"
+             oninput="actualizarOrdenLab(${i}, 'estudio', this.value)">
+      <input type="number" placeholder="Plazo días" value="${o.plazo_dias || ""}"
+             oninput="actualizarOrdenLab(${i}, 'plazo_dias', parseInt(this.value) || 0)">
+      <select onchange="actualizarOrdenLab(${i}, 'urgente', this.value === 'true')">
+        <option value="false" ${!o.urgente ? "selected" : ""}>Rutina</option>
+        <option value="true" ${o.urgente ? "selected" : ""}>Urgente</option>
+      </select>
+      <button class="consulta-btn-del" onclick="eliminarOrdenLab(${i})">×</button>
+    </div>
+  `).join("");
+}
+
+window.agregarOrdenLab = function() {
+  window._consultaState.ordenesLab.push({ estudio: "", plazo_dias: 0, urgente: false });
+  renderOrdenesLab();
+};
+
+window.eliminarOrdenLab = function(i) {
+  window._consultaState.ordenesLab.splice(i, 1);
+  renderOrdenesLab();
+};
+
+window.actualizarOrdenLab = function(i, campo, valor) {
+  const s = window._consultaState;
+  if (s.ordenesLab[i]) s.ordenesLab[i][campo] = valor;
+};
+
+/* ── Órdenes de imagen ── */
+function renderOrdenesImagen() {
+  const c = document.getElementById("consulta-ordenes-imagen");
+  if (!c) return;
+  const s = window._consultaState;
+  
+  c.innerHTML = s.ordenesImagen.map((o, i) => `
+    <div class="consulta-orden-item">
+      <input type="text" placeholder="Estudio" value="${escapeHtml(o.estudio)}"
+             oninput="actualizarOrdenImagen(${i}, 'estudio', this.value)">
+      <input type="number" placeholder="Plazo días" value="${o.plazo_dias || ""}"
+             oninput="actualizarOrdenImagen(${i}, 'plazo_dias', parseInt(this.value) || 0)">
+      <select onchange="actualizarOrdenImagen(${i}, 'urgente', this.value === 'true')">
+        <option value="false" ${!o.urgente ? "selected" : ""}>Rutina</option>
+        <option value="true" ${o.urgente ? "selected" : ""}>Urgente</option>
+      </select>
+      <button class="consulta-btn-del" onclick="eliminarOrdenImagen(${i})">×</button>
+    </div>
+  `).join("");
+}
+
+window.agregarOrdenImagen = function() {
+  window._consultaState.ordenesImagen.push({ estudio: "", plazo_dias: 0, urgente: false });
+  renderOrdenesImagen();
+};
+
+window.eliminarOrdenImagen = function(i) {
+  window._consultaState.ordenesImagen.splice(i, 1);
+  renderOrdenesImagen();
+};
+
+window.actualizarOrdenImagen = function(i, campo, valor) {
+  const s = window._consultaState;
+  if (s.ordenesImagen[i]) s.ordenesImagen[i][campo] = valor;
+};
+
+/* ── Referencias ── */
+function renderReferencias() {
+  const c = document.getElementById("consulta-referencias");
+  if (!c) return;
+  const s = window._consultaState;
+  
+  c.innerHTML = s.referencias.map((r, i) => `
+    <div class="consulta-referencia-item">
+      <input type="text" placeholder="Especialidad" value="${escapeHtml(r.especialidad)}"
+             oninput="actualizarReferencia(${i}, 'especialidad', this.value)">
+      <select onchange="actualizarReferencia(${i}, 'prioridad', this.value)">
+        <option value="baja" ${r.prioridad === "baja" ? "selected" : ""}>Baja</option>
+        <option value="media" ${r.prioridad === "media" ? "selected" : ""}>Media</option>
+        <option value="alta" ${r.prioridad === "alta" ? "selected" : ""}>Alta</option>
+      </select>
+      <input type="number" placeholder="Plazo días" value="${r.plazo_dias || 30}"
+             oninput="actualizarReferencia(${i}, 'plazo_dias', parseInt(this.value) || 30)">
+      <button class="consulta-btn-del" onclick="eliminarReferencia(${i})">×</button>
+    </div>
+    <div style="margin:-4px 0 8px 0">
+      <input type="text" placeholder="Motivo de la referencia..." value="${escapeHtml(r.motivo)}"
+             oninput="actualizarReferencia(${i}, 'motivo', this.value)"
+             style="font-size:11px;padding:6px 8px">
+    </div>
+  `).join("");
+}
+
+window.agregarReferencia = function() {
+  window._consultaState.referencias.push({ especialidad: "", prioridad: "media", motivo: "", plazo_dias: 30 });
+  renderReferencias();
+};
+
+window.eliminarReferencia = function(i) {
+  window._consultaState.referencias.splice(i, 1);
+  renderReferencias();
+};
+
+window.actualizarReferencia = function(i, campo, valor) {
+  const s = window._consultaState;
+  if (s.referencias[i]) s.referencias[i][campo] = valor;
+};
+
+/* ═══════════════════════════════════════════════════════════
+   COMPLEJIDAD Y FACTURACIÓN
+   ═══════════════════════════════════════════════════════════ */
+
+function calcularComplejidadLocal() {
+  const s = window._consultaState;
+  let score = 0;
+  
+  const nDx = s.diagnosticos.filter(d => d.descripcion || d.cie10).length;
+  if (nDx >= 3) score += 3;
+  else if (nDx === 2) score += 2;
+  else if (nDx === 1) score += 1;
+  
+  const nComorb = (s.problemasActivos || []).length;
+  if (nComorb >= 2) score += 2;
+  else if (nComorb === 1) score += 1;
+  
+  const nOrdenes = s.ordenesLab.length + s.ordenesImagen.length;
+  if (nOrdenes >= 4) score += 2;
+  else if (nOrdenes >= 1) score += 1;
+  
+  const nRef = s.referencias.length;
+  if (nRef >= 1) score += 2;
+  
+  // IA sugirió complejidad
+  if (s.iaJSON?.complejidad_sugerida) {
+    const mapa = { basica: 0, intermedia: 1, alta: 2, critica: 3 };
+    score += mapa[s.iaJSON.complejidad_sugerida] || 0;
+  }
+  
+  let complejidad = "basica";
+  if (score >= 8) complejidad = "critica";
+  else if (score >= 5) complejidad = "alta";
+  else if (score >= 2) complejidad = "intermedia";
+  
+  s.complejidadCalculada = complejidad;
+  s.complejidadFinal = s.complejidadFinal || complejidad;
+  
+  return complejidad;
+}
+
+function renderComplejidadCard() {
+  const c = document.getElementById("consulta-complejidad-card");
+  if (!c) return;
+  const s = window._consultaState;
+  const calc = s.complejidadCalculada || calcularComplejidadLocal();
+  const final = s.complejidadFinal || calc;
+  const nivel = COMPLEJIDAD_NIVELES[final];
+  const nivelCalc = COMPLEJIDAD_NIVELES[calc];
+  
+  // Orden de complejidad para validar override
+  const orden = { basica: 0, intermedia: 1, alta: 2, critica: 3 };
+  
+  c.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:var(--accent-dark);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
+      💰 Complejidad y facturación
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
+      <div>
+        <div style="color:var(--text-secondary);margin-bottom:2px">Calculada por sistema</div>
+        <div style="font-weight:700;color:var(--accent-dark)">${nivelCalc.codigo} — ${nivelCalc.nombre}</div>
+      </div>
+      <div>
+        <div style="color:var(--text-secondary);margin-bottom:2px">Complejidad final</div>
+        <select id="cons-complejidad-final" onchange="cambiarComplejidadFinal(this.value)" 
+                style="font-size:12px;padding:4px 6px;width:100%">
+          <option value="basica" ${final === "basica" ? "selected" : ""} ${orden[calc] > 0 ? "disabled" : ""}>
+            C1 — Básica
+          </option>
+          <option value="intermedia" ${final === "intermedia" ? "selected" : ""} ${orden[calc] > 1 ? "disabled" : ""}>
+            C2 — Intermedia
+          </option>
+          <option value="alta" ${final === "alta" ? "selected" : ""} ${orden[calc] > 2 ? "disabled" : ""}>
+            C3 — Alta
+          </option>
+          <option value="critica" ${final === "critica" ? "selected" : ""}>
+            C4 — Crítica / Urgencia
+          </option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--text-secondary)">
+      Duración estimada: ~${nivel.duracion_min} min · ${nivel.descripcion}
+    </div>
+    <div id="cons-precio-calculado" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--accent);font-size:12px">
+      <div style="display:flex;justify-content:space-between">
+        <span>Precio base:</span>
+        <span id="cons-precio-base" style="font-weight:600">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <span>Descuento empresa:</span>
+        <span id="cons-precio-descuento" style="font-weight:600">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid var(--accent)">
+        <span style="font-weight:700;color:var(--accent-dark)">Precio final:</span>
+        <span id="cons-precio-final" style="font-weight:800;color:var(--accent-dark);font-size:14px">—</span>
+      </div>
+    </div>
+    <p style="font-size:10px;color:var(--text-tertiary);margin-top:6px;line-height:1.4">
+      Solo puede subir la complejidad, nunca bajarla. El precio se calcula automáticamente.
+    </p>
+  `;
+  
+  // Calcular precio
+  calcularPrecioConsultaAsync(final);
+}
+
+window.cambiarComplejidadFinal = function(v) {
+  window._consultaState.complejidadFinal = v;
+  calcularPrecioConsultaAsync(v);
+};
+
+async function calcularPrecioConsultaAsync(complejidad) {
+  const s = window._consultaState;
+  if (!window.supabaseClient || !s.paciente) return;
+  
+  try {
+    const empresaId = s.paciente.empresa_id || null;
+    const { data, error } = await window.supabaseClient.rpc("calcular_precio_consulta", {
+      p_empresa_id: empresaId,
+      p_complejidad: complejidad
+    });
+    
+    if (error) throw error;
+    
+    const base = document.getElementById("cons-precio-base");
+    const desc = document.getElementById("cons-precio-descuento");
+    const fin = document.getElementById("cons-precio-final");
+    
+    if (base) base.textContent = "$" + (data.precio_base || 0).toFixed(2);
+    if (desc) {
+      const pct = data.tarifa_preferencial_pct || 0;
+      desc.textContent = pct > 0 ? `-${pct}% (${data.paquete_contratado || "empresa"})` : "Sin descuento";
+    }
+    if (fin) fin.textContent = "$" + (data.precio_final || 0).toFixed(2);
+    
+    s.precioCalculado = data;
+  } catch (e) {
+    console.error("[calcularPrecioConsultaAsync]", e);
+    const base = document.getElementById("cons-precio-base");
+    if (base) base.textContent = "Error";
+  }
+}
+
+console.log("[Consulta] Análisis, plan y complejidad cargados");
+</script>
+<script>
+"use strict";
+
+/* ═══════════════════════════════════════════════════════════
+   PASO 7 — CIERRE, FIRMA Y PERSISTENCIA
+   ═══════════════════════════════════════════════════════════ */
+
+window.consultaIrACierre = function() {
+  mostrarPaso(7);
+  renderResumenCierre();
+  verificarPermisoFirma();
+};
+
+window.consultaVolverAPlan = function() {
+  mostrarPaso(6);
+};
+
+function renderResumenCierre() {
+  const c = document.getElementById("consulta-resumen-cierre");
+  if (!c) return;
+  const s = window._consultaState;
+  
+  const nDx = s.diagnosticos.filter(d => d.descripcion || d.cie10).length;
+  const nFar = s.farmacologico.filter(f => f.farmaco).length;
+  const nNoFar = s.noFarmacologico.filter(n => n.intervencion).length;
+  const nOrdenes = s.ordenesLab.length + s.ordenesImagen.length;
+  const nRef = s.referencias.length;
+  const nivel = COMPLEJIDAD_NIVELES[s.complejidadFinal || s.complejidadCalculada || "basica"];
+  
+  c.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px">
+      <div>
+        <div style="color:var(--text-secondary);margin-bottom:2px">Paciente</div>
+        <div style="font-weight:700;color:var(--corp)">${escapeHtml(s.paciente?.nombre || "—")}</div>
+      </div>
+      <div>
+        <div style="color:var(--text-secondary);margin-bottom:2px">Tipo de consulta</div>
+        <div style="font-weight:700;color:var(--corp)">${(s.tipoConsulta || "").replace("_", " ")}</div>
+      </div>
+      <div>
+        <div style="color:var(--text-secondary);margin-bottom:2px">Diagnósticos</div>
+        <div style="font-weight:700;color:var(--accent)">${nDx}</div>
+      </div>
+      <div>
+        <div style="color:var(--text-secondary);margin-bottom:2px">Complejidad</div>
+        <div style="font-weight:700;color:var(--accent)">${nivel.codigo} — ${nivel.nombre}</div>
+      </div>
+      <div>
+        <div style="color:var(--text-secondary);margin-bottom:2px">Tratamientos</div>
+        <div>${nFar} fármaco${nFar !== 1 ? "s" : ""} · ${nNoFar} no farmacológico${nNoFar !== 1 ? "s" : ""}</div>
+      </div>
+      <div>
+        <div style="color:var(--text-secondary);margin-bottom:2px">Órdenes y referencias</div>
+        <div>${nOrdenes} órdenes · ${nRef} referencia${nRef !== 1 ? "s" : ""}</div>
+      </div>
+    </div>
+    ${s.precioCalculado ? `
+      <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);font-size:12px">
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--text-secondary)">Precio final:</span>
+          <span style="font-weight:800;color:var(--positive);font-size:14px">$${(s.precioCalculado.precio_final || 0).toFixed(2)}</span>
+        </div>
+      </div>
+    ` : ""}
+  `;
+}
+
+function verificarPermisoFirma() {
+  const btnEnviar = document.getElementById("btn-enviar-firma");
+  const btnFirmar = document.getElementById("btn-firmar-consulta");
+  const rol = window.usuarioActual?.rol;
+  
+  if (rol === "medico" || rol === "admin") {
+    if (btnEnviar) btnEnviar.style.display = "none";
+    if (btnFirmar) btnFirmar.style.display = "block";
+  } else {
+    if (btnEnviar) btnEnviar.style.display = "block";
+    if (btnFirmar) btnFirmar.style.display = "none";
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PERSISTENCIA
+   ═══════════════════════════════════════════════════════════ */
+
+function construirPayloadConsulta() {
+  const s = window._consultaState;
+  const p = s.paciente;
+  
+  // Recolectar vitales
+  const vitales = {};
+  CONSULTA_VITALES.forEach(v => {
+    const el = document.getElementById("cons-vit-" + v.id);
+    if (el && el.value) {
+      const val = v.tipo === "calculated" ? parseFloat(el.value) : parseFloat(el.value);
+      if (!isNaN(val)) vitales[v.id] = val;
+    }
+  });
+  
+  // Recolectar revisión por sistemas
+  const revSistemas = {};
+  CONSULTA_SISTEMAS.forEach(sys => {
+    const val = document.getElementById("cons-sys-" + sys.id)?.value.trim();
+    if (val) revSistemas[sys.id] = val;
+  });
+  
+  // Recolectar antecedentes
+  const antecedentes = {};
+  CONSULTA_ANTECEDENTES.forEach(a => {
+    const val = document.getElementById("cons-ant-" + a.id)?.value.trim();
+    if (val) antecedentes[a.id] = val;
+  });
+  
+  // Recolectar examen físico
+  const examenFisico = {};
+  CONSULTA_EXAMEN_FISICO.forEach(e => {
+    const val = document.getElementById("cons-ef-" + e.id)?.value.trim();
+    if (val) examenFisico[e.id] = val;
+  });
+  
+  // Recolectar labs
+  const labs = {};
+  if (typeof LABS_REGISTRY !== "undefined") {
+    LABS_REGISTRY._items.forEach(l => {
+      const el = document.getElementById("cons-" + l.id);
+      if (el && el.value) {
+        const key = l.id.replace(/^lab-/, "").replace(/-/g, "_");
+        labs[key] = parseFloat(el.value) || el.value;
+      }
+    });
+  }
+  
+  // Educación
+  const educacionRaw = document.getElementById("cons-educacion")?.value.trim() || "";
+  const educacion = educacionRaw.split("\n").map(x => x.trim()).filter(x => x);
+  
+  return {
+    schema_version: "1.0",
+    tipo: s.tipoConsulta,
+    modalidad: "presencial",
+    
+    subject: {
+      subject_id: p.subject_id,
+      nombre: p.nombre,
+      edad: p.edad,
+      sexo: p.sexo,
+      fecha_nacimiento: p.fecha_nacimiento,
+      dui: p.dui,
+      departamento: p.departamento,
+      municipio: p.municipio,
+      empresa: p.empresa,
+      empresa_id: p.empresa_id
+    },
+    
+    S_subjetivo: {
+      motivo_consulta: document.getElementById("cons-motivo")?.value.trim() || "",
+      enfermedad_actual: document.getElementById("cons-enfermedad-actual")?.value.trim() || "",
+      eva_dolor: parseInt(document.getElementById("cons-eva")?.value) || null,
+      evolucion: document.getElementById("cons-evolucion")?.value.trim() || "",
+      revision_sistemas: revSistemas,
+      antecedentes: antecedentes,
+      alergias: document.getElementById("cons-alergias")?.value.trim() || "",
+      medicamentos: document.getElementById("cons-medicamentos")?.value.trim() || "",
+      habitos: {
+        tabaco: document.getElementById("cons-habito-tabaco")?.value.trim() || "",
+        alcohol: document.getElementById("cons-habito-alcohol")?.value.trim() || "",
+        ejercicio: document.getElementById("cons-habito-ejercicio")?.value.trim() || "",
+        sueno: document.getElementById("cons-habito-sueno")?.value.trim() || ""
+      }
+    },
+    
+    O_objetivo: {
+      signos_vitales: vitales,
+      examen_fisico: examenFisico,
+      labs_resultados: labs,
+      labs_fecha: document.getElementById("cons-labs-fecha")?.value || null,
+      otros_estudios: document.getElementById("cons-otros-estudios")?.value.trim() || ""
+    },
+    
+    A_analisis: {
+      impresion_clinica: document.getElementById("cons-impresion-final")?.value.trim() || "",
+      diagnosticos: s.diagnosticos.filter(d => d.descripcion || d.cie10),
+      diagnostico_diferencial: s.iaJSON?.diagnostico_diferencial || [],
+      banderas_rojas: s.iaJSON?.banderas_rojas || [],
+      interacciones: s.iaJSON?.interacciones_medicamentosas || [],
+      nivel_riesgo: document.getElementById("cons-nivel-riesgo")?.value || "MODERADO"
+    },
+    
+    P_plan: {
+      farmacologico: s.farmacologico.filter(f => f.farmaco),
+      no_farmacologico: s.noFarmacologico.filter(n => n.intervencion),
+      ordenes_laboratorio: s.ordenesLab.filter(o => o.estudio),
+      ordenes_imagen: s.ordenesImagen.filter(o => o.estudio),
+      referencias: s.referencias.filter(r => r.especialidad),
+      educacion_paciente: educacion,
+      seguimiento: {
+        proxima_cita_dias: parseInt(document.getElementById("cons-proxima-cita-dias")?.value) || null,
+        proxima_cita_tipo: document.getElementById("cons-proxima-cita-tipo")?.value || "control"
+      }
+    },
+    
+    metadata: {
+      generado_con_ia: !!s.iaRespuesta,
+      ia_utilizada: s.iaRespuesta ? (document.getElementById("kimi-model")?.value || "kimi-k2-5") : null,
+      complejidad_calculada: s.complejidadCalculada,
+      complejidad_final: s.complejidadFinal,
+      version_plantilla: "1.0"
+    }
+  };
+}
+
+window.guardarConsultaBorrador = async function() {
+  const s = window._consultaState;
+  if (!s.paciente) { showStatus("Falta paciente", "error"); return; }
+  if (!window.supabaseClient) { showStatus("Sin conexión", "error"); return; }
+  
+  const btn = event?.target;
+  const original = btn ? btn.textContent : "Guardar borrador";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Guardando...';
+  }
+  
+  try {
+    const payload = construirPayloadConsulta();
+    
+    // Generar case_id si es nuevo
+    if (!s.caseId) {
+      const { data, error } = await window.supabaseClient.rpc("generar_case_id_consulta");
+      if (error) throw error;
+      s.caseId = data;
+    }
+    
+    const registro = {
+      case_id: s.caseId,
+      subject_id: s.paciente.subject_id,
+      created_by: window.usuarioActual?.id || null,
+      operador_nombre: window.usuarioActual?.nombre || null,
+      fecha_consulta: new Date().toISOString().slice(0, 10),
+      tipo: s.tipoConsulta,
+      modalidad: "presencial",
+      estado: "borrador",
+      payload: payload,
+      motivo_consulta: payload.S_subjetivo.motivo_consulta,
+      cie10_principal: payload.A_analisis.diagnosticos.find(d => d.tipo === "principal")?.cie10 || null,
+      cie10_secundarios: payload.A_analisis.diagnosticos.filter(d => d.tipo !== "principal").map(d => d.cie10).filter(Boolean),
+      nivel_riesgo: payload.A_analisis.nivel_riesgo,
+      complejidad: s.complejidadFinal || s.complejidadCalculada
+    };
+    
+    if (s.consultaId) {
+      // Update
+      const { error } = await window.supabaseClient
+        .from("consultas")
+        .update(registro)
+        .eq("consulta_id", s.consultaId);
+      if (error) throw error;
+    } else {
+      // Insert
+      const { data, error } = await window.supabaseClient
+        .from("consultas")
+        .insert(registro)
+        .select("consulta_id")
+        .single();
+      if (error) throw error;
+      s.consultaId = data.consulta_id;
+    }
+    
+    showStatus(`✓ Borrador guardado: ${s.caseId}`, "success");
+  } catch (e) {
+    console.error("[guardarConsultaBorrador]", e);
+    showStatus("Error: " + e.message, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+};
+
+window.enviarConsultaAFirma = async function() {
+  const s = window._consultaState;
+  if (!s.paciente) { showStatus("Falta paciente", "error"); return; }
+  if (!window.supabaseClient) { showStatus("Sin conexión", "error"); return; }
+  
+  // Primero guardar borrador
+  await guardarConsultaBorrador();
+  if (!s.consultaId) { showStatus("No se pudo guardar el borrador", "error"); return; }
+  
+  try {
+    // Actualizar estado
+    const { error } = await window.supabaseClient
+      .from("consultas")
+      .update({ estado: "pendiente_firma" })
+      .eq("consulta_id", s.consultaId);
+    
+    if (error) throw error;
+    
+    // Notificar a médicos
+    const { data: medicos } = await window.supabaseClient
+      .from("profiles")
+      .select("id")
+      .eq("rol", "medico");
+    
+    if (medicos && medicos.length > 0) {
+      const notifs = medicos.map(m => ({
+        user_id: m.id,
+        tipo: "consulta_pendiente_firma",
+        referencia_id: s.consultaId,
+        referencia_tipo: "consulta",
+        mensaje: `Consulta ${s.caseId} pendiente de firma — paciente ${s.paciente.nombre}`
+      }));
+      await window.supabaseClient.from("notificaciones").insert(notifs);
+    }
+    
+    showStatus(`✓ Consulta enviada a firma (${s.caseId})`, "success");
+  } catch (e) {
+    console.error("[enviarConsultaAFirma]", e);
+    showStatus("Error: " + e.message, "error");
+  }
+};
+
+window.firmarYGenerarConsulta = async function() {
+  const s = window._consultaState;
+  
+  // Validaciones
+  if (!s.paciente) { showStatus("Falta paciente", "error"); return; }
+  if (!window.supabaseClient) { showStatus("Sin conexión", "error"); return; }
+  
+  const nombreMedico = document.getElementById("cons-medico-nombre")?.value.trim();
+  const csspm = document.getElementById("cons-medico-csspm")?.value.trim();
+  const especialidad = document.getElementById("cons-medico-especialidad")?.value.trim();
+  const firmaCheck = document.getElementById("cons-firma-check")?.checked;
+  
+  if (!nombreMedico) { showStatus("Falta nombre del médico", "error"); return; }
+  if (!csspm) { showStatus("Falta CSSPM", "error"); return; }
+  if (!firmaCheck) { showStatus("Marca la casilla de validación", "error"); return; }
+  
+  if (window.usuarioActual?.rol !== "medico" && window.usuarioActual?.rol !== "admin") {
+    showStatus("Solo médicos pueden firmar", "error");
+    return;
+  }
+  
+  const btn = document.getElementById("btn-firmar-consulta");
+  const original = btn ? btn.textContent : "Firmar";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Firmando...';
+  }
+  
+  try {
+    // Guardar borrador primero
+    await guardarConsultaBorrador();
+    if (!s.consultaId) throw new Error("No se pudo guardar el borrador");
+    
+    // Hash de la firma
+    const hashInput = csspm + s.caseId + new Date().toISOString();
+    const firmaHash = await generarHashConsulta(hashInput);
+    
+    // Actualizar consulta
+    const { error: errUpd } = await window.supabaseClient
+      .from("consultas")
+      .update({
+        estado: "firmada",
+        firmada_at: new Date().toISOString(),
+        firma_hash: firmaHash,
+        medico_id: window.usuarioActual.id,
+        medico_nombre: nombreMedico,
+        medico_csspm: csspm
+      })
+      .eq("consulta_id", s.consultaId);
+    
+    if (errUpd) throw errUpd;
+    
+    // Crear problemas activos nuevos
+    await crearProblemasActivosDesdeConsulta(s, s.consultaId);
+    
+    // Crear cobro
+    await crearCobroDesdeConsulta(s, s.consultaId);
+    
+    // Generar documentos
+    const docs = await generarDocumentosConsulta(s, {
+      nombre: nombreMedico,
+      csspm: csspm,
+      especialidad: especialidad,
+      hash: firmaHash
+    });
+    
+    s.docsGenerados = docs;
+    
+    // Notificar al operador creador
+    if (s.consultaId) {
+      const { data: cons } = await window.supabaseClient
+        .from("consultas")
+        .select("created_by")
+        .eq("consulta_id", s.consultaId)
+        .single();
+      
+      if (cons?.created_by && cons.created_by !== window.usuarioActual.id) {
+        await window.supabaseClient.from("notificaciones").insert({
+          user_id: cons.created_by,
+          tipo: "consulta_firmada",
+          referencia_id: s.consultaId,
+          referencia_tipo: "consulta",
+          mensaje: `Consulta ${s.caseId} firmada por ${nombreMedico}`
+        });
+      }
+    }
+    
+    // Mostrar documentos
+    mostrarDocumentosGenerados(docs);
+    showStatus("✓ Consulta firmada y documentos generados", "success");
+  } catch (e) {
+    console.error("[firmarYGenerarConsulta]", e);
+    showStatus("Error: " + e.message, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+};
+
+async function crearProblemasActivosDesdeConsulta(s, consultaId) {
+  try {
+    // Cerrar problemas anteriores si se marcaron como resueltos
+    // (Por simplicidad, en v1 solo añadimos nuevos problemas)
+    
+    const nuevosProblemas = s.diagnosticos
+      .filter(d => d.descripcion)
+      .filter(d => d.tipo === "principal" || d.tipo === "cronico")
+      .map(d => ({
+        subject_id: s.paciente.subject_id,
+        cie10: d.cie10 || null,
+        descripcion: d.descripcion,
+        tipo: "diagnostico",
+        estado: d.tipo === "cronico" ? "cronico" : "activo",
+        fecha_inicio: new Date().toISOString().slice(0, 10),
+        consulta_origen: consultaId
+      }));
+    
+    if (nuevosProblemas.length > 0) {
+      await window.supabaseClient.from("problemas_activos").insert(nuevosProblemas);
+    }
+  } catch (e) {
+    console.error("[crearProblemasActivosDesdeConsulta]", e);
+  }
+}
+
+async function crearCobroDesdeConsulta(s, consultaId) {
+  try {
+    const precio = s.precioCalculado;
+    if (!precio) return;
+    
+    const cobro = {
+      consulta_id: consultaId,
+      subject_id: s.paciente.subject_id,
+      empresa_id: s.paciente.empresa_id || null,
+      complejidad: s.complejidadFinal || s.complejidadCalculada,
+      complejidad_calculada: s.complejidadCalculada,
+      complejidad_final: s.complejidadFinal || s.complejidadCalculada,
+      override_medico: s.complejidadFinal && s.complejidadFinal !== s.complejidadCalculada,
+      precio_base: precio.precio_base,
+      tarifa_preferencial: precio.tarifa_preferencial_pct,
+      precio_final: precio.precio_final,
+      estado_cobro: "pendiente"
+    };
+    
+    await window.supabaseClient.from("cobros_consulta").insert(cobro);
+  } catch (e) {
+    console.error("[crearCobroDesdeConsulta]", e);
+  }
+}
+
+async function generarHashConsulta(str) {
+  try {
+    const buf = new TextEncoder().encode(str);
+    const hash = await crypto.subtle.digest("SHA-256", buf);
+    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+  } catch (e) {
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  }
+}
+
+async function generarDocumentosConsulta(s, firma) {
+  // Renderizar nota clínica
+  const notaClinicaHTML = renderNotaClinicaHTML(s, firma);
+  
+  // Renderizar receta
+  const recetaHTML = renderRecetaHTML(s, firma);
+  
+  // Renderizar órdenes de laboratorio
+  const ordenesLabHTML = renderOrdenesLabHTML(s, firma);
+  
+  // Renderizar órdenes de imagen
+  const ordenesImgHTML = renderOrdenesImagenHTML(s, firma);
+  
+  // Renderizar hoja de referencia
+  const referenciaHTML = renderHojaReferenciaHTML(s, firma);
+  
+  // Guardar como artefactos
+  const arts = [
+    { tipo: "notaClinica", html: notaClinicaHTML },
+    { tipo: "receta", html: recetaHTML },
+    { tipo: "orden_laboratorio", html: ordenesLabHTML },
+    { tipo: "orden_imagen", html: ordenesImgHTML },
+    { tipo: "referencia", html: referenciaHTML }
+  ];
+  
+  for (const art of arts) {
+    if (!art.html) continue;
+    try {
+      await window.supabaseClient.from("artifacts").upsert({
+        artifact_id: s.consultaId + ":" + art.tipo,
+        case_id: s.caseId,
+        tipo: art.tipo,
+        html: art.html
+      }, { onConflict: "artifact_id" });
+    } catch (e) {
+      console.warn("[generarDocumentosConsulta] Error guardando artefacto " + art.tipo, e);
+    }
+  }
+  
+  return {
+    notaClinica: notaClinicaHTML,
+    receta: recetaHTML,
+    ordenesLab: ordenesLabHTML,
+    ordenesImagen: ordenesImgHTML,
+    referencia: referenciaHTML
+  };
+}
+
+function mostrarDocumentosGenerados(docs) {
+  const card = document.getElementById("consulta-documentos-card");
+  const botones = document.getElementById("consulta-documentos-botones");
+  if (!card || !botones) return;
+  
+  const lista = [
+    { key: "notaClinica", nombre: "📋 Nota clínica SOAP", html: docs.notaClinica },
+    { key: "receta", nombre: "💊 Receta médica", html: docs.receta },
+    { key: "ordenesLab", nombre: "🔬 Órdenes de laboratorio", html: docs.ordenesLab },
+    { key: "ordenesImagen", nombre: "🖼️ Órdenes de imagen", html: docs.ordenesImagen },
+    { key: "referencia", nombre: "📤 Hoja de referencia", html: docs.referencia }
+  ].filter(x => x.html);
+  
+  botones.innerHTML = lista.map(x => `
+    <button class="btn btn-secondary" onclick="verDocumentoConsulta('${x.key}')" style="font-size:12px">
+      ${x.nombre} — Ver / Descargar
+    </button>
+  `).join("");
+  
+  card.style.display = "block";
+  
+  // Ocultar formularios
+  ["consulta-paciente-card", "consulta-tipo-card", "consulta-subjetivo-card",
+   "consulta-objetivo-card", "consulta-analisis-card", "consulta-plan-card",
+   "consulta-cierre-card"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+  
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+window.verDocumentoConsulta = function(key) {
+  const docs = window._consultaState.docsGenerados;
+  if (!docs || !docs[key]) { showStatus("Documento no disponible", "warning"); return; }
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-doc-consulta";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99998;overflow-y:auto;padding:16px";
+  overlay.innerHTML = `
+    <div style="max-width:800px;margin:0 auto">
+      <div style="position:sticky;top:0;z-index:2;background:var(--bg);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:14px 18px;border-bottom:2px solid var(--accent);display:flex;justify-content:space-between;align-items:center">
+        <h3 style="font-size:15px;font-weight:700;color:var(--corp);margin:0">Documento</h3>
+        <div style="display:flex;gap:6px">
+          <button onclick="descargarDocumentoConsultaPDF('${key}')" style="background:var(--accent);color:white;border:none;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">📥 PDF</button>
+          <button onclick="document.getElementById('modal-doc-consulta').remove()" style="background:var(--bg-tertiary);border:none;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer">×</button>
+        </div>
+      </div>
+      <div id="contenido-doc-consulta" style="background:var(--bg);border-radius:0 0 var(--radius-lg) var(--radius-lg);padding:0;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+        ${docs[key]}
+      </div>
+    </div>
+  `;
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+};
+
+window.descargarDocumentoConsultaPDF = async function(key) {
+  const cont = document.getElementById("contenido-doc-consulta");
+  if (!cont) return;
+  
+  showStatus("Generando PDF...", "info");
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+    const mg = 10;
+    const cw = pw - 2 * mg;
+    
+    const canvas = await html2canvas(cont, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+    const imgH = (canvas.height * cw) / canvas.width;
+    
+    if (imgH <= ph - 2 * mg) {
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, mg, cw, imgH);
+    } else {
+      const pxPorMm = canvas.width / cw;
+      const altoPaginaPx = (ph - 2 * mg) * pxPorMm;
+      let offsetY = 0, pagina = 0;
+      while (offsetY < canvas.height) {
+        if (pagina > 0) pdf.addPage();
+        const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
+        const temp = document.createElement("canvas");
+        temp.width = canvas.width;
+        temp.height = altoCorte;
+        temp.getContext("2d").drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
+        pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, cw, altoCorte / pxPorMm);
+        offsetY += altoCorte;
+        pagina++;
+      }
+    }
+    
+    pdf.save(`Consulta_${key}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    showStatus("PDF descargado", "success");
+  } catch (e) {
+    console.error(e);
+    showStatus("Error: " + e.message, "error");
+  }
+};
+
+window.consultaNueva = function() {
+  consultaReset();
+  showStatus("Lista para nueva consulta", "success");
+};
+
+/* ═══════════════════════════════════════════════════════════
+   RENDERIZADORES DE DOCUMENTOS (placeholder — Entrega C)
+   ═══════════════════════════════════════════════════════════ */
+
+function renderNotaClinicaHTML(s, firma) {
+  return `<div style="padding:24px;font-family:Arial;font-size:11px;line-height:1.55;color:#333">
+    <h2 style="text-align:center;color:#1a3a5c;font-size:16px;margin-bottom:6px">NOTA CLÍNICA</h2>
+    <p style="text-align:center;font-size:10px;color:#666;margin-bottom:20px">EcoRadAi — Consulta Médica Tradicional</p>
+    <p><strong>Fecha:</strong> ${new Date().toLocaleDateString("es-ES")}</p>
+    <p><strong>Paciente:</strong> ${escapeHtml(s.paciente.nombre)} (${s.paciente.subject_id})</p>
+    <p><strong>Médico:</strong> ${escapeHtml(firma.nombre)} — CSSPM ${escapeHtml(firma.csspm)}</p>
+    <hr style="margin:14px 0;border:none;border-top:1px solid #ddd">
+    <p style="color:#888;font-style:italic">Documento en construcción — se completará en la Entrega C con el formato SOAP completo.</p>
+    <div style="margin-top:20px;padding-top:12px;border-top:1px solid #ddd;font-size:9px;color:#999">
+      <p>Hash de firma: <code>${escapeHtml(firma.hash)}</code></p>
+    </div>
+  </div>`;
+}
+
+function renderRecetaHTML(s, firma) {
+  const far = s.farmacologico.filter(f => f.farmaco);
+  if (far.length === 0) return null;
+  
+  return `<div style="padding:24px;font-family:Arial;color:#333">
+    <div style="text-align:center;border-bottom:2px solid #1a3a5c;padding-bottom:12px;margin-bottom:16px">
+      <h2 style="color:#1a3a5c;font-size:18px;letter-spacing:1.5px;margin:0">RECETA MÉDICA</h2>
+      <p style="font-size:10px;color:#666;margin:6px 0 0">EcoRadAi</p>
+    </div>
+    <p style="font-size:11px"><strong>Paciente:</strong> ${escapeHtml(s.paciente.nombre)} — ${s.paciente.edad} años</p>
+    <p style="font-size:11px"><strong>Fecha:</strong> ${new Date().toLocaleDateString("es-ES")}</p>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:16px">
+      <thead>
+        <tr style="background:#f0f7ff">
+          <th style="padding:8px;text-align:left;border-bottom:1px solid #0071e3">Fármaco</th>
+          <th style="padding:8px;text-align:left;border-bottom:1px solid #0071e3">Dosis</th>
+          <th style="padding:8px;text-align:left;border-bottom:1px solid #0071e3">Frecuencia</th>
+          <th style="padding:8px;text-align:left;border-bottom:1px solid #0071e3">Duración</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${far.map(f => `
+          <tr>
+            <td style="padding:8px;border-bottom:1px solid #eee"><strong>${escapeHtml(f.farmaco)}</strong></td>
+            <td style="padding:8px;border-bottom:1px solid #eee">${escapeHtml(f.dosis)} ${escapeHtml(f.via)}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee">${escapeHtml(f.frecuencia)}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee">${escapeHtml(f.duracion)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    <div style="text-align:center;margin-top:40px;padding-top:12px;border-top:1px solid #1a3a5c;width:60%;margin-left:auto;margin-right:auto">
+      <p style="font-size:11px;font-weight:700;color:#1a3a5c">${escapeHtml(firma.nombre)}</p>
+      <p style="font-size:10px;color:#666">CSSPM: ${escapeHtml(firma.csspm)}</p>
+    </div>
+  </div>`;
+}
+
+function renderOrdenesLabHTML(s, firma) {
+  const ordenes = s.ordenesLab.filter(o => o.estudio);
+  if (ordenes.length === 0) return null;
+  
+  return `<div style="padding:24px;font-family:Arial;color:#333">
+    <h2 style="text-align:center;color:#1a3a5c;font-size:16px;margin-bottom:16px">ORDEN DE LABORATORIO</h2>
+    <p style="font-size:11px"><strong>Paciente:</strong> ${escapeHtml(s.paciente.nombre)} — ${s.paciente.edad} años</p>
+    <p style="font-size:11px"><strong>Fecha:</strong> ${new Date().toLocaleDateString("es-ES")}</p>
+    <ol style="font-size:12px;margin-top:16px;line-height:1.8">
+      ${ordenes.map(o => `<li><strong>${escapeHtml(o.estudio)}</strong>${o.urgente ? " — URGENTE" : ""}</li>`).join("")}
+    </ol>
+    <div style="margin-top:40px;text-align:center">
+      <p style="font-size:11px;font-weight:700;color:#1a3a5c">${escapeHtml(firma.nombre)}</p>
+      <p style="font-size:10px;color:#666">CSSPM: ${escapeHtml(firma.csspm)}</p>
+    </div>
+  </div>`;
+}
+
+function renderOrdenesImagenHTML(s, firma) {
+  const ordenes = s.ordenesImagen.filter(o => o.estudio);
+  if (ordenes.length === 0) return null;
+  
+  return `<div style="padding:24px;font-family:Arial;color:#333">
+    <h2 style="text-align:center;color:#1a3a5c;font-size:16px;margin-bottom:16px">ORDEN DE ESTUDIO DE IMAGEN</h2>
+    <p style="font-size:11px"><strong>Paciente:</strong> ${escapeHtml(s.paciente.nombre)} — ${s.paciente.edad} años</p>
+    <ol style="font-size:12px;margin-top:16px;line-height:1.8">
+      ${ordenes.map(o => `<li><strong>${escapeHtml(o.estudio)}</strong>${o.urgente ? " — URGENTE" : ""}</li>`).join("")}
+    </ol>
+    <div style="margin-top:40px;text-align:center">
+      <p style="font-size:11px;font-weight:700;color:#1a3a5c">${escapeHtml(firma.nombre)}</p>
+      <p style="font-size:10px;color:#666">CSSPM: ${escapeHtml(firma.csspm)}</p>
+    </div>
+  </div>`;
+}
+
+function renderHojaReferenciaHTML(s, firma) {
+  const refs = s.referencias.filter(r => r.especialidad);
+  if (refs.length === 0) return null;
+  
+  return `<div style="padding:24px;font-family:Arial;color:#333">
+    <h2 style="text-align:center;color:#1a3a5c;font-size:16px;margin-bottom:16px">HOJA DE REFERENCIA</h2>
+    <p style="font-size:11px"><strong>Paciente:</strong> ${escapeHtml(s.paciente.nombre)} — ${s.paciente.edad} años</p>
+    <p style="font-size:11px"><strong>Fecha:</strong> ${new Date().toLocaleDateString("es-ES")}</p>
+    <hr style="margin:12px 0;border:none;border-top:1px solid #ddd">
+    ${refs.map((r, i) => `
+      <div style="margin-bottom:16px">
+        <p style="font-size:12px;font-weight:700;color:#0071e3">Referencia ${i + 1}: ${escapeHtml(r.especialidad)}</p>
+        <p style="font-size:11px"><strong>Prioridad:</strong> ${escapeHtml(r.prioridad)}</p>
+        <p style="font-size:11px"><strong>Plazo:</strong> ${r.plazo_dias} días</p>
+        <p style="font-size:11px"><strong>Motivo:</strong> ${escapeHtml(r.motivo)}</p>
+      </div>
+    `).join("")}
+    <div style="margin-top:40px;text-align:center">
+      <p style="font-size:11px;font-weight:700;color:#1a3a5c">${escapeHtml(firma.nombre)}</p>
+      <p style="font-size:10px;color:#666">CSSPM: ${escapeHtml(firma.csspm)}</p>
+    </div>
+  </div>`;
+}
+
+console.log("[Consulta] Cierre, firma y persistencia cargados");
+console.log("%c Módulo Consulta Médica v23.5 listo ", "background:#1a3a5c;color:white;padding:6px 12px;border-radius:4px;font-weight:bold;font-size:12px");
+</script>
 </body>
 </html>
