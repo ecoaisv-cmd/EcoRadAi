@@ -4147,22 +4147,30 @@ function limpiarTextoPDF(html) {
     .replace(/\uFFFD/g, "");
 }
 
-function obtenerDatosPaciente() {
+function obtenerDatosPaciente(caso) {
   const g = id => {
     const el = document.getElementById(id);
     return el ? (el.value || "").trim() : "";
   };
-  const pac = (typeof _pacienteActual !== "undefined" && _pacienteActual) ? _pacienteActual : null;
 
-  const nombre   = pac?.nombre      || g("ficha-nombre")       || g("e-nombre")     || "No especificado";
-  const subjectId = pac?.subject_id || g("ficha-subject_id")   || g("e-id")         || "No especificado";
-  const edad     = pac?.edad        || g("ficha-edad")         || g("e-edad")       || "";
-  const sexo     = pac?.sexo        || g("ficha-sexo")         || g("e-sexo")       || "";
-  const area     = pac?.area        || g("e-area")             || "N/E";
-  const email    = pac?.email       || g("ficha-email")        || g("c-email-empleado") || "";
-  const telefono = pac?.telefono    || g("ficha-telefono")     || g("c-telefono-empleado") || "";
+  // v23.4.3 — Fuente única de verdad, con 3 niveles de fallback:
+  //   1) _pacienteActual (ficha guardada en esta sesión)
+  //   2) caso.subject (caso cargado desde BD)
+  //   3) inputs del DOM (ficha-* primero, e-* legacy al final)
+  const pac = (typeof _pacienteActual !== "undefined" && _pacienteActual)
+    ? _pacienteActual
+    : (caso?.subject || null);
 
-  return { nombre, subject_id: subjectId, edad, sexo, area, email, telefono, _raw: pac };
+  const nombre    = pac?.nombre     || g("ficha-nombre")       || g("e-nombre")           || "N/E";
+  const subjectId = pac?.subject_id || g("ficha-subject_id")   || g("e-id")               || "N/E";
+  const edad      = pac?.edad       || g("ficha-edad")         || g("e-edad")             || "—";
+  const sexo      = pac?.sexo       || g("ficha-sexo")         || g("e-sexo")             || "—";
+  const area      = pac?.area       || g("e-area")             || "N/E";
+  const email     = pac?.email      || g("ficha-email")        || g("c-email-empleado")   || "";
+  const telefono  = pac?.telefono   || g("ficha-telefono")     || g("c-telefono-empleado")|| "";
+  const dui       = pac?.dui        || g("ficha-dui")          || "";
+
+  return { nombre, subject_id: subjectId, edad, sexo, area, email, telefono, dui, _raw: pac };
 }
 
 let SUPABASE_URL = null;
@@ -4869,6 +4877,13 @@ async function verImagenes(caseId) {
       return;
     }
 
+    // ✅ v23.4.3 — Datos del paciente para el header
+    const pac = caso.subject || {};
+    const nombrePac = pac.nombre || "N/E";
+    const edadPac   = pac.edad || "—";
+    const sexoPac   = pac.sexo || "—";
+    const sidPac    = pac.subject_id || "N/E";
+
     // ✅ 4) Construir modal
     const overlay = document.createElement("div");
     overlay.id = "modal-imagenes";
@@ -4876,9 +4891,17 @@ async function verImagenes(caseId) {
 
     overlay.innerHTML = `
       <div style="max-width:900px;margin:0 auto">
-        <div style="position:sticky;top:0;z-index:2;background:#1a3a5c;border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:14px 18px;border-bottom:2px solid #ff9500;display:flex;justify-content:space-between;align-items:center;box-shadow:0 4px 12px rgba(0,0,0,0.3)">
-          <h3 style="font-size:15px;font-weight:700;color:#fff;margin:0">🖼️ Imágenes (${norm.length})</h3>
-          <button onclick="document.getElementById('modal-imagenes').remove()" style="background:rgba(255,255,255,0.2);color:#fff;border:none;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer">×</button>
+        <div style="position:sticky;top:0;z-index:2;background:#1a3a5c;border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:14px 18px;border-bottom:2px solid #ff9500;display:flex;justify-content:space-between;align-items:flex-start;box-shadow:0 4px 12px rgba(0,0,0,0.3)">
+          <div style="flex:1;min-width:0">
+            <h3 style="font-size:15px;font-weight:700;color:#fff;margin:0">🖼️ Imágenes (${norm.length})</h3>
+            <div style="font-size:11px;color:#cce0ff;margin-top:4px;font-weight:600">
+              ${escapeHtml(nombrePac)} · ${escapeHtml(String(edadPac))} años · ${escapeHtml(sexoPac)}
+            </div>
+            <div style="font-size:10px;color:#99b8d8;margin-top:2px;font-family:var(--font-mono)">
+              ${escapeHtml(sidPac)} · ${escapeHtml(caseId)}
+            </div>
+          </div>
+          <button onclick="document.getElementById('modal-imagenes').remove()" style="background:rgba(255,255,255,0.2);color:#fff;border:none;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer;flex-shrink:0">×</button>
         </div>
         <div style="background:var(--bg);border-radius:0 0 var(--radius-lg) var(--radius-lg);padding:16px;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
@@ -4910,8 +4933,7 @@ async function verImagenes(caseId) {
     console.error("[verImagenes]", e);
     showStatus("Error al abrir imágenes: " + e.message, "error");
   }
-}
-
+}  
 async function ampliarImagen(caseId, indice) {
   try {
     let caso = (window._casoActual && window._casoActual.case_id === caseId)
@@ -5887,7 +5909,53 @@ function renderInformeMedico(p, caso, g, f, id, d, nivel) {
     seccionesHTML += '<div class="report-section"><h4>' + sec.titulo + '</h4>' + blockHTML + '</div>';
   });
 
-   const htmlFinal = '<div class="report-medico" id="report-medico"><div class="report-header"><div class="clinic-name">Ecosistema de Salud EcoRadAi</div><h2>' + e.meta.nombre + '</h2><div class="meta">' + g("c-empresa") + " | " + f + " | Nivel: " + nivel + (ti ? " | Con interconsultas" : "") + '</div></div><div class="report-body">' + seccionesHTML + ih + '<div class="report-section firma-section"><h4>Firma del Médico Validador</h4><div class="firma-unica"><div class="firma-title">Médico Validador</div><div class="firma-linea"></div><div class="firma-nombre">' + esc(firma.nombre || g("c-medico") || "No especificado") + '</div><div class="firma-rol">' + esc(firma.rol || "Médico Responsable") + '</div><div class="firma-csspm">CSSPM: ' + esc(firma.csspm || g("c-csspm") || "N/E") + '</div><div class="firma-fecha">Fecha: ' + f + '</div><div class="hash">SHA-256: ' + esc(firma.hash || "pendiente") + '</div></div><div class="firma-aviso-ia">Este informe fue elaborado con asistencia de IA' + (ti ? " + " + (caso.interconsultas_ejecutadas || []).filter(ic => !ic.error).length + " interconsultas" : "") + '. El médico firmante asume la responsabilidad clínica.</div></div><div class="report-section"><h4>Referencias</h4><div class="reference-box">' + (e.guias || []).join(", ") + '</div></div><div class="report-signoff"><div class="date">Generado: ' + new Date().toLocaleString("es-ES") + '</div><div class="reg">Caso: ' + id + '</div></div></div></div>';
+     // ✅ v23.4.3 — Header con nombre, edad y sexo del paciente
+  const pdcHeader = obtenerDatosPaciente(caso);
+
+  const headerHTML =
+    '<div class="report-header">' +
+      '<div class="clinic-name">Ecosistema de Salud EcoRadAi</div>' +
+      '<h2>' + esc(e.meta.nombre) + '</h2>' +
+      '<div class="meta" style="font-size:12px;font-weight:700;margin-top:4px">' +
+        esc(pdcHeader.nombre) + ' · ' + esc(String(pdcHeader.edad)) + ' años · ' + esc(pdcHeader.sexo) +
+      '</div>' +
+      '<div class="meta" style="font-size:10px;margin-top:2px;opacity:0.9">' +
+        'ID: ' + esc(pdcHeader.subject_id) + ' | ' + esc(g("c-empresa")) + ' | ' + f +
+        ' | Nivel: ' + nivel + (ti ? ' | Con interconsultas' : '') +
+      '</div>' +
+    '</div>';
+
+  const htmlFinal =
+    '<div class="report-medico" id="report-medico">' +
+      headerHTML +
+      '<div class="report-body">' +
+        seccionesHTML + ih +
+        '<div class="report-section firma-section">' +
+          '<h4>Firma del Médico Validador</h4>' +
+          '<div class="firma-unica">' +
+            '<div class="firma-title">Médico Validador</div>' +
+            '<div class="firma-linea"></div>' +
+            '<div class="firma-nombre">' + esc(firma.nombre || g("c-medico") || "No especificado") + '</div>' +
+            '<div class="firma-rol">' + esc(firma.rol || "Médico Responsable") + '</div>' +
+            '<div class="firma-csspm">CSSPM: ' + esc(firma.csspm || g("c-csspm") || "N/E") + '</div>' +
+            '<div class="firma-fecha">Fecha: ' + f + '</div>' +
+            '<div class="hash">SHA-256: ' + esc(firma.hash || "pendiente") + '</div>' +
+          '</div>' +
+          '<div class="firma-aviso-ia">Este informe fue elaborado con asistencia de IA' +
+            (ti ? " + " + (caso.interconsultas_ejecutadas || []).filter(ic => !ic.error).length + " interconsultas" : "") +
+            '. El médico firmante asume la responsabilidad clínica.' +
+          '</div>' +
+        '</div>' +
+        '<div class="report-section">' +
+          '<h4>Referencias</h4>' +
+          '<div class="reference-box">' + (e.guias || []).join(", ") + '</div>' +
+        '</div>' +
+        '<div class="report-signoff">' +
+          '<div class="date">Generado: ' + new Date().toLocaleString("es-ES") + '</div>' +
+          '<div class="reg">Caso: ' + id + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
   return limpiarTextoPDF(htmlFinal);
 }
 
@@ -5895,7 +5963,7 @@ function renderPaginasImagenes(g, f, id, caso) {
   const im = caso.acquisition?.imagenes || [];
   if (im.length === 0) return "";
 
-  // Normalizar (acepta strings, {dataUrl}, {url})
+  // Normalizar (acepta strings, {dataUrl}, {url}, {src})
   const norm = im.map((img, i) => {
     if (typeof img === "string") return { src: img, tag: "Vista " + (i + 1) };
     return {
@@ -5906,12 +5974,20 @@ function renderPaginasImagenes(g, f, id, caso) {
 
   if (norm.length === 0) return "";
 
+  // ✅ v23.4.3 — Fuente única de verdad
+  const pdc = obtenerDatosPaciente(caso);
+
   return `
     <div class="report-imagenes-pagina" id="report-imagenes-pagina">
       <div style="text-align:center;padding-bottom:12px;border-bottom:2px solid #1a3a5c;margin-bottom:14px">
         <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:#0071e3">EcoRadAi</div>
         <h2 style="font-size:16px;font-weight:700;color:#1a3a5c;margin:4px 0">Imágenes Evidenciales</h2>
-        <div style="font-size:10px;color:#666">${g("e-nombre")} | ${f}</div>
+        <div style="font-size:11px;color:#1a3a5c;font-weight:700;margin-top:4px">
+          ${escapeHtml(pdc.nombre)} · ${escapeHtml(String(pdc.edad))} años · ${escapeHtml(pdc.sexo)}
+        </div>
+        <div style="font-size:10px;color:#666;margin-top:3px">
+          ID: <code style="font-family:var(--font-mono)">${escapeHtml(pdc.subject_id)}</code> · Fecha: ${escapeHtml(f)}
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
         ${norm.map(x => `
@@ -5922,7 +5998,7 @@ function renderPaginasImagenes(g, f, id, caso) {
         `).join("")}
       </div>
       <div style="display:flex;justify-content:space-between;font-size:9px;color:#86868b;margin-top:12px;padding-top:8px;border-top:1px solid #e8e8ed;font-family:var(--font-mono)">
-        <span>Caso: ${id}</span>
+        <span>Caso: ${escapeHtml(id)}</span>
         <span>${norm.length} imágenes</span>
       </div>
     </div>
@@ -6295,7 +6371,7 @@ function renderArtifacts(caso, g, d, n, r) {
   const p = parseAIResponse(caso.narrativa_completa, estudioParaParser);
   return {
     informeMedico: renderInformeMedico(p, caso, g, f, id, d, n),
-    imagenes: renderPaginasImagenes(g, f, id, caso),
+    imagenes: renderPaginasImagenes(g, f, id, caso),  // ✅ ya recibe caso
     receta: renderRecetaSeparada(p, caso, g, f, id),
     lite: renderInformeLite(p, caso, n, r, g, f)
   };
