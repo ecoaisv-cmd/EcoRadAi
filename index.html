@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -12230,22 +12231,37 @@ async function generarHashConsulta(str) {
 }
 
 async function generarDocumentosConsulta(s, firma) {
-  // Renderizar nota clínica
-  const notaClinicaHTML = renderNotaClinicaHTML(s, firma);
+  // ═══════════════════════════════════════════════════════════
+  // v23.5 C-FIX v2 — Construir payload desde el DOM
+  // ═══════════════════════════════════════════════════════════
   
-  // Renderizar receta
-  const recetaHTML = renderRecetaHTML(s, firma);
+  // ⚠️ CRÍTICO: construir el payload leyendo los inputs del DOM
+  const payload = construirPayloadConsulta();
   
-  // Renderizar órdenes de laboratorio
-  const ordenesLabHTML = renderOrdenesLabHTML(s, firma);
+  // Añadir alias y campos extra que los renderizadores esperan
+  payload.caseId = s.caseId;
+  payload.paciente = payload.subject;  // alias
+  payload.tipo = s.tipoConsulta;
+  payload.modalidad = "presencial";
   
-  // Renderizar órdenes de imagen
-  const ordenesImgHTML = renderOrdenesImagenHTML(s, firma);
+  console.log("═══════ generarDocumentosConsulta ═══════");
+  console.log("Payload keys:", Object.keys(payload));
+  console.log("S_subjetivo:", !!payload.S_subjetivo);
+  console.log("O_objetivo:", !!payload.O_objetivo);
+  console.log("A_analisis:", !!payload.A_analisis);
+  console.log("P_plan:", !!payload.P_plan);
+  console.log("paciente:", payload.paciente?.nombre);
+  console.log("caseId:", payload.caseId);
+  console.log("═══════════════════════════════════════════");
   
-  // Renderizar hoja de referencia
-  const referenciaHTML = renderHojaReferenciaHTML(s, firma);
+  // Renderizar los 5 documentos
+  const notaClinicaHTML = renderNotaClinicaHTML(payload, firma);
+  const recetaHTML = renderRecetaHTML(payload, firma);
+  const ordenesLabHTML = renderOrdenesLabHTML(payload, firma);
+  const ordenesImgHTML = renderOrdenesImagenHTML(payload, firma);
+  const referenciaHTML = renderHojaReferenciaHTML(payload, firma);
   
-  // Guardar como artefactos
+  // Guardar artefactos
   const arts = [
     { tipo: "notaClinica", html: notaClinicaHTML },
     { tipo: "receta", html: recetaHTML },
