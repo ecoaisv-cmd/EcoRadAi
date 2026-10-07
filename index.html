@@ -785,6 +785,191 @@ input[type="checkbox"]{width:auto}
 .admin-badge.inactive{background:#fff3f3;color:var(--danger)}
 .admin-badge.custom{background:#fff9e6;color:var(--warning)}
 .admin-badge.base{background:var(--accent-light);color:var(--accent)}
+/* ═══════════════════════════════════════════════════════════
+   MÓDULO CONSULTA MÉDICA v23.5
+   ═══════════════════════════════════════════════════════════ */
+
+.consulta-soap-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+}
+.consulta-soap-badge.s { background: #0071e3; }
+.consulta-soap-badge.o { background: #34c759; }
+.consulta-soap-badge.a { background: #ff9500; }
+.consulta-soap-badge.p { background: #d4a017; }
+
+.consulta-sistema-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.consulta-sistema-item label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--corp);
+  margin-bottom: 4px;
+  display: block;
+}
+.consulta-sistema-item input,
+.consulta-sistema-item textarea {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.consulta-antecedente-item {
+  background: var(--bg);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.consulta-antecedente-item label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 3px;
+  display: block;
+}
+
+.consulta-examen-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.consulta-examen-item label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--corp);
+  margin-bottom: 4px;
+  display: block;
+}
+
+.consulta-diagnostico-item {
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  margin-bottom: 8px;
+  display: grid;
+  grid-template-columns: 110px 1fr 100px 90px auto;
+  gap: 6px;
+  align-items: center;
+}
+.consulta-diagnostico-item input,
+.consulta-diagnostico-item select {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.consulta-diagnostico-item .dx-principal {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  font-weight: 700;
+}
+
+.consulta-orden-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  display: grid;
+  grid-template-columns: 1fr 100px 80px auto;
+  gap: 6px;
+  align-items: center;
+}
+.consulta-orden-item input,
+.consulta-orden-item select {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.consulta-referencia-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  display: grid;
+  grid-template-columns: 1fr 130px 100px auto;
+  gap: 6px;
+  align-items: center;
+}
+.consulta-referencia-item input,
+.consulta-referencia-item select {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.consulta-btn-del {
+  background: var(--danger);
+  color: white;
+  border: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.consulta-contexto-card {
+  background: #f0f7ff;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.consulta-contexto-card h5 {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.consulta-contexto-card .ctx-item {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(0,113,227,0.1);
+}
+.consulta-contexto-card .ctx-item:last-child { border-bottom: none; }
+
+.consulta-paciente-card-result {
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.consulta-paciente-card-result:hover {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+@media print {
+  #sec-consulta .card.no-print { display: none !important; }
+}
 @media print{@page{size:letter;margin:12mm}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{background:#fff!important;color:#000!important;padding:0!important}.header,.steps,.nav-footer,.btn,.no-print,.card,.plan-selector,.tabs,.seccion-titulo-preview,.paquetes-grid,.estudio-selector,.admin-container,.accordion-header,.btn-row{display:none!important}.container{max-width:100%!important;padding:0!important}.section{display:block!important}#sec-reporte{display:block!important}.report-medico,.report-lite,.report-receta-separada,.report-imagenes-pagina{border:none!important;border-radius:0!important;box-shadow:none!important;overflow:visible!important;max-width:100%!important;page-break-after:always;break-after:page}.report-medico:last-child,.report-lite:last-child,.report-receta-separada:last-child,.report-imagenes-pagina:last-child{page-break-after:auto;break-after:auto}}
 @media (min-width:640px){.paquetes-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
@@ -838,6 +1023,7 @@ input[type="checkbox"]{width:auto}
 <div class="container">
 <div class="tabs no-print" id="tabs-principales">
   <div class="tab active" data-tab="captura" onclick="cambiarTab('captura')">📋 Captura</div>
+   <div class="tab" data-tab="consulta" onclick="cambiarTab('consulta')">🩺 Consulta</div>
   <div class="tab" data-tab="pacientes" onclick="cambiarTab('pacientes')">👥 Pacientes</div>
   <div class="tab" data-tab="informes" onclick="cambiarTab('informes')">📁 Informes</div>
   <div class="tab" data-tab="prompts" onclick="cambiarTab('prompts')">🧠 Prompts</div>
@@ -1439,6 +1625,339 @@ input[type="checkbox"]{width:auto}
     <div class="btn-row"><button class="btn btn-secondary" id="btn-close-editor" style="font-size:12px;">Cerrar editor</button></div>
   </div>
 </div>
+<!-- ═══════════════════════════════════════════════════════════════
+     MÓDULO CONSULTA MÉDICA TRADICIONAL v23.5
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="section" id="sec-consulta">
+
+  <!-- PASO 1 — SELECCIÓN DE PACIENTE -->
+  <div class="card" id="consulta-paciente-card">
+    <div class="card-title">
+      <span class="num">1</span>
+      <span>Seleccionar paciente</span>
+    </div>
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">
+      Busca al paciente por nombre, DUI, email o ID. Si no existe, regístralo primero en el módulo Captura.
+    </p>
+    <div class="form-group">
+      <input type="text" id="consulta-buscador" 
+             placeholder="🔍 Nombre, DUI, email, teléfono, ID..." 
+             oninput="buscarPacienteConsulta(this.value)" autocomplete="off">
+    </div>
+    <div id="consulta-resultados" style="display:none;margin-top:10px">
+      <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;margin-bottom:6px">Resultados</div>
+      <div id="consulta-resultados-lista"></div>
+    </div>
+  </div>
+
+  <!-- PASO 2 — TIPO DE CONSULTA -->
+  <div class="card" id="consulta-tipo-card" style="display:none">
+    <div class="card-title">
+      <span class="num">2</span>
+      <span>Tipo de consulta</span>
+      <button class="btn btn-secondary btn-xs" style="margin-left:auto" onclick="consultaReset()">✕ Cambiar paciente</button>
+    </div>
+    
+    <div id="consulta-paciente-info" style="background:var(--accent-light);border-radius:var(--radius-md);padding:12px;margin-bottom:14px"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="estudio-card" data-tipo="primera_vez" onclick="seleccionarTipoConsulta('primera_vez')">
+        <div class="estudio-icon">🆕</div>
+        <div class="estudio-nombre">Primera vez</div>
+        <div class="estudio-desc">Consulta inicial completa</div>
+      </div>
+      <div class="estudio-card" data-tipo="subsecuente" onclick="seleccionarTipoConsulta('subsecuente')">
+        <div class="estudio-icon">📋</div>
+        <div class="estudio-nombre">Subsecuente</div>
+        <div class="estudio-desc">Seguimiento de problema conocido</div>
+      </div>
+      <div class="estudio-card" data-tipo="control" onclick="seleccionarTipoConsulta('control')">
+        <div class="estudio-icon">🔁</div>
+        <div class="estudio-nombre">Control</div>
+        <div class="estudio-desc">Revisión programada</div>
+      </div>
+      <div class="estudio-card" data-tipo="urgencia" onclick="seleccionarTipoConsulta('urgencia')">
+        <div class="estudio-icon">🚨</div>
+        <div class="estudio-nombre">Urgencia</div>
+        <div class="estudio-desc">Cuadro agudo</div>
+      </div>
+    </div>
+
+    <div id="consulta-contexto-clinico" style="display:none;margin-top:14px"></div>
+  </div>
+
+  <!-- PASO 3 — S: SUBJETIVO -->
+  <div class="card" id="consulta-subjetivo-card" style="display:none">
+    <div class="card-title">
+      <span class="num">S</span>
+      <span>Subjetivo</span>
+      <span class="card-desc">Anamnesis</span>
+    </div>
+
+    <div class="form-group">
+      <label>Motivo de consulta *</label>
+      <input type="text" id="cons-motivo" placeholder="Ej: Dolor abdominal de 3 días de evolución">
+    </div>
+
+    <div class="form-group">
+      <label>Enfermedad actual</label>
+      <textarea id="cons-enfermedad-actual" 
+                placeholder="Inicio, carácter, irradiación, intensidad, factores agravantes/aliiviantes, síntomas asociados, tratamientos previos..."
+                style="min-height:120px"></textarea>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group">
+        <label>Intensidad del dolor (EVA 0-10)</label>
+        <input type="number" id="cons-eva" min="0" max="10" step="1" placeholder="0-10">
+      </div>
+      <div class="form-group">
+        <label>Tiempo de evolución</label>
+        <input type="text" id="cons-evolucion" placeholder="Ej: 3 días, 2 semanas">
+      </div>
+    </div>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">🔍 Revisión por sistemas</h4>
+    <div id="consulta-rev-sistemas"></div>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">📚 Antecedentes</h4>
+    <div id="consulta-antecedentes"></div>
+
+    <div class="form-group">
+      <label>Alergias conocidas</label>
+      <textarea id="cons-alergias" placeholder="Medicamentos, alimentos, otros..." style="min-height:60px"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Medicamentos crónicos actuales</label>
+      <textarea id="cons-medicamentos" placeholder="Fármaco, dosis, frecuencia, indicación..." style="min-height:60px"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Hábitos</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input type="text" id="cons-habito-tabaco" placeholder="Tabaco (ej: no, 5 cig/día)">
+        <input type="text" id="cons-habito-alcohol" placeholder="Alcohol (ej: ocasional, 3 u/sem)">
+        <input type="text" id="cons-habito-ejercicio" placeholder="Ejercicio (ej: 150 min/sem)">
+        <input type="text" id="cons-habito-sueno" placeholder="Sueño (ej: 7 h/noche)">
+      </div>
+    </div>
+
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-primary" onclick="consultaIrAObjetivo()">Continuar → Objetivo</button>
+    </div>
+  </div>
+
+  <!-- PASO 4 — O: OBJETIVO -->
+  <div class="card" id="consulta-objetivo-card" style="display:none">
+    <div class="card-title">
+      <span class="num">O</span>
+      <span>Objetivo</span>
+      <span class="card-desc">Examen físico + estudios</span>
+    </div>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:0 0 8px">💓 Signos vitales</h4>
+    <div id="consulta-vitales"></div>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">🩺 Examen físico</h4>
+    <p style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">Describe hallazgos por región anatómica. Deja en blanco lo normal.</p>
+    <div id="consulta-examen-fisico"></div>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">🔬 Estudios</h4>
+    
+    <div class="config-box" style="margin-bottom:12px">
+      <h4>📋 Pegar reporte de laboratorio</h4>
+      <p>Pega el texto y Kimi extraerá los valores automáticamente.</p>
+      <textarea id="cons-labs-raw" placeholder="Pega aquí el reporte del laboratorio..." style="min-height:80px;font-size:11px"></textarea>
+      <button class="btn btn-primary" id="btn-cons-parse-labs" style="margin-top:8px;font-size:12px">Parsear con IA</button>
+    </div>
+
+    <div class="form-group">
+      <label>Fecha de toma de laboratorios</label>
+      <input type="date" id="cons-labs-fecha">
+    </div>
+
+    <div id="consulta-labs"></div>
+
+    <div class="form-group" style="margin-top:12px">
+      <label>Otros estudios (imagen, EKG, etc.)</label>
+      <textarea id="cons-otros-estudios" placeholder="Describe hallazgos de US, Rx, EKG, etc."></textarea>
+    </div>
+
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-secondary" onclick="consultaVolverASubjetivo()">← Volver a Subjetivo</button>
+      <button class="btn btn-primary" onclick="consultaIrAAnalisis()">Continuar → Análisis</button>
+    </div>
+  </div>
+
+  <!-- PASO 5 — A: ANÁLISIS -->
+  <div class="card" id="consulta-analisis-card" style="display:none">
+    <div class="card-title">
+      <span class="num">A</span>
+      <span>Análisis</span>
+      <span class="card-desc">Apoyo diagnóstico</span>
+    </div>
+
+    <div class="config-box">
+      <h4>🤖 Apoyo diagnóstico con IA</h4>
+      <p>La IA integra S + O y sugiere diagnósticos diferenciales, estudios y plan inicial. Tú decides qué aceptar.</p>
+      <button class="btn btn-primary" id="btn-cons-ia" onclick="ejecutarAnalisisConsulta()" style="font-size:12px">
+        Ejecutar análisis con IA
+      </button>
+    </div>
+
+    <div id="consulta-ia-error" style="display:none;margin-top:12px"></div>
+
+    <div id="consulta-ia-resultado" style="display:none;margin-top:12px">
+      <div style="background:var(--bg);border:1.5px solid var(--accent);border-radius:var(--radius-md);padding:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;margin-bottom:8px">Impresión clínica de la IA</div>
+        <div id="cons-ia-narrativa" style="font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:400px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">🎯 Diagnósticos (CIE-10)</h4>
+    <div id="consulta-diagnosticos"></div>
+    <button class="btn btn-secondary btn-sm" onclick="agregarDiagnostico()" style="margin-top:8px">+ Añadir diagnóstico</button>
+
+    <div class="form-group" style="margin-top:14px">
+      <label>Impresión clínica final</label>
+      <textarea id="cons-impresion-final" placeholder="Integración S + O + A..." style="min-height:100px"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Nivel de riesgo</label>
+      <select id="cons-nivel-riesgo">
+        <option value="BAJO">BAJO</option>
+        <option value="MODERADO" selected>MODERADO</option>
+        <option value="ALTO">ALTO</option>
+        <option value="MUY ALTO">MUY ALTO</option>
+      </select>
+    </div>
+
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-secondary" onclick="consultaVolverAObjetivo()">← Volver a Objetivo</button>
+      <button class="btn btn-primary" onclick="consultaIrAPlan()">Continuar → Plan</button>
+    </div>
+  </div>
+
+  <!-- PASO 6 — P: PLAN -->
+  <div class="card" id="consulta-plan-card" style="display:none">
+    <div class="card-title">
+      <span class="num">P</span>
+      <span>Plan</span>
+      <span class="card-desc">Tratamiento + órdenes</span>
+    </div>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:0 0 8px">💊 Tratamiento farmacológico</h4>
+    <div id="consulta-farmacologico"></div>
+    <button class="btn btn-secondary btn-sm" onclick="agregarFarmacoConsulta()" style="margin-top:8px;margin-bottom:12px">+ Añadir fármaco</button>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">🥗 Plan no farmacológico</h4>
+    <div id="consulta-no-farmacologico"></div>
+    <button class="btn btn-secondary btn-sm" onclick="agregarNoFarmacoConsulta()" style="margin-top:8px;margin-bottom:12px">+ Añadir intervención</button>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">🔬 Órdenes de laboratorio</h4>
+    <div id="consulta-ordenes-lab"></div>
+    <button class="btn btn-secondary btn-sm" onclick="agregarOrdenLab()" style="margin-top:8px;margin-bottom:12px">+ Añadir orden</button>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">🖼️ Órdenes de imagen</h4>
+    <div id="consulta-ordenes-imagen"></div>
+    <button class="btn btn-secondary btn-sm" onclick="agregarOrdenImagen()" style="margin-top:8px;margin-bottom:12px">+ Añadir orden</button>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">📤 Referencias / derivaciones</h4>
+    <div id="consulta-referencias"></div>
+    <button class="btn btn-secondary btn-sm" onclick="agregarReferencia()" style="margin-top:8px;margin-bottom:12px">+ Añadir referencia</button>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">📖 Educación al paciente</h4>
+    <div class="form-group">
+      <textarea id="cons-educacion" placeholder="Una instrucción por línea..." style="min-height:80px"></textarea>
+    </div>
+
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">📅 Seguimiento</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group">
+        <label>Próxima cita en (días)</label>
+        <input type="number" id="cons-proxima-cita-dias" placeholder="30" min="1">
+      </div>
+      <div class="form-group">
+        <label>Tipo de próxima cita</label>
+        <select id="cons-proxima-cita-tipo">
+          <option value="control">Control</option>
+          <option value="subsecuente">Subsecuente</option>
+          <option value="resultados">Entrega de resultados</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="consulta-complejidad-card" style="margin-top:16px;padding:12px;background:var(--accent-light);border-radius:var(--radius-md);border:1.5px solid var(--accent)"></div>
+
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-secondary" onclick="consultaVolverAAnalisis()">← Volver a Análisis</button>
+      <button class="btn btn-primary" onclick="consultaIrACierre()">Continuar → Cierre</button>
+    </div>
+  </div>
+
+  <!-- PASO 7 — CIERRE Y FIRMA -->
+  <div class="card" id="consulta-cierre-card" style="display:none">
+    <div class="card-title">
+      <span class="num">✓</span>
+      <span>Cierre de la consulta</span>
+    </div>
+
+    <div id="consulta-resumen-cierre" style="background:var(--bg-secondary);border-radius:var(--radius-md);padding:14px;margin-bottom:14px"></div>
+
+    <div class="config-box" style="background:#fff9e6;border-color:var(--warning)">
+      <h4 style="color:#8a6a00">✍️ Firma del médico tratante</h4>
+      <p style="font-size:11px;color:#8a6a00;line-height:1.5">
+        Solo médicos con CSSPM pueden firmar. La firma cierra la consulta y genera los documentos.
+      </p>
+      
+      <div class="form-group" style="margin-top:10px">
+        <label>Nombre del médico</label>
+        <input type="text" id="cons-medico-nombre" placeholder="Dr. Eduardo Mazzini">
+      </div>
+      <div class="form-group">
+        <label>CSSPM</label>
+        <input type="text" id="cons-medico-csspm" placeholder="12345">
+      </div>
+      <div class="form-group">
+        <label>Especialidad</label>
+        <input type="text" id="cons-medico-especialidad" placeholder="Medicina Interna">
+      </div>
+
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:10px;cursor:pointer;font-weight:600">
+        <input type="checkbox" id="cons-firma-check" style="width:auto">
+        Confirmo que he revisado y valido la nota clínica completa
+      </label>
+    </div>
+
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-secondary" onclick="consultaVolverAPlan()">← Volver a Plan</button>
+      <button class="btn btn-secondary" onclick="guardarConsultaBorrador()">💾 Guardar borrador</button>
+      <button class="btn btn-warning" onclick="enviarConsultaAFirma()" id="btn-enviar-firma" style="display:none">📤 Enviar a firma médica</button>
+      <button class="btn btn-success" onclick="firmarYGenerarConsulta()" id="btn-firmar-consulta">✍️ Firmar y generar documentos</button>
+    </div>
+  </div>
+
+  <!-- RESULTADO — DOCUMENTOS GENERADOS -->
+  <div class="card" id="consulta-documentos-card" style="display:none">
+    <div class="card-title">
+      <span class="num">📄</span>
+      <span>Documentos generados</span>
+    </div>
+
+    <div id="consulta-documentos-botones" style="display:grid;gap:8px;margin-bottom:14px"></div>
+
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="consultaNueva()">🆕 Nueva consulta</button>
+      <button class="btn btn-primary" onclick="cambiarTab('pacientes')">👥 Ver en pacientes</button>
+    </div>
+  </div>
+
+  <div id="consulta-reporte-container"></div>
+
+</div>
+<!-- FIN MÓDULO CONSULTA MÉDICA -->
 <div class="section" id="sec-admin">
   <div class="admin-container">
     <div class="admin-header">
@@ -7264,16 +7783,32 @@ function cambiarTab(tab) {
     t.classList.remove("active");
     if (t.dataset.tab === tab) t.classList.add("active");
   });
-  const secMap = { captura: "sec-captura", pacientes: "sec-pacientes", informes: "sec-informes", prompts: "sec-prompts-config", admin: "sec-admin", config: "sec-config-view" };
+  
+  const secMap = { 
+    captura: "sec-captura", 
+    consulta: "sec-consulta",
+    pacientes: "sec-pacientes", 
+    informes: "sec-informes", 
+    prompts: "sec-prompts-config", 
+    admin: "sec-admin", 
+    config: "sec-config-view" 
+  };
+  
   document.querySelectorAll(".section").forEach(s => {
-    if (["sec-captura", "sec-pacientes", "sec-paciente-detalle", "sec-informes", "sec-prompts-config", "sec-admin", "sec-config-view"].includes(s.id)) s.classList.remove("active");
+    if ([
+      "sec-captura", "sec-consulta", "sec-pacientes", "sec-paciente-detalle",
+      "sec-informes", "sec-prompts-config", "sec-admin", "sec-config-view"
+    ].includes(s.id)) s.classList.remove("active");
   });
+  
   const t = document.getElementById(secMap[tab]);
   if (t) t.classList.add("active");
+  
   if (tab === "informes") renderCasosGuardados();
   if (tab === "pacientes") renderPacientesLista();
   if (tab === "config") renderEstadisticas();
   if (tab === "prompts") renderPromptsConfig();
+  if (tab === "consulta" && window.consultaInit) window.consultaInit();
   if (tab === "admin") {
     const activeSubtab = document.querySelector(".admin-subtab.active")?.dataset.subtab || "tamizajes";
     cambiarSubtabAdmin(activeSubtab);
