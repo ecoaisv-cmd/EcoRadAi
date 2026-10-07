@@ -12009,7 +12009,9 @@ window.enviarConsultaAFirma = async function() {
 window.firmarYGenerarConsulta = async function() {
   const s = window._consultaState;
   
-  // Validaciones
+  // ─────────────────────────────────────────────
+  // 1. VALIDACIONES INICIALES
+  // ─────────────────────────────────────────────
   if (!s.paciente) { showStatus("Falta paciente", "error"); return; }
   if (!window.supabaseClient) { showStatus("Sin conexión", "error"); return; }
   
@@ -12035,36 +12037,87 @@ window.firmarYGenerarConsulta = async function() {
   }
   
   try {
-    // Guardar borrador primero
+    // ─────────────────────────────────────────────
+    // 2. REFRESCAR SESIÓN (evita JWT expirado)
+    // ─────────────────────────────────────────────
+    console.log("[Firma] Refrescando sesión...");
+    await window.supabaseClient.auth.refreshSession();
+    
+    // ─────────────────────────────────────────────
+    // 3. GUARDAR BORRADOR PRIMERO
+    // ─────────────────────────────────────────────
+    console.log("[Firma] Guardando borrador...");
     await guardarConsultaBorrador();
     if (!s.consultaId) throw new Error("No se pudo guardar el borrador");
+    console.log("[Firma] ✓ Borrador guardado:", s.consultaId);
     
-    // Hash de la firma
+    // ─────────────────────────────────────────────
+    // 4. VALIDAR medico_id
+    // ─────────────────────────────────────────────
+    const medicoId = window.usuarioActual?.id;
+    if (!medicoId) throw new Error("No hay usuario médico autenticado");
+    console.log("[Firma] medico_id:", medicoId);
+    
+    // ─────────────────────────────────────────────
+    // 5. GENERAR HASH DE FIRMA
+    // ─────────────────────────────────────────────
     const hashInput = csspm + s.caseId + new Date().toISOString();
     const firmaHash = await generarHashConsulta(hashInput);
+    console.log("[Firma] Hash generado:", firmaHash.substring(0, 16) + "...");
     
-    // Actualizar consulta
-    const { error: errUpd } = await window.supabaseClient
+    // ─────────────────────────────────────────────
+    // 6. UPDATE DE LA CONSULTA (con log de error)
+    // ─────────────────────────────────────────────
+    console.log("[Firma] Actualizando consulta en Supabase...");
+    const { data: updData, error: errUpd } = await window.supabaseClient
       .from("consultas")
       .update({
         estado: "firmada",
         firmada_at: new Date().toISOString(),
         firma_hash: firmaHash,
-        medico_id: window.usuarioActual.id,
+        medico_id: medicoId,
         medico_nombre: nombreMedico,
         medico_csspm: csspm
       })
-      .eq("consulta_id", s.consultaId);
+      .eq("consulta_id", s.consultaId)
+      .select("consulta_id, estado");  // ← importante para ver el resultado
     
-    if (errUpd) throw errUpd;
+    if (errUpd) {
+      console.error("═══════ ERROR UPDATE CONSULTAS ═══════");
+      console.error("Código:", errUpd.code);
+      console.error("Mensaje:", errUpd.message);
+      console.error("Detalle:", errUpd.details);
+      console.error("Hint:", errUpd.hint);
+      console.error("═══════════════════════════════════════");
+      throw new Error("Error al firmar: " + errUpd.message);
+    }
     
-    // Crear problemas activos nuevos
-    await crearProblemasActivosDesdeConsulta(s, s.consultaId);
+    console.log("[Firma] ✓ Consulta firmada:", updData);
     
-    // Crear cobro
-    await crearCobroDesdeConsulta(s, s.consultaId);
+    // ─────────────────────────────────────────────
+    // 7. CREAR PROBLEMAS ACTIVOS (con try/catch)
+    // ─────────────────────────────────────────────
+    try {
+      await crearProblemasActivosDesdeConsulta(s, s.consultaId);
+      console.log("[Firma] ✓ Problemas activos creados");
+    } catch (e) {
+      console.warn("[Firma] Error en problemas_activos (no crítico):", e);
+    }
     
-    // Generar documentos
+    // ─────────────────────────────────────────────
+    // 8. CREAR COBRO (con try/catch)
+    // ─────────────────────────────────────────────
+    try {
+      await crearCobroDesdeConsulta(s, s.consultaId);
+      console.log("[Firma] ✓ Cobro creado");
+    } catch (e) {
+      console.warn("[Firma] Error en cobro (no crítico):", e);
+    }
+    
+    // ─────────────────────────────────────────────
+    // 9. GENERAR DOCUMENTOS
+    // ─────────────────────────────────────────────
+    console.log("[Firma] Generando documentos...");
     const docs = await generarDocumentosConsulta(s, {
       nombre: nombreMedico,
       csspm: csspm,
@@ -12073,9 +12126,12 @@ window.firmarYGenerarConsulta = async function() {
     });
     
     s.docsGenerados = docs;
+    console.log("[Firma] ✓ Documentos generados");
     
-    // Notificar al operador creador
-    if (s.consultaId) {
+    // ─────────────────────────────────────────────
+    // 10. NOTIFICAR AL OPERADOR CREADOR (con try/catch)
+    // ─────────────────────────────────────────────
+    try {
       const { data: cons } = await window.supabaseClient
         .from("consultas")
         .select("created_by")
@@ -12091,13 +12147,18 @@ window.firmarYGenerarConsulta = async function() {
           mensaje: `Consulta ${s.caseId} firmada por ${nombreMedico}`
         });
       }
+    } catch (e) {
+      console.warn("[Firma] Error en notificación (no crítico):", e);
     }
     
-    // Mostrar documentos
+    // ─────────────────────────────────────────────
+    // 11. MOSTRAR DOCUMENTOS
+    // ─────────────────────────────────────────────
     mostrarDocumentosGenerados(docs);
     showStatus("✓ Consulta firmada y documentos generados", "success");
+    
   } catch (e) {
-    console.error("[firmarYGenerarConsulta]", e);
+    console.error("[firmarYGenerarConsulta] ERROR:", e);
     showStatus("Error: " + e.message, "error");
   } finally {
     if (btn) {
