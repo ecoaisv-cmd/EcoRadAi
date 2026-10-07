@@ -4770,6 +4770,13 @@ async function initSupabase() {
 
   supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   console.log("[Supabase] ✓ Cliente inicializado");
+  
+  // ⬇⬇⬇ EXPONER GLOBALMENTE ⬇⬇⬇
+  window.supabaseClient = supabaseClient;
+  window.SUPABASE_URL = SUPABASE_URL;
+  window.SUPABASE_KEY = SUPABASE_KEY;
+  window.WORKER_URL = WORKER_URL;
+  
   return supabaseClient;
 }
 
@@ -4872,14 +4879,11 @@ function ajustarUIPorRol(rol) {
    ─────────────────────────────────────────────────────────── */
 
 async function verificarSesion() {
-  // Asegurar que Supabase esté listo
   if (!supabaseClient) {
     await initSupabase();
   }
 
-  if (!supabaseClient) {
-    return; // ya se mostró el error
-  }
+  if (!supabaseClient) return;
 
   const f = document.getElementById("login-form-container");
   const l = document.getElementById("login-loading");
@@ -4908,6 +4912,9 @@ async function verificarSesion() {
     nombre: perfil.nombre,
     paciente_id: perfil.paciente_id
   };
+
+  // ⬇⬇⬇ EXPONER GLOBALMENTE ⬇⬇⬇
+  window.usuarioActual = usuarioActual;
 
   console.log("[Sesión] Usuario:", usuarioActual.email, "| Rol:", usuarioActual.rol);
   ocultarLogin();
@@ -10266,7 +10273,6 @@ window.consultaReset = function() {
 /* ═══════════════════════════════════════════════════════════
    PASO 1 — BÚSQUEDA DE PACIENTE
    ═══════════════════════════════════════════════════════════ */
-
 window.buscarPacienteConsulta = function(query) {
   clearTimeout(_consultaBuscadorTimer);
   const resultados = document.getElementById("consulta-resultados");
@@ -10277,12 +10283,38 @@ window.buscarPacienteConsulta = function(query) {
   }
   
   _consultaBuscadorTimer = setTimeout(async () => {
-    if (!window.supabaseClient) {
-      showStatus("Sin conexión a Supabase", "error");
+    // ⬇⬇⬇ FALLBACK: intentar obtener cliente si no está en window ⬇⬇⬇
+    let cliente = window.supabaseClient;
+    
+    if (!cliente) {
+      console.warn("[Consulta] supabaseClient no en window, intentando alternativa...");
+      
+      // Intento 1: usar variable global del scope principal (si está accesible)
+      if (typeof supabaseClient !== "undefined" && supabaseClient) {
+        cliente = supabaseClient;
+        window.supabaseClient = cliente;
+        console.log("[Consulta] supabaseClient recuperado del scope principal");
+      }
+      // Intento 2: esperar hasta 3 segundos a que se inicialice
+      else {
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 100));
+          if (window.supabaseClient) {
+            cliente = window.supabaseClient;
+            console.log("[Consulta] supabaseClient apareció tras", i * 100, "ms");
+            break;
+          }
+        }
+      }
+    }
+    
+    if (!cliente) {
+      showStatus("Supabase aún no inicializado. Espera un momento y vuelve a escribir.", "warning");
       return;
     }
+    
     try {
-      const { data, error } = await window.supabaseClient
+      const { data, error } = await cliente
         .rpc("buscar_pacientes", { query: query.trim() });
       
       if (error) throw error;
