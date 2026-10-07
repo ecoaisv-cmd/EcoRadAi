@@ -955,6 +955,7 @@ input[type="checkbox"]{width:auto}
 
 .consulta-paciente-card-result {
   background: var(--bg);
+  color: var(--text-primary);
   border: 1.5px solid var(--border);
   border-radius: 8px;
   padding: 10px 12px;
@@ -966,7 +967,25 @@ input[type="checkbox"]{width:auto}
   border-color: var(--accent);
   background: var(--accent-light);
 }
-
+.consulta-paciente-card-result * {
+  color: inherit;
+}
+.consulta-paciente-card-result .nombre {
+  color: var(--corp);
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.consulta-paciente-card-result .id {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-family: monospace;
+}
+.consulta-paciente-card-result .meta {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  margin-top: 3px;
+}
 @media print {
   #sec-consulta .card.no-print { display: none !important; }
 }
@@ -7786,11 +7805,16 @@ async function generarInformeFinal() {
 }
 
 function cambiarTab(tab) {
+  // 1. Actualizar tabs visuales
   document.querySelectorAll("#tabs-principales .tab").forEach(t => {
     t.classList.remove("active");
     if (t.dataset.tab === tab) t.classList.add("active");
   });
   
+  // 2. Ocultar TODAS las secciones
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  
+  // 3. Mapeo correcto
   const secMap = { 
     captura: "sec-captura", 
     consulta: "sec-consulta",
@@ -7801,16 +7825,17 @@ function cambiarTab(tab) {
     config: "sec-config-view" 
   };
   
-  document.querySelectorAll(".section").forEach(s => {
-    if ([
-      "sec-captura", "sec-consulta", "sec-pacientes", "sec-paciente-detalle",
-      "sec-informes", "sec-prompts-config", "sec-admin", "sec-config-view"
-    ].includes(s.id)) s.classList.remove("active");
-  });
+  const targetId = secMap[tab];
+  const targetEl = document.getElementById(targetId);
   
-  const t = document.getElementById(secMap[tab]);
-  if (t) t.classList.add("active");
+  if (targetEl) {
+    targetEl.classList.add("active");
+    console.log("[Tab] Cambiado a:", tab, "→", targetId);
+  } else {
+    console.warn("[Tab] No existe la sección:", targetId);
+  }
   
+  // 4. Inicializaciones específicas
   if (tab === "informes") renderCasosGuardados();
   if (tab === "pacientes") renderPacientesLista();
   if (tab === "config") renderEstadisticas();
@@ -10320,7 +10345,7 @@ window.buscarPacienteConsulta = function(query) {
         return '<div class="consulta-paciente-card-result" onclick="seleccionarPacienteConsulta(\'' + p.subject_id + '\')">' +
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">' +
             '<div style="flex:1;min-width:0">' +
-              '<div style="font-size:13px;font-weight:700;color:var(--corp);margin-bottom:2px">' + escapeHtml(p.nombre) + '</div>' +
+              '<div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:2px">' + escapeHtml(p.nombre) + '</div>' +
               '<div style="font-size:10px;color:var(--text-secondary);font-family:monospace">' + escapeHtml(p.subject_id) + '</div>' +
               '<div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">' + (p.edad || "—") + ' años · ' + escapeHtml(p.sexo || "—") + (p.dui ? " · DUI " + escapeHtml(p.dui) : "") + '</div>' +
             '</div>' +
