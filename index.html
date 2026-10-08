@@ -5275,28 +5275,95 @@ async function cargarPortalPaciente() {
    VISOR DE ARTEFACTOS (informe médico, lite, receta)
    ═══════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — verArtefacto con soporte para consultas
+   Detecta si el case_id es de tamizaje (ECO-) o consulta (CONS-)
+   ═══════════════════════════════════════════════════════════ */
+
 async function verArtefacto(caseId, tipo) {
   try {
-    const arts = await obtenerArtifactsPorCasoDB(caseId);
-    const art = arts.find(a => a.tipo === tipo);
-
-    if (!art || !art.html) {
+    let html = null;
+    
+    // ─── CASO 1: Es una consulta (CONS-) ───
+    if (caseId.startsWith("CONS-")) {
+      const { data, error } = await window.supabaseClient
+        .from("artifacts")
+        .select("html")
+        .eq("case_id", caseId)
+        .eq("tipo", tipo)
+        .maybeSingle();
+      
+      if (error) {
+        console.error("[verArtefacto] Error consulta:", error);
+        showStatus("Error al leer documento: " + error.message, "error");
+        return;
+      }
+      
+      if (!data || !data.html) {
+        // Intentar con nombres alternativos
+        const alternativas = {
+          ordenesLab: "orden_laboratorio",
+          ordenesImagen: "orden_imagen",
+          constanciaIncapacidad: "constancia_incapacidad",
+          constanciaAcompanamiento: "constancia_acompanamiento"
+        };
+        const alt = alternativas[tipo];
+        if (alt) {
+          const { data: data2 } = await window.supabaseClient
+            .from("artifacts")
+            .select("html")
+            .eq("case_id", caseId)
+            .eq("tipo", alt)
+            .maybeSingle();
+          if (data2?.html) html = data2.html;
+        }
+      } else {
+        html = data.html;
+      }
+    }
+    
+    // ─── CASO 2: Es un tamizaje (ECO-) ───
+    if (!html && caseId.startsWith("ECO-")) {
+      const arts = await obtenerArtifactsPorCasoDB(caseId);
+      const art = arts.find(a => a.tipo === tipo);
+      if (art?.html) html = art.html;
+    }
+    
+    // ─── CASO 3: Fallback genérico ───
+    if (!html) {
+      const { data } = await window.supabaseClient
+        .from("artifacts")
+        .select("html")
+        .eq("case_id", caseId)
+        .eq("tipo", tipo)
+        .maybeSingle();
+      if (data?.html) html = data.html;
+    }
+    
+    if (!html) {
       showStatus("Documento no disponible", "warning");
       return;
     }
-
+    
+    // ─── Mostrar modal ───
     const titulos = {
       informeMedico: "🩺 Informe médico",
       lite: "📄 Informe lite",
-      receta: "💊 Receta"
+      receta: "💊 Receta",
+      notaClinica: "📋 Nota clínica SOAP",
+      orden_laboratorio: "🔬 Órdenes de laboratorio",
+      orden_imagen: "🖼️ Órdenes de imagen",
+      referencia: "📤 Hoja de referencia",
+      constancia_incapacidad: "📝 Constancia de incapacidad",
+      constancia_acompanamiento: "👨‍👩‍👧 Constancia de acompañamiento"
     };
-
+    
     const overlay = document.createElement("div");
     overlay.id = "modal-artefacto";
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:99998;overflow-y:auto;padding:16px";
-
+    
     overlay.innerHTML = `
-      <div style="max-width:700px;margin:0 auto">
+      <div style="max-width:800px;margin:0 auto">
         <div style="position:sticky;top:0;z-index:2;background:var(--bg);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:14px 18px;border-bottom:2px solid var(--accent);display:flex;justify-content:space-between;align-items:center;box-shadow:0 4px 12px rgba(0,0,0,0.1)">
           <h3 style="font-size:15px;font-weight:700;color:var(--corp);margin:0">${titulos[tipo] || "Documento"}</h3>
           <div style="display:flex;gap:6px">
@@ -5305,17 +5372,17 @@ async function verArtefacto(caseId, tipo) {
           </div>
         </div>
         <div id="contenido-artefacto" style="background:var(--bg);border-radius:0 0 var(--radius-lg) var(--radius-lg);padding:0;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
-          ${art.html}
+          ${html}
         </div>
       </div>
     `;
-
+    
     overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
     document.body.appendChild(overlay);
-
+    
   } catch (e) {
     console.error("[verArtefacto]", e);
-    showStatus("Error al abrir el documento", "error");
+    showStatus("Error al abrir el documento: " + e.message, "error");
   }
 }
 
@@ -8169,103 +8236,239 @@ async function guardarCasoActual() {
     showStatus("Caso guardado", "success");
   } catch (e) { showStatus("Error: " + e.message, "error"); }
 }
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — renderCasosGuardados SIN depender de JOIN
+   Carga consultas, luego resuelve nombres con un query batch
+   ═══════════════════════════════════════════════════════════ */
+
 async function renderCasosGuardados() {
   const c = document.getElementById("informes-lista-container");
   if (!c) return;
-
+  
+  c.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando casos...</p></div>';
+  
   try {
-    // ═══════════════════════════════════════════════════════
-    // Cargar TAMIZAJES (cases) y CONSULTAS (con JOIN a patients)
-    // ═══════════════════════════════════════════════════════
-    const [casos, consultas] = await Promise.all([
-      listarCasosDB().catch(() => []),
-      (async () => {
-        if (!window.supabaseClient) return [];
-        const { data, error } = await window.supabaseClient
-          .from("consultas")
-          .select(`
-            consulta_id, case_id, subject_id, fecha_consulta, tipo, estado,
-            motivo_consulta, cie10_principal, nivel_riesgo, complejidad,
-            medico_nombre, operador_nombre, created_at,
-            patients!inner(nombre, edad, sexo)
-          `)
-          .order("created_at", { ascending: false });
-        if (error) { 
-          console.error("[consultas con JOIN]", error); 
-          // Fallback sin JOIN si falla
-          const { data: fallback } = await window.supabaseClient
-            .from("consultas")
-            .select("consulta_id, case_id, subject_id, fecha_consulta, tipo, estado, motivo_consulta, cie10_principal, nivel_riesgo, complejidad, medico_nombre, operador_nombre, created_at")
-            .order("created_at", { ascending: false });
-          return fallback || [];
-        }
-        return data || [];
-      })()
-    ]);
-
+    // ═══ 1. Cargar tamizajes (cases) ═══
+    const casos = await listarCasosDB().catch(() => []);
+    
+    // ═══ 2. Cargar consultas SIN JOIN ═══
+    let consultas = [];
+    if (window.supabaseClient) {
+      const { data, error } = await window.supabaseClient
+        .from("consultas")
+        .select("consulta_id, case_id, subject_id, fecha_consulta, tipo, estado, motivo_consulta, cie10_principal, nivel_riesgo, complejidad, medico_nombre, operador_nombre, created_at")
+        .order("created_at", { ascending: false });
+      
+      if (error) {
+        console.error("[renderCasosGuardados] Error consultas:", error);
+      } else {
+        consultas = data || [];
+      }
+    }
+    
+    // ═══ 3. Cargar nombres de pacientes en UN SOLO query batch ═══
+    const subjectIds = [...new Set([
+      ...casos.map(x => x.subject?.subject_id),
+      ...consultas.map(c => c.subject_id)
+    ].filter(Boolean))];
+    
+    let mapaPacientes = {};
+    if (subjectIds.length > 0 && window.supabaseClient) {
+      const { data: pacientes, error: errP } = await window.supabaseClient
+        .from("patients")
+        .select("subject_id, nombre, edad, sexo")
+        .in("subject_id", subjectIds);
+      
+      if (!errP && pacientes) {
+        mapaPacientes = Object.fromEntries(
+          pacientes.map(p => [p.subject_id, p])
+        );
+        console.log(`[Informes] ${pacientes.length} pacientes cargados en batch`);
+      } else {
+        console.warn("[Informes] No se pudieron cargar nombres:", errP);
+      }
+    }
+    
     const total = casos.length + consultas.length;
     if (total === 0) {
       c.innerHTML = '<div class="empty-state"><div class="icon">📁</div><p>No hay casos guardados</p></div>';
       return;
     }
-
-    // ═══ Unificar y ordenar ═══
+    
+    // ═══ 4. Unificar eventos ═══
     const eventos = [
-      ...casos.map(x => ({
-        kind: "tamizaje",
-        id: x.case_id,
-        fecha: x.encounter?.fecha || x.created_at?.slice(0, 10),
-        timestamp: new Date(x.created_at || 0).getTime(),
-        nombre: x.subject?.nombre || "Sin nombre",
-        estudio: TAMIZAJES_REGISTRY.obtener(x.encounter?.estudio)?.meta?.nombre || "Tamizaje",
-        nivel: normalizarNivel(x.riesgo_global?.nivel || "MODERADO"),
-        tieneInterconsultas: (x.interconsultas_ejecutadas || []).filter(ic => !ic.error).length > 0,
-        extra: x.case_id
-      })),
-      ...consultas.map(c => ({
-        kind: "consulta",
-        id: c.consulta_id,
-        caseId: c.case_id,
-        fecha: c.fecha_consulta,
-        timestamp: new Date(c.created_at || 0).getTime(),
-        // ✅ NUEVO: nombre real del paciente desde el JOIN
-        nombre: c.patients?.nombre || c.subject_id || "Sin nombre",
-        subject_id: c.subject_id,
-        paciente_edad: c.patients?.edad || "",
-        paciente_sexo: c.patients?.sexo || "",
-        estudio: `Consulta — ${(c.tipo || "").replace("_", " ")}`,
-        nivel: normalizarNivel(c.nivel_riesgo || "MODERADO"),
-        estado: c.estado,
-        medico: c.medico_nombre,
-        motivo: c.motivo_consulta,
-        cie10: c.cie10_principal,
-        extra: c.case_id
-      }))
+      ...casos.map(x => {
+        const sid = x.subject?.subject_id;
+        const pac = mapaPacientes[sid] || x.subject || {};
+        return {
+          kind: "tamizaje",
+          id: x.case_id,
+          fecha: x.encounter?.fecha || x.created_at?.slice(0, 10),
+          timestamp: new Date(x.created_at || 0).getTime(),
+          nombre: pac.nombre || "Sin nombre",
+          edad: pac.edad || "",
+          sexo: pac.sexo || "",
+          estudio: TAMIZAJES_REGISTRY.obtener(x.encounter?.estudio)?.meta?.nombre || "Tamizaje",
+          nivel: normalizarNivel(x.riesgo_global?.nivel || "MODERADO"),
+          tieneInterconsultas: (x.interconsultas_ejecutadas || []).filter(ic => !ic.error).length > 0,
+          extra: x.case_id
+        };
+      }),
+      ...consultas.map(c => {
+        const pac = mapaPacientes[c.subject_id] || {};
+        return {
+          kind: "consulta",
+          id: c.consulta_id,
+          caseId: c.case_id,
+          fecha: c.fecha_consulta,
+          timestamp: new Date(c.created_at || 0).getTime(),
+          nombre: pac.nombre || "Sin nombre",
+          edad: pac.edad || "",
+          sexo: pac.sexo || "",
+          estudio: `Consulta — ${(c.tipo || "").replace(/_/g, " ")}`,
+          nivel: normalizarNivel(c.nivel_riesgo || "MODERADO"),
+          estado: c.estado,
+          medico: c.medico_nombre,
+          motivo: c.motivo_consulta,
+          cie10: c.cie10_principal,
+          extra: c.case_id
+        };
+      })
     ].sort((a, b) => b.timestamp - a.timestamp);
-
-    // ═══ Buscador + filtros ═══
+    
+    // ═══ 5. Buscador + filtros ═══
     const htmlBuscador = `
       <div style="margin-bottom:14px">
         <input type="text" id="informes-buscador" 
                placeholder="🔍 Buscar por nombre, ID, motivo, CIE-10..." 
                oninput="filtrarInformes(this.value)"
                style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-md);background:var(--bg);color:var(--text-primary);font-size:13px">
-        <div style="display:flex;gap:6px;margin-top:8px">
-          <button class="btn btn-secondary btn-xs" onclick="filtrarTipoInforme('todos')" id="filtro-todos" style="font-size:10px">Todos (${total})</button>
-          <button class="btn btn-secondary btn-xs" onclick="filtrarTipoInforme('tamizaje')" id="filtro-tamizaje" style="font-size:10px">🩺 Tamizajes (${casos.length})</button>
-          <button class="btn btn-secondary btn-xs" onclick="filtrarTipoInforme('consulta')" id="filtro-consulta" style="font-size:10px">📋 Consultas (${consultas.length})</button>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-xs" onclick="filtrarTipoInforme('todos', this)" id="filtro-todos" style="font-size:10px">Todos (${total})</button>
+          <button class="btn btn-secondary btn-xs" onclick="filtrarTipoInforme('tamizaje', this)" id="filtro-tamizaje" style="font-size:10px">🩺 Tamizajes (${casos.length})</button>
+          <button class="btn btn-secondary btn-xs" onclick="filtrarTipoInforme('consulta', this)" id="filtro-consulta" style="font-size:10px">📋 Consultas (${consultas.length})</button>
         </div>
       </div>
     `;
-
+    
     c.innerHTML = htmlBuscador + `<div id="informes-lista-inner">${eventos.map(renderItemInforme).join("")}</div>`;
-
+    
+    console.log(`[Informes] ${eventos.length} eventos renderizados`);
+    
   } catch (e) {
     console.error("[renderCasosGuardados]", e);
-    c.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Error al cargar</p></div>';
+    c.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Error al cargar: ' + escapeHtml(e.message) + '</p></div>';
   }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — renderItemInforme (único, sin duplicados)
+   ═══════════════════════════════════════════════════════════ */
+
+function renderItemInforme(x) {
+  const nc = x.nivel === "MUY ALTO" ? "muy-alto" : x.nivel === "ALTO" ? "alto" : x.nivel === "MODERADO" ? "moderado" : "bajo";
+  const icono = x.kind === "tamizaje" ? "🩺" : "📋";
+  const color = x.kind === "tamizaje" ? "#0071e3" : "#34c759";
+  
+  if (x.kind === "tamizaje") {
+    return `
+      <div class="informe-card" data-kind="tamizaje" 
+           data-search="${(x.nombre + " " + x.extra + " " + x.estudio).toLowerCase()}" 
+           onclick="abrirCasoGuardado('${x.id}')" 
+           style="border-left:4px solid ${color}">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${icono} ${escapeHtml(x.nombre)}</div>
+          <div style="font-size:11px;color:var(--text-secondary)">
+            ${escapeHtml(x.fecha || "")} · ${escapeHtml(x.estudio)}
+            ${x.edad ? " · " + x.edad + " años" : ""}
+            ${x.tieneInterconsultas ? " · 🩺 interconsultas" : ""}
+          </div>
+          <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-family:monospace">${escapeHtml(x.extra)}</div>
+        </div>
+        <div class="timeline-risk ${nc}">${x.nivel}</div>
+      </div>
+    `;
+  }
+  
+  // Consulta
+  const esBorrador = x.estado !== "firmada" && x.estado !== "rectificada";
+  const estadoBadge = esBorrador
+    ? `<span style="background:#fff9e6;color:#8a6a00;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;margin-left:6px">Borrador</span>`
+    : `<span style="background:#f0fff4;color:#1a4a2a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;margin-left:6px">Firmada</span>`;
+  
+  return `
+    <div class="informe-card" data-kind="consulta" 
+         data-search="${(x.nombre + " " + x.extra + " " + (x.motivo || "") + " " + (x.cie10 || "")).toLowerCase()}" 
+         onclick="abrirConsultaDesdeInformes('${x.id}', '${x.estado}')" 
+         style="border-left:4px solid ${color}">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px;display:flex;align-items:center;flex-wrap:wrap">
+          <span>${icono} ${escapeHtml(x.nombre)}</span>
+          ${estadoBadge}
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary)">
+          ${escapeHtml(x.fecha || "")} · ${escapeHtml(x.estudio)}
+          ${x.edad ? " · " + x.edad + " años" : ""}
+          ${x.medico ? " · Dr(a). " + escapeHtml(x.medico) : ""}
+        </div>
+        ${x.cie10 ? `<div style="font-size:10px;color:var(--accent);font-weight:600;margin-top:2px">CIE-10: ${escapeHtml(x.cie10)}</div>` : ""}
+        ${x.motivo ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">${escapeHtml(x.motivo.substring(0, 80))}${x.motivo.length > 80 ? "…" : ""}</div>` : ""}
+        <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-family:monospace">${escapeHtml(x.extra)}</div>
+      </div>
+      <div class="timeline-risk ${nc}">${x.nivel}</div>
+    </div>
+  `;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — Filtros (con botón activo correcto)
+   ═══════════════════════════════════════════════════════════ */
+
+window.filtrarTipoInforme = function(tipo, btn) {
+  document.querySelectorAll("[id^='filtro-']").forEach(b => {
+    b.classList.remove("btn-primary");
+    b.classList.add("btn-secondary");
+  });
+  if (btn) {
+    btn.classList.remove("btn-secondary");
+    btn.classList.add("btn-primary");
+  }
+  
+  document.querySelectorAll("#informes-lista-inner .informe-card").forEach(card => {
+    card.style.display = (tipo === "todos" || card.dataset.kind === tipo) ? "flex" : "none";
+  });
+};
+
+window.filtrarInformes = function(query) {
+  const q = (query || "").trim().toLowerCase();
+  document.querySelectorAll("#informes-lista-inner .informe-card").forEach(card => {
+    const texto = card.dataset.search || "";
+    card.style.display = (!q || texto.includes(q)) ? "flex" : "none";
+  });
+};
+
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — abrirConsultaDesdeInformes
+   ═══════════════════════════════════════════════════════════ */
+
+window.abrirConsultaDesdeInformes = async function(consultaId, estado) {
+  if (typeof cambiarTab === "function") cambiarTab("consulta");
+  await new Promise(r => setTimeout(r, 250));
+  
+  if (estado === "firmada" || estado === "rectificada") {
+    if (typeof verConsultaFirmada === "function") {
+      await verConsultaFirmada(consultaId);
+    } else {
+      showStatus("Módulo consulta no cargado", "error");
+    }
+  } else {
+    if (typeof abrirConsultaBorrador === "function") {
+      await abrirConsultaBorrador(consultaId);
+    } else {
+      showStatus("Módulo consulta no cargado", "error");
+    }
+  }
+};
 /* Render de cada ítem (tamizaje o consulta) — MEJORADO */
 function renderItemInforme(x) {
   const nc = x.nivel === "MUY ALTO" ? "muy-alto" : x.nivel === "ALTO" ? "alto" : x.nivel === "MODERADO" ? "moderado" : "bajo";
@@ -10642,15 +10845,31 @@ function renderInfoPacienteConsulta(p) {
   `;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — cargarContextoClinico
+   Carga 5 fuentes y muestra mensaje claro si no hay datos
+   ═══════════════════════════════════════════════════════════ */
+
 async function cargarContextoClinico(subjectId) {
   const s = window._consultaState;
-  if (s.contextoCargado) return;
+  if (s.contextoCargado) {
+    console.log("[Contexto] Ya estaba cargado, skip");
+    return;
+  }
+  
+  const cont = document.getElementById("consulta-contexto-clinico");
+  if (cont) {
+    cont.innerHTML = '<div style="padding:14px;text-align:center;color:var(--text-tertiary);font-size:11px">⏳ Cargando historial del paciente...</div>';
+    cont.style.display = "block";
+  }
   
   try {
-    // ═══════════════════════════════════════════════════════════
-    // Cargar en paralelo: problemas, alergias, medicamentos,
-    // consultas previas y tamizajes previos
-    // ═══════════════════════════════════════════════════════════
+    // ═══ Carga en paralelo de 5 fuentes ═══
+    const safeQuery = (promise) => promise.then(r => r.data || []).catch(e => {
+      console.warn("[Contexto] Query falló:", e);
+      return [];
+    });
+    
     const [
       problemasRes,
       alergiasRes,
@@ -10658,80 +10877,87 @@ async function cargarContextoClinico(subjectId) {
       consultasRes,
       tamizajesRes
     ] = await Promise.all([
-      window.supabaseClient.from("problemas_activos")
+      safeQuery(window.supabaseClient.from("problemas_activos")
         .select("*").eq("subject_id", subjectId)
         .in("estado", ["activo", "cronico", "en_estudio"])
-        .order("fecha_inicio", { ascending: false })
-        .then(r => r.data || [])
-        .catch(() => []),
-      window.supabaseClient.from("alergias")
-        .select("*").eq("subject_id", subjectId).eq("activa", true)
-        .then(r => r.data || [])
-        .catch(() => []),
-      window.supabaseClient.from("medicamentos_cronicos")
-        .select("*").eq("subject_id", subjectId).eq("activo", true)
-        .then(r => r.data || [])
-        .catch(() => []),
-      // ✅ NUEVO: consultas previas del paciente
-      window.supabaseClient.from("consultas")
+        .order("fecha_inicio", { ascending: false })),
+      
+      safeQuery(window.supabaseClient.from("alergias")
+        .select("*").eq("subject_id", subjectId).eq("activa", true)),
+      
+      safeQuery(window.supabaseClient.from("medicamentos_cronicos")
+        .select("*").eq("subject_id", subjectId).eq("activo", true)),
+      
+      safeQuery(window.supabaseClient.from("consultas")
         .select("consulta_id, case_id, fecha_consulta, tipo, estado, motivo_consulta, cie10_principal, medico_nombre, nivel_riesgo, complejidad")
         .eq("subject_id", subjectId)
-        .order("fecha_consulta", { ascending: false })
-        .then(r => r.data || [])
-        .catch(() => []),
-      // ✅ NUEVO: tamizajes previos del paciente
-      window.supabaseClient.from("cases")
+        .order("fecha_consulta", { ascending: false })),
+      
+      safeQuery(window.supabaseClient.from("cases")
         .select("case_id, payload, created_at")
         .eq("subject_id", subjectId)
-        .order("created_at", { ascending: false })
-        .then(r => r.data || [])
-        .catch(() => [])
+        .order("created_at", { ascending: false }))
     ]);
     
-    const cont = document.getElementById("consulta-contexto-clinico");
     if (!cont) return;
     
-    const tieneContexto = 
-      problemasRes.length > 0 || 
-      alergiasRes.length > 0 || 
+    const tieneContexto =
+      problemasRes.length > 0 ||
+      alergiasRes.length > 0 ||
       medicamentosRes.length > 0 ||
       consultasRes.length > 0 ||
       tamizajesRes.length > 0;
     
+    // ═══ CASO 1: Sin historial ═══
     if (!tieneContexto) {
       cont.innerHTML = `
-        <div style="background:#f8f9fa;border:1px dashed #d2d2d7;border-radius:8px;padding:14px;text-align:center;font-size:11px;color:#666">
-          📭 Sin historial clínico previo para este paciente
+        <div style="background:#fff9e6;border:1.5px solid #ff9500;border-radius:10px;padding:16px;text-align:center">
+          <div style="font-size:28px;margin-bottom:6px">📭</div>
+          <div style="font-size:13px;font-weight:700;color:#8a6a00;margin-bottom:6px">
+            Paciente sin historial clínico previo
+          </div>
+          <div style="font-size:11px;color:#5a4a00;line-height:1.6">
+            Este es el primer contacto registrado de
+            <strong>${escapeHtml(s.paciente?.nombre || "")}</strong>.<br>
+            Aquí aparecerá el historial cuando existan consultas previas,
+            tamizajes previos, problemas activos, alergias o medicamentos crónicos.
+          </div>
         </div>
       `;
       cont.style.display = "block";
+      
       s.contextoCargado = true;
       s.consultasPrevias = [];
       s.tamizajesPrevios = [];
       s.problemasActivos = [];
       s.alergias = [];
       s.medicamentosCronicos = [];
+      
+      console.log("[Contexto] Sin historial para", subjectId);
       return;
     }
     
-    let html = `<div style="font-size:12px;font-weight:700;color:var(--corp);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📋 Contexto clínico del paciente</div>`;
+    // ═══ CASO 2: Con historial ═══
+    let html = `<div style="font-size:12px;font-weight:700;color:var(--corp);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">
+      📋 Contexto clínico del paciente
+    </div>`;
     
-    // ─── HISTORIAL DE CONSULTAS (NUEVO) ───
+    // Consultas previas
     if (consultasRes.length > 0) {
       const ultima = consultasRes[0];
       html += `
-        <div class="consulta-contexto-card" style="background:#f0fff4;border-color:#34c759">
+        <div class="consulta-contexto-card" style="background:#f0fff4;border-color:#34c759;margin-bottom:10px">
           <h5 style="color:#1a4a2a">📅 Consultas previas (${consultasRes.length})</h5>
           <div class="ctx-item" style="font-weight:600">
-            Última: ${new Date(ultima.fecha_consulta).toLocaleDateString("es-ES")} · 
-            ${(ultima.tipo || "").replace("_", " ")} · 
+            Última: ${new Date(ultima.fecha_consulta).toLocaleDateString("es-ES")} ·
+            ${(ultima.tipo || "").replace(/_/g, " ")} ·
             ${ultima.estado}
             ${ultima.cie10_principal ? ` · CIE-10 ${ultima.cie10_principal}` : ""}
           </div>
           ${consultasRes.slice(1, 4).map(c => `
             <div class="ctx-item" style="font-size:10px;color:#666">
-              ${new Date(c.fecha_consulta).toLocaleDateString("es-ES")} · 
-              ${(c.tipo || "").replace("_", " ")}
+              ${new Date(c.fecha_consulta).toLocaleDateString("es-ES")} ·
+              ${(c.tipo || "").replace(/_/g, " ")}
               ${c.cie10_principal ? ` · ${c.cie10_principal}` : ""}
             </div>
           `).join("")}
@@ -10740,19 +10966,20 @@ async function cargarContextoClinico(subjectId) {
       `;
     }
     
-    // ─── HISTORIAL DE TAMIZAJES (NUEVO) ───
+    // Tamizajes previos
     if (tamizajesRes.length > 0) {
       html += `
-        <div class="consulta-contexto-card" style="background:#f0f7ff;border-color:#0071e3">
+        <div class="consulta-contexto-card" style="background:#f0f7ff;border-color:#0071e3;margin-bottom:10px">
           <h5>🩺 Tamizajes previos (${tamizajesRes.length})</h5>
           ${tamizajesRes.slice(0, 4).map(t => {
             const fecha = t.payload?.encounter?.fecha || t.created_at?.slice(0, 10);
             const estudio = (t.payload?.encounter?.estudio || "").replace(/_/g, " ");
             const nivel = t.payload?.riesgo_global?.nivel || "MODERADO";
+            const color = nivel === "MUY ALTO" ? "#ff3b30" : nivel === "ALTO" ? "#ff9500" : "#34c759";
             return `
               <div class="ctx-item" style="font-size:10px">
-                ${fecha} · ${estudio} · 
-                <strong style="color:${nivel === "MUY ALTO" ? "#ff3b30" : nivel === "ALTO" ? "#ff9500" : "#34c759"}">${nivel}</strong>
+                ${fecha} · ${estudio} ·
+                <strong style="color:${color}">${nivel}</strong>
               </div>
             `;
           }).join("")}
@@ -10761,10 +10988,10 @@ async function cargarContextoClinico(subjectId) {
       `;
     }
     
-    // ─── PROBLEMAS ACTIVOS ───
+    // Problemas activos
     if (problemasRes.length > 0) {
       html += `
-        <div class="consulta-contexto-card">
+        <div class="consulta-contexto-card" style="margin-bottom:10px">
           <h5>🎯 Problemas activos (${problemasRes.length})</h5>
           ${problemasRes.slice(0, 8).map(p => `
             <div class="ctx-item">
@@ -10778,10 +11005,10 @@ async function cargarContextoClinico(subjectId) {
       `;
     }
     
-    // ─── ALERGIAS ───
+    // Alergias
     if (alergiasRes.length > 0) {
       html += `
-        <div class="consulta-contexto-card" style="background:#fff3f3;border-color:var(--danger)">
+        <div class="consulta-contexto-card" style="background:#fff3f3;border-color:var(--danger);margin-bottom:10px">
           <h5 style="color:var(--danger)">⚠️ Alergias activas (${alergiasRes.length})</h5>
           ${alergiasRes.map(a => `
             <div class="ctx-item">
@@ -10793,10 +11020,10 @@ async function cargarContextoClinico(subjectId) {
       `;
     }
     
-    // ─── MEDICAMENTOS ───
+    // Medicamentos crónicos
     if (medicamentosRes.length > 0) {
       html += `
-        <div class="consulta-contexto-card">
+        <div class="consulta-contexto-card" style="margin-bottom:10px">
           <h5>💊 Medicamentos crónicos (${medicamentosRes.length})</h5>
           ${medicamentosRes.map(m => `
             <div class="ctx-item">
@@ -10812,7 +11039,7 @@ async function cargarContextoClinico(subjectId) {
     cont.innerHTML = html;
     cont.style.display = "block";
     
-    // Guardar en el estado
+    // Guardar en estado
     s.problemasActivos = problemasRes;
     s.alergias = alergiasRes;
     s.medicamentosCronicos = medicamentosRes;
@@ -10821,18 +11048,20 @@ async function cargarContextoClinico(subjectId) {
     s.contextoCargado = true;
     
     // Pre-llenar alergias y medicamentos
-    if (alergiasRes.length > 0 && !document.getElementById("cons-alergias").value) {
-      document.getElementById("cons-alergias").value = alergiasRes
+    const ea = document.getElementById("cons-alergias");
+    if (ea && !ea.value && alergiasRes.length > 0) {
+      ea.value = alergiasRes
         .map(a => `${a.tipo}: ${a.descripcion}${a.severidad ? " (" + a.severidad + ")" : ""}`)
         .join("\n");
     }
-    if (medicamentosRes.length > 0 && !document.getElementById("cons-medicamentos").value) {
-      document.getElementById("cons-medicamentos").value = medicamentosRes
+    const em = document.getElementById("cons-medicamentos");
+    if (em && !em.value && medicamentosRes.length > 0) {
+      em.value = medicamentosRes
         .map(m => `${m.farmaco} ${m.dosis || ""} ${m.frecuencia || ""}`.trim())
         .join("\n");
     }
     
-    console.log("[Contexto] Cargado para", subjectId, {
+    console.log("[Contexto] ✓ Cargado para", subjectId, {
       problemas: problemasRes.length,
       alergias: alergiasRes.length,
       medicamentos: medicamentosRes.length,
@@ -10842,6 +11071,14 @@ async function cargarContextoClinico(subjectId) {
     
   } catch (e) {
     console.error("[cargarContextoClinico]", e);
+    if (cont) {
+      cont.innerHTML = `
+        <div style="background:#fff3f3;border-left:4px solid var(--danger);padding:12px;border-radius:0 8px 8px 0;font-size:11px;color:#7a1a1a">
+          <strong>Error al cargar el historial:</strong> ${escapeHtml(e.message)}
+        </div>
+      `;
+      cont.style.display = "block";
+    }
     s.contextoCargado = true;
   }
 }
@@ -10849,31 +11086,37 @@ async function cargarContextoClinico(subjectId) {
    PASO 2 — TIPO DE CONSULTA
    ═══════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — seleccionarTipoConsulta
+   Fuerza la recarga del contexto clínico cada vez
+   ═══════════════════════════════════════════════════════════ */
+
 window.seleccionarTipoConsulta = function(tipo) {
   const s = window._consultaState;
   s.tipoConsulta = tipo;
   
+  // Marcar tarjeta activa
   document.querySelectorAll("#consulta-tipo-card .estudio-card").forEach(c => {
     c.classList.remove("active");
     if (c.dataset.tipo === tipo) c.classList.add("active");
   });
   
-  // Renderizar formularios
+  // Renderizar formularios del SOAP
   renderRevSistemas();
   renderAntecedentes();
   renderVitales();
   renderExamenFisico();
   renderLabsConsulta();
   
-  // ✅ FORZAR recarga del contexto clínico si no se cargó bien
-  if (!s.contextoCargado || !document.querySelector("#consulta-contexto-clinico .consulta-contexto-card")) {
-    s.contextoCargado = false;  // permitir reintento
-    if (s.paciente?.subject_id) {
-      cargarContextoClinico(s.paciente.subject_id);
-    }
+  // ═══ v23.6: FORZAR recarga del contexto clínico ═══
+  if (s.paciente?.subject_id) {
+    s.contextoCargado = false;  // reset flag para permitir recarga
+    cargarContextoClinico(s.paciente.subject_id).then(() => {
+      console.log("[Contexto] Recargado tras seleccionar tipo:", tipo);
+    });
   }
   
-  // Pre-llenar motivo
+  // Pre-llenar motivo para subsecuente/control
   if ((tipo === "subsecuente" || tipo === "control")) {
     const motivo = document.getElementById("cons-motivo");
     if (motivo && !motivo.value) {
@@ -10885,8 +11128,8 @@ window.seleccionarTipoConsulta = function(tipo) {
     }
   }
   
-  setTimeout(() => mostrarPaso(3), 200);
-  showStatus("Tipo: " + tipo.replace("_", " "), "success");
+  setTimeout(() => mostrarPaso(3), 250);
+  showStatus("Tipo: " + tipo.replace(/_/g, " "), "success");
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -12533,57 +12776,145 @@ async function generarHashConsulta(str) {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — generarDocumentosConsulta
+   Unifica: guarda con artifact_id = consultaId:tipo
+   y con case_id = CONS-... para lectura cruzada
+   ═══════════════════════════════════════════════════════════ */
+
 async function generarDocumentosConsulta(s, firma) {
-  // ═══════════════════════════════════════════════════════════
-  // v23.5 C-FIX v2 — Construir payload desde el DOM
-  // ═══════════════════════════════════════════════════════════
-  
-  // ⚠️ CRÍTICO: construir el payload leyendo los inputs del DOM
+  // Construir payload desde el DOM
   const payload = construirPayloadConsulta();
   
-  // Añadir alias y campos extra que los renderizadores esperan
   payload.caseId = s.caseId;
-  payload.paciente = payload.subject;  // alias
+  payload.paciente = payload.subject;
   payload.tipo = s.tipoConsulta;
   payload.modalidad = "presencial";
   
-  console.log("═══════ generarDocumentosConsulta ═══════");
-  console.log("Payload keys:", Object.keys(payload));
-  console.log("S_subjetivo:", !!payload.S_subjetivo);
-  console.log("O_objetivo:", !!payload.O_objetivo);
-  console.log("A_analisis:", !!payload.A_analisis);
-  console.log("P_plan:", !!payload.P_plan);
-  console.log("paciente:", payload.paciente?.nombre);
-  console.log("caseId:", payload.caseId);
-  console.log("═══════════════════════════════════════════");
+  // ═══ NUEVO v23.6 — Extraer métricas para gráficas ═══
+  payload.metrics = extraerMetricsDeConsulta(payload);
   
-  // Renderizar los 5 documentos
+  // ═══ NUEVO v23.6 — Incluir constancias si se emitieron ═══
+  const constancias = s.constanciasEmitidas || {};
+  
+  console.log("═══════ generarDocumentosConsulta v23.6 ═══════");
+  console.log("consultaId:", s.consultaId);
+  console.log("caseId:", s.caseId);
+  console.log("métricas extraídas:", payload.metrics.length);
+  console.log("constancia incapacidad:", !!constancias.incapacidad);
+  console.log("constancia acompañamiento:", !!constancias.acompanamiento);
+  console.log("═══════════════════════════════════════════════");
+  
+  // Renderizar documentos base
   const notaClinicaHTML = renderNotaClinicaHTML(payload, firma);
   const recetaHTML = renderRecetaHTML(payload, firma);
   const ordenesLabHTML = renderOrdenesLabHTML(payload, firma);
   const ordenesImgHTML = renderOrdenesImagenHTML(payload, firma);
   const referenciaHTML = renderHojaReferenciaHTML(payload, firma);
   
-  // Guardar artefactos
+  // ═══ NUEVO v23.6 — Constancias (pueden ser null) ═══
+  const constanciaIncapHTML = constancias.incapacidad
+    ? renderConstanciaIncapacidadHTML(payload, firma, constancias.incapacidad)
+    : null;
+  const constanciaAcompHTML = constancias.acompanamiento
+    ? renderConstanciaAcompanamientoHTML(payload, firma, constancias.acompanamiento)
+    : null;
+  
+  // ═══ GUARDAR ARTEFACTOS EN SUPABASE ═══
+  // Estándar v23.6:
+  //   artifact_id = consultaId + ":" + tipo   (ID único)
+  //   case_id     = CONS-...                  (para búsqueda cruzada)
   const arts = [
-    { tipo: "notaClinica", html: notaClinicaHTML },
-    { tipo: "receta", html: recetaHTML },
-    { tipo: "orden_laboratorio", html: ordenesLabHTML },
-    { tipo: "orden_imagen", html: ordenesImgHTML },
-    { tipo: "referencia", html: referenciaHTML }
-  ];
+    { tipo: "notaClinica",            html: notaClinicaHTML },
+    { tipo: "receta",                 html: recetaHTML },
+    { tipo: "orden_laboratorio",      html: ordenesLabHTML },
+    { tipo: "orden_imagen",           html: ordenesImgHTML },
+    { tipo: "referencia",             html: referenciaHTML },
+    { tipo: "constancia_incapacidad", html: constanciaIncapHTML },
+    { tipo: "constancia_acompanamiento", html: constanciaAcompHTML }
+  ].filter(a => a.html);
+  
+  let guardados = 0;
+  const errores = [];
   
   for (const art of arts) {
-    if (!art.html) continue;
     try {
-      await window.supabaseClient.from("artifacts").upsert({
+      const { error } = await window.supabaseClient.from("artifacts").upsert({
         artifact_id: s.consultaId + ":" + art.tipo,
         case_id: s.caseId,
         tipo: art.tipo,
         html: art.html
       }, { onConflict: "artifact_id" });
+      
+      if (error) {
+        console.error(`[Artifact] Error guardando ${art.tipo}:`, error);
+        errores.push(art.tipo + ": " + error.message);
+      } else {
+        guardados++;
+        console.log(`[Artifact] ✓ ${art.tipo} guardado`);
+      }
     } catch (e) {
-      console.warn("[generarDocumentosConsulta] Error guardando artefacto " + art.tipo, e);
+      console.error(`[Artifact] Excepción guardando ${art.tipo}:`, e);
+      errores.push(art.tipo + ": " + e.message);
+    }
+  }
+  
+  if (errores.length > 0) {
+    showStatus(`⚠️ ${guardados}/${arts.length} documentos guardados. Errores: ${errores.length}`, "warning");
+  } else {
+    console.log(`[Artifact] ✓ Todos los ${guardados} documentos guardados`);
+  }
+  
+  // ═══ GUARDAR CONSTANCIAS EN SUS TABLAS PROPIAS ═══
+  if (constancias.incapacidad) {
+    try {
+      await window.supabaseClient.from("constancias_incapacidad").insert({
+        consulta_id: s.consultaId,
+        case_id: s.caseId,
+        subject_id: s.paciente.subject_id,
+        fecha_emision: new Date().toISOString().slice(0, 10),
+        fecha_inicio: constancias.incapacidad.fecha_inicio,
+        fecha_fin: constancias.incapacidad.fecha_fin,
+        dias_totales: constancias.incapacidad.dias,
+        tipo: constancias.incapacidad.tipo,
+        cie10: constancias.incapacidad.cie10,
+        diagnostico: constancias.incapacidad.diagnostico,
+        observaciones: constancias.incapacidad.observaciones,
+        medico_nombre: firma.nombre,
+        medico_csspm: firma.csspm,
+        firma_hash: firma.hash,
+        created_by: window.usuarioActual?.id
+      });
+      console.log("[Constancia] ✓ Incapacidad guardada");
+    } catch (e) {
+      console.warn("[Constancia] Error guardando incapacidad:", e);
+    }
+  }
+  
+  if (constancias.acompanamiento) {
+    try {
+      await window.supabaseClient.from("constancias_acompanamiento").insert({
+        consulta_id: s.consultaId,
+        case_id: s.caseId,
+        subject_id: s.paciente.subject_id,
+        fecha_emision: new Date().toISOString().slice(0, 10),
+        fecha_inicio: constancias.acompanamiento.fecha_inicio,
+        fecha_fin: constancias.acompanamiento.fecha_fin,
+        dias_totales: constancias.acompanamiento.dias,
+        familiar_nombre: constancias.acompanamiento.familiar_nombre,
+        familiar_dui: constancias.acompanamiento.familiar_dui,
+        familiar_parentesco: constancias.acompanamiento.familiar_parentesco,
+        motivo: constancias.acompanamiento.motivo,
+        cie10: constancias.acompanamiento.cie10,
+        diagnostico: constancias.acompanamiento.diagnostico,
+        medico_nombre: firma.nombre,
+        medico_csspm: firma.csspm,
+        firma_hash: firma.hash,
+        created_by: window.usuarioActual?.id
+      });
+      console.log("[Constancia] ✓ Acompañamiento guardada");
+    } catch (e) {
+      console.warn("[Constancia] Error guardando acompañamiento:", e);
     }
   }
   
@@ -12592,9 +12923,62 @@ async function generarDocumentosConsulta(s, firma) {
     receta: recetaHTML,
     ordenesLab: ordenesLabHTML,
     ordenesImagen: ordenesImgHTML,
-    referencia: referenciaHTML
+    referencia: referenciaHTML,
+    constanciaIncapacidad: constanciaIncapHTML,
+    constanciaAcompanamiento: constanciaAcompHTML
   };
 }
+
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — extraerMetricsDeConsulta
+   Convierte los signos vitales y labs en métricas para gráficas
+   ═══════════════════════════════════════════════════════════ */
+
+function extraerMetricsDeConsulta(payload) {
+  const metrics = [];
+  const sv = payload.O_objetivo?.signos_vitales || {};
+  const labs = payload.O_objetivo?.labs_resultados || {};
+  
+  const push = (key, value, unit, refMin, refMax) => {
+    if (value == null || value === "" || value === undefined) return;
+    const num = Number(value);
+    if (isNaN(num)) return;
+    const flag = (refMin != null && num < refMin) ? "bajo"
+               : (refMax != null && num > refMax) ? "alto"
+               : "normal";
+    metrics.push({ key, value: num, unit, ref_min: refMin, ref_max: refMax, flag });
+  };
+  
+  // Signos vitales
+  push("peso_kg",       sv.peso_kg,       "kg",    null, null);
+  push("talla_cm",      sv.talla_cm,      "cm",    null, null);
+  push("imc",           sv.imc_calc,      "kg/m²", 18.5, 24.9);
+  push("ta_sistolica",  sv.ta_sistolica,  "mmHg",  90, 129);
+  push("ta_diastolica", sv.ta_diastolica, "mmHg",  60, 84);
+  push("fc",            sv.fc,            "lpm",   60, 100);
+  push("fr",            sv.fr,            "rpm",   12, 20);
+  push("temperatura",   sv.temperatura,   "°C",    36.0, 37.5);
+  push("sato2",         sv.sato2,         "%",     95, 100);
+  
+  // Labs más comunes
+  push("glucosa",       labs.glucosa,      "mg/dL", 70, 100);
+  push("hba1c",         labs.hba1c,        "%",     null, 5.7);
+  push("colesterol",    labs.ct,           "mg/dL", null, 200);
+  push("ldl",           labs.ldl,          "mg/dL", null, 100);
+  push("hdl",           labs.hdl,          "mg/dL", 40, null);
+  push("trigliceridos", labs.tg,           "mg/dL", null, 150);
+  push("creatinina",    labs.creatinina,   "mg/dL", null, 1.3);
+  push("tfg",           labs.tfg,          "mL/min", 60, null);
+  push("alt",           labs.alt,          "U/L",   null, 40);
+  push("ast",           labs.ast,          "U/L",   null, 40);
+  push("tsh",           labs.tsh,          "µUI/mL", 0.4, 4.5);
+  push("hemoglobina",   labs.hb,           "g/dL",  12, 17);
+  
+  return metrics;
+}
+
+// Exponer globalmente
+window.extraerMetricsDeConsulta = extraerMetricsDeConsulta;
 
 function mostrarDocumentosGenerados(docs) {
   const card = document.getElementById("consulta-documentos-card");
@@ -13569,32 +13953,74 @@ window.cargarConsultaEnFormulario = function(payload) {
   calcularIMCConsulta();
 };
 
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — verConsultaFirmada
+   Lee artifacts por case_id (no por LIKE artifact_id)
+   ═══════════════════════════════════════════════════════════ */
+
 window.verConsultaFirmada = async function(consultaId) {
-  if (!window.supabaseClient) return;
+  if (!window.supabaseClient) {
+    showStatus("Sin conexión", "error");
+    return;
+  }
+  
   try {
-    const { data: arts } = await window.supabaseClient
-      .from("artifacts")
-      .select("tipo, html")
-      .like("artifact_id", consultaId + ":%");
+    // 1) Obtener la consulta para saber su case_id
+    const { data: consulta, error: errC } = await window.supabaseClient
+      .from("consultas")
+      .select("case_id, subject_id, fecha_consulta, tipo, estado")
+      .eq("consulta_id", consultaId)
+      .single();
     
-    if (!arts || arts.length === 0) {
-      showStatus("No se encontraron documentos", "warning");
+    if (errC || !consulta) {
+      showStatus("Consulta no encontrada", "error");
       return;
     }
     
-    const docs = {};
-    arts.forEach(a => { docs[a.tipo] = a.html; });
+    // 2) Buscar todos los artifacts por case_id (estándar v23.6)
+    const { data: arts, error: errA } = await window.supabaseClient
+      .from("artifacts")
+      .select("tipo, html, artifact_id")
+      .eq("case_id", consulta.case_id);
     
+    if (errA) {
+      console.error("[verConsultaFirmada] Error leyendo artifacts:", errA);
+      showStatus("Error al cargar documentos: " + errA.message, "error");
+      return;
+    }
+    
+    if (!arts || arts.length === 0) {
+      showStatus("No se encontraron documentos para esta consulta", "warning");
+      return;
+    }
+    
+    // 3) Mapear por tipo
+    const docs = {};
+    arts.forEach(a => {
+      docs[a.tipo] = a.html;
+    });
+    
+    // 4) Normalizar nombres (compatibilidad)
     const normalized = {
-      notaClinica: docs.notaClinica || docs.nota_clinica,
-      receta: docs.receta,
-      ordenesLab: docs.orden_laboratorio || docs.ordenesLab,
-      ordenesImagen: docs.orden_imagen || docs.ordenesImagen,
-      referencia: docs.referencia
+      notaClinica: docs.notaClinica || docs.nota_clinica || null,
+      receta: docs.receta || null,
+      ordenesLab: docs.orden_laboratorio || docs.ordenesLab || null,
+      ordenesImagen: docs.orden_imagen || docs.ordenesImagen || null,
+      referencia: docs.referencia || null,
+      constanciaIncapacidad: docs.constancia_incapacidad || null,
+      constanciaAcompanamiento: docs.constancia_acompanamiento || null
     };
     
+    console.log("[verConsultaFirmada] Documentos cargados:", Object.keys(normalized).filter(k => normalized[k]));
+    
+    // 5) Guardar en el estado
+    window._consultaState.consultaId = consultaId;
+    window._consultaState.caseId = consulta.case_id;
     window._consultaState.docsGenerados = normalized;
+    
+    // 6) Mostrar
     mostrarDocumentosGenerados(normalized);
+    
   } catch (e) {
     console.error("[verConsultaFirmada]", e);
     showStatus("Error: " + e.message, "error");
