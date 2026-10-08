@@ -8175,7 +8175,7 @@ async function renderCasosGuardados() {
 
   try {
     // ═══════════════════════════════════════════════════════
-    // Cargar TAMIZAJES (tabla cases) y CONSULTAS (tabla consultas)
+    // Cargar TAMIZAJES (cases) y CONSULTAS (con JOIN a patients)
     // ═══════════════════════════════════════════════════════
     const [casos, consultas] = await Promise.all([
       listarCasosDB().catch(() => []),
@@ -8183,9 +8183,22 @@ async function renderCasosGuardados() {
         if (!window.supabaseClient) return [];
         const { data, error } = await window.supabaseClient
           .from("consultas")
-          .select("consulta_id, case_id, subject_id, fecha_consulta, tipo, estado, motivo_consulta, cie10_principal, nivel_riesgo, complejidad, medico_nombre, operador_nombre, created_at")
+          .select(`
+            consulta_id, case_id, subject_id, fecha_consulta, tipo, estado,
+            motivo_consulta, cie10_principal, nivel_riesgo, complejidad,
+            medico_nombre, operador_nombre, created_at,
+            patients!inner(nombre, edad, sexo)
+          `)
           .order("created_at", { ascending: false });
-        if (error) { console.error("[consultas]", error); return []; }
+        if (error) { 
+          console.error("[consultas con JOIN]", error); 
+          // Fallback sin JOIN si falla
+          const { data: fallback } = await window.supabaseClient
+            .from("consultas")
+            .select("consulta_id, case_id, subject_id, fecha_consulta, tipo, estado, motivo_consulta, cie10_principal, nivel_riesgo, complejidad, medico_nombre, operador_nombre, created_at")
+            .order("created_at", { ascending: false });
+          return fallback || [];
+        }
         return data || [];
       })()
     ]);
@@ -8196,7 +8209,7 @@ async function renderCasosGuardados() {
       return;
     }
 
-    // ═══ Unificar y ordenar por fecha ═══
+    // ═══ Unificar y ordenar ═══
     const eventos = [
       ...casos.map(x => ({
         kind: "tamizaje",
@@ -8215,7 +8228,11 @@ async function renderCasosGuardados() {
         caseId: c.case_id,
         fecha: c.fecha_consulta,
         timestamp: new Date(c.created_at || 0).getTime(),
-        nombre: c.subject_id,
+        // ✅ NUEVO: nombre real del paciente desde el JOIN
+        nombre: c.patients?.nombre || c.subject_id || "Sin nombre",
+        subject_id: c.subject_id,
+        paciente_edad: c.patients?.edad || "",
+        paciente_sexo: c.patients?.sexo || "",
         estudio: `Consulta — ${(c.tipo || "").replace("_", " ")}`,
         nivel: normalizarNivel(c.nivel_riesgo || "MODERADO"),
         estado: c.estado,
@@ -8246,6 +8263,57 @@ async function renderCasosGuardados() {
   } catch (e) {
     console.error("[renderCasosGuardados]", e);
     c.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Error al cargar</p></div>';
+  }
+}
+
+/* Render de cada ítem (tamizaje o consulta) — MEJORADO */
+function renderItemInforme(x) {
+  const nc = x.nivel === "MUY ALTO" ? "muy-alto" : x.nivel === "ALTO" ? "alto" : x.nivel === "MODERADO" ? "moderado" : "bajo";
+  const icono = x.kind === "tamizaje" ? "🩺" : "📋";
+  const color = x.kind === "tamizaje" ? "#0071e3" : "#34c759";
+
+  if (x.kind === "tamizaje") {
+    return `
+      <div class="informe-card" data-kind="tamizaje" data-search="${(x.nombre + " " + x.extra + " " + x.estudio).toLowerCase()}" 
+           onclick="abrirCasoGuardado('${x.id}')" style="border-left:4px solid ${color}">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${icono} ${escapeHtml(x.nombre)}</div>
+          <div style="font-size:11px;color:var(--text-secondary)">
+            ${escapeHtml(x.fecha || "")} · ${escapeHtml(x.estudio)} · ${escapeHtml(x.extra)}
+            ${x.tieneInterconsultas ? " · 🩺 interconsultas" : ""}
+          </div>
+        </div>
+        <div class="timeline-risk ${nc}">${x.nivel}</div>
+      </div>
+    `;
+  } else {
+    const esBorrador = x.estado !== "firmada" && x.estado !== "rectificada";
+    const estadoBadge = esBorrador 
+      ? `<span style="background:#fff9e6;color:#8a6a00;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase">Borrador</span>`
+      : `<span style="background:#f0fff4;color:#1a4a2a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase">Firmada</span>`;
+    
+    return `
+      <div class="informe-card" data-kind="consulta" data-search="${(x.nombre + " " + x.extra + " " + (x.motivo || "") + " " + (x.cie10 || "")).toLowerCase()}" 
+           onclick="abrirConsultaDesdeInformes('${x.id}', '${x.estado}')" style="border-left:4px solid ${color}">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">
+            ${icono} ${escapeHtml(x.nombre)}
+            ${estadoBadge}
+          </div>
+          <div style="font-size:11px;color:var(--text-secondary)">
+            ${escapeHtml(x.fecha || "")} · ${escapeHtml(x.estudio)}
+            ${x.paciente_edad ? " · " + x.paciente_edad + " años" : ""}
+            ${x.medico ? " · Dr(a). " + escapeHtml(x.medico) : ""}
+            ${x.cie10 ? " · " + escapeHtml(x.cie10) : ""}
+          </div>
+          <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-family:monospace">
+            ${escapeHtml(x.extra)}
+          </div>
+          ${x.motivo ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">${escapeHtml(x.motivo.substring(0, 80))}${x.motivo.length > 80 ? "…" : ""}</div>` : ""}
+        </div>
+        <div class="timeline-risk ${nc}">${x.nivel}</div>
+      </div>
+    `;
   }
 }
 
@@ -8298,19 +8366,17 @@ function renderItemInforme(x) {
 
 /* Abrir consulta desde la pestaña Informes */
 window.abrirConsultaDesdeInformes = async function(consultaId, estado) {
-  // Cambiar a la pestaña Consulta
+  // Cambiar a pestaña consulta
   if (typeof cambiarTab === "function") cambiarTab("consulta");
-
-  // Esperar a que el DOM se actualice
   await new Promise(r => setTimeout(r, 200));
 
   if (estado === "firmada" || estado === "rectificada") {
-    // Mostrar documentos firmados
+    // Cargar documentos firmados
     if (typeof verConsultaFirmada === "function") {
       await verConsultaFirmada(consultaId);
     }
   } else {
-    // Cargar borrador en el formulario
+    // Cargar borrador en formulario
     if (typeof abrirConsultaBorrador === "function") {
       await abrirConsultaBorrador(consultaId);
     }
@@ -10522,27 +10588,21 @@ window.seleccionarPacienteConsulta = async function(subjectId) {
   try {
     const { data, error } = await window.supabaseClient
       .from("patients")
-      .select("*")
+      .select("*")  // ← ya trae TODOS los campos, incluyendo nombre
       .eq("subject_id", subjectId)
       .single();
     
     if (error || !data) throw new Error("Paciente no encontrado");
     
     const s = window._consultaState;
-    s.paciente = data;
+    s.paciente = data;  // ← tiene nombre, edad, sexo, etc.
     
-    // Guardar también en el global del sistema principal por si se usa
     if (typeof _pacienteActual !== "undefined") {
       window._pacienteActual = data;
     }
     
-    // Renderizar info del paciente
     renderInfoPacienteConsulta(data);
-    
-    // Cargar contexto clínico (historial)
     await cargarContextoClinico(data.subject_id);
-    
-    // Mostrar paso 2
     mostrarPaso(2);
     
     showStatus("Paciente cargado", "success");
@@ -10587,58 +10647,143 @@ async function cargarContextoClinico(subjectId) {
   if (s.contextoCargado) return;
   
   try {
-    // Paralelizar las 4 queries
-    const [problemas, alergias, medicamentos, stats] = await Promise.all([
+    // ═══════════════════════════════════════════════════════════
+    // Cargar en paralelo: problemas, alergias, medicamentos,
+    // consultas previas y tamizajes previos
+    // ═══════════════════════════════════════════════════════════
+    const [
+      problemasRes,
+      alergiasRes,
+      medicamentosRes,
+      consultasRes,
+      tamizajesRes
+    ] = await Promise.all([
       window.supabaseClient.from("problemas_activos")
         .select("*").eq("subject_id", subjectId)
         .in("estado", ["activo", "cronico", "en_estudio"])
         .order("fecha_inicio", { ascending: false })
-        .then(r => r.data || []),
+        .then(r => r.data || [])
+        .catch(() => []),
       window.supabaseClient.from("alergias")
         .select("*").eq("subject_id", subjectId).eq("activa", true)
-        .then(r => r.data || []),
+        .then(r => r.data || [])
+        .catch(() => []),
       window.supabaseClient.from("medicamentos_cronicos")
         .select("*").eq("subject_id", subjectId).eq("activo", true)
-        .then(r => r.data || []),
-      window.supabaseClient.rpc("estadisticas_paciente", { p_subject_id: subjectId })
-        .then(r => r.data || {})
+        .then(r => r.data || [])
+        .catch(() => []),
+      // ✅ NUEVO: consultas previas del paciente
+      window.supabaseClient.from("consultas")
+        .select("consulta_id, case_id, fecha_consulta, tipo, estado, motivo_consulta, cie10_principal, medico_nombre, nivel_riesgo, complejidad")
+        .eq("subject_id", subjectId)
+        .order("fecha_consulta", { ascending: false })
+        .then(r => r.data || [])
+        .catch(() => []),
+      // ✅ NUEVO: tamizajes previos del paciente
+      window.supabaseClient.from("cases")
+        .select("case_id, payload, created_at")
+        .eq("subject_id", subjectId)
+        .order("created_at", { ascending: false })
+        .then(r => r.data || [])
+        .catch(() => [])
     ]);
     
     const cont = document.getElementById("consulta-contexto-clinico");
     if (!cont) return;
     
-    const tieneContexto = problemas.length > 0 || alergias.length > 0 || 
-                          medicamentos.length > 0 || (stats.tamizajes_total || 0) > 0 ||
-                          (stats.consultas_total || 0) > 0;
+    const tieneContexto = 
+      problemasRes.length > 0 || 
+      alergiasRes.length > 0 || 
+      medicamentosRes.length > 0 ||
+      consultasRes.length > 0 ||
+      tamizajesRes.length > 0;
     
     if (!tieneContexto) {
-      cont.style.display = "none";
+      cont.innerHTML = `
+        <div style="background:#f8f9fa;border:1px dashed #d2d2d7;border-radius:8px;padding:14px;text-align:center;font-size:11px;color:#666">
+          📭 Sin historial clínico previo para este paciente
+        </div>
+      `;
+      cont.style.display = "block";
       s.contextoCargado = true;
+      s.consultasPrevias = [];
+      s.tamizajesPrevios = [];
+      s.problemasActivos = [];
+      s.alergias = [];
+      s.medicamentosCronicos = [];
       return;
     }
     
     let html = `<div style="font-size:12px;font-weight:700;color:var(--corp);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📋 Contexto clínico del paciente</div>`;
     
-    // Estadísticas
-    if (stats.tamizajes_total || stats.consultas_total) {
+    // ─── HISTORIAL DE CONSULTAS (NUEVO) ───
+    if (consultasRes.length > 0) {
+      const ultima = consultasRes[0];
       html += `
-        <div class="consulta-contexto-card">
-          <h5>📊 Historial</h5>
-          <div class="ctx-item">
-            <strong>${stats.tamizajes_total || 0}</strong> tamizajes · 
-            <strong>${stats.consultas_total || 0}</strong> consultas previas
+        <div class="consulta-contexto-card" style="background:#f0fff4;border-color:#34c759">
+          <h5 style="color:#1a4a2a">📅 Consultas previas (${consultasRes.length})</h5>
+          <div class="ctx-item" style="font-weight:600">
+            Última: ${new Date(ultima.fecha_consulta).toLocaleDateString("es-ES")} · 
+            ${(ultima.tipo || "").replace("_", " ")} · 
+            ${ultima.estado}
+            ${ultima.cie10_principal ? ` · CIE-10 ${ultima.cie10_principal}` : ""}
           </div>
-          ${stats.consultas_ultima ? `<div class="ctx-item">Última consulta: ${new Date(stats.consultas_ultima).toLocaleDateString("es-ES")}</div>` : ""}
+          ${consultasRes.slice(1, 4).map(c => `
+            <div class="ctx-item" style="font-size:10px;color:#666">
+              ${new Date(c.fecha_consulta).toLocaleDateString("es-ES")} · 
+              ${(c.tipo || "").replace("_", " ")}
+              ${c.cie10_principal ? ` · ${c.cie10_principal}` : ""}
+            </div>
+          `).join("")}
+          ${consultasRes.length > 4 ? `<div class="ctx-item" style="text-align:center;color:#666;font-size:10px">+${consultasRes.length - 4} más</div>` : ""}
         </div>
       `;
     }
     
-    // Alergias
-    if (alergias.length > 0) {
+    // ─── HISTORIAL DE TAMIZAJES (NUEVO) ───
+    if (tamizajesRes.length > 0) {
+      html += `
+        <div class="consulta-contexto-card" style="background:#f0f7ff;border-color:#0071e3">
+          <h5>🩺 Tamizajes previos (${tamizajesRes.length})</h5>
+          ${tamizajesRes.slice(0, 4).map(t => {
+            const fecha = t.payload?.encounter?.fecha || t.created_at?.slice(0, 10);
+            const estudio = (t.payload?.encounter?.estudio || "").replace(/_/g, " ");
+            const nivel = t.payload?.riesgo_global?.nivel || "MODERADO";
+            return `
+              <div class="ctx-item" style="font-size:10px">
+                ${fecha} · ${estudio} · 
+                <strong style="color:${nivel === "MUY ALTO" ? "#ff3b30" : nivel === "ALTO" ? "#ff9500" : "#34c759"}">${nivel}</strong>
+              </div>
+            `;
+          }).join("")}
+          ${tamizajesRes.length > 4 ? `<div class="ctx-item" style="text-align:center;color:#666;font-size:10px">+${tamizajesRes.length - 4} más</div>` : ""}
+        </div>
+      `;
+    }
+    
+    // ─── PROBLEMAS ACTIVOS ───
+    if (problemasRes.length > 0) {
+      html += `
+        <div class="consulta-contexto-card">
+          <h5>🎯 Problemas activos (${problemasRes.length})</h5>
+          ${problemasRes.slice(0, 8).map(p => `
+            <div class="ctx-item">
+              ${p.cie10 ? `<code style="font-size:10px;background:var(--bg-secondary);padding:1px 4px;border-radius:3px">${escapeHtml(p.cie10)}</code> ` : ""}
+              <strong>${escapeHtml(p.descripcion)}</strong>
+              <span style="font-size:10px;color:var(--text-tertiary)"> · ${escapeHtml(p.estado)}</span>
+            </div>
+          `).join("")}
+          ${problemasRes.length > 8 ? `<div class="ctx-item" style="text-align:center;color:var(--text-tertiary)">+${problemasRes.length - 8} más</div>` : ""}
+        </div>
+      `;
+    }
+    
+    // ─── ALERGIAS ───
+    if (alergiasRes.length > 0) {
       html += `
         <div class="consulta-contexto-card" style="background:#fff3f3;border-color:var(--danger)">
-          <h5 style="color:var(--danger)">⚠️ Alergias activas (${alergias.length})</h5>
-          ${alergias.map(a => `
+          <h5 style="color:var(--danger)">⚠️ Alergias activas (${alergiasRes.length})</h5>
+          ${alergiasRes.map(a => `
             <div class="ctx-item">
               <strong>${escapeHtml(a.tipo)}:</strong> ${escapeHtml(a.descripcion)}
               ${a.severidad ? ` <span style="color:var(--danger);font-weight:700">(${escapeHtml(a.severidad)})</span>` : ""}
@@ -10648,29 +10793,12 @@ async function cargarContextoClinico(subjectId) {
       `;
     }
     
-    // Problemas activos
-    if (problemas.length > 0) {
+    // ─── MEDICAMENTOS ───
+    if (medicamentosRes.length > 0) {
       html += `
         <div class="consulta-contexto-card">
-          <h5>🎯 Problemas activos (${problemas.length})</h5>
-          ${problemas.slice(0, 8).map(p => `
-            <div class="ctx-item">
-              ${p.cie10 ? `<code style="font-size:10px;background:var(--bg-secondary);padding:1px 4px;border-radius:3px">${escapeHtml(p.cie10)}</code> ` : ""}
-              <strong>${escapeHtml(p.descripcion)}</strong>
-              <span style="font-size:10px;color:var(--text-tertiary)"> · ${escapeHtml(p.estado)}</span>
-            </div>
-          `).join("")}
-          ${problemas.length > 8 ? `<div class="ctx-item" style="text-align:center;color:var(--text-tertiary)">+${problemas.length - 8} más</div>` : ""}
-        </div>
-      `;
-    }
-    
-    // Medicamentos crónicos
-    if (medicamentos.length > 0) {
-      html += `
-        <div class="consulta-contexto-card">
-          <h5>💊 Medicamentos crónicos (${medicamentos.length})</h5>
-          ${medicamentos.map(m => `
+          <h5>💊 Medicamentos crónicos (${medicamentosRes.length})</h5>
+          ${medicamentosRes.map(m => `
             <div class="ctx-item">
               <strong>${escapeHtml(m.farmaco)}</strong>
               ${m.dosis ? ` ${escapeHtml(m.dosis)}` : ""}
@@ -10685,28 +10813,38 @@ async function cargarContextoClinico(subjectId) {
     cont.style.display = "block";
     
     // Guardar en el estado
-    s.problemasActivos = problemas;
-    s.alergias = alergias;
-    s.medicamentosCronicos = medicamentos;
+    s.problemasActivos = problemasRes;
+    s.alergias = alergiasRes;
+    s.medicamentosCronicos = medicamentosRes;
+    s.consultasPrevias = consultasRes;
+    s.tamizajesPrevios = tamizajesRes;
     s.contextoCargado = true;
     
-    // Pre-llenar campos de alergias/medicamentos en el formulario
-    if (alergias.length > 0 && !document.getElementById("cons-alergias").value) {
-      document.getElementById("cons-alergias").value = alergias
+    // Pre-llenar alergias y medicamentos
+    if (alergiasRes.length > 0 && !document.getElementById("cons-alergias").value) {
+      document.getElementById("cons-alergias").value = alergiasRes
         .map(a => `${a.tipo}: ${a.descripcion}${a.severidad ? " (" + a.severidad + ")" : ""}`)
         .join("\n");
     }
-    if (medicamentos.length > 0 && !document.getElementById("cons-medicamentos").value) {
-      document.getElementById("cons-medicamentos").value = medicamentos
+    if (medicamentosRes.length > 0 && !document.getElementById("cons-medicamentos").value) {
+      document.getElementById("cons-medicamentos").value = medicamentosRes
         .map(m => `${m.farmaco} ${m.dosis || ""} ${m.frecuencia || ""}`.trim())
         .join("\n");
     }
+    
+    console.log("[Contexto] Cargado para", subjectId, {
+      problemas: problemasRes.length,
+      alergias: alergiasRes.length,
+      medicamentos: medicamentosRes.length,
+      consultas: consultasRes.length,
+      tamizajes: tamizajesRes.length
+    });
+    
   } catch (e) {
     console.error("[cargarContextoClinico]", e);
     s.contextoCargado = true;
   }
 }
-
 /* ═══════════════════════════════════════════════════════════
    PASO 2 — TIPO DE CONSULTA
    ═══════════════════════════════════════════════════════════ */
@@ -10720,18 +10858,30 @@ window.seleccionarTipoConsulta = function(tipo) {
     if (c.dataset.tipo === tipo) c.classList.add("active");
   });
   
-  // Renderizar formularios de los siguientes pasos
+  // Renderizar formularios
   renderRevSistemas();
   renderAntecedentes();
   renderVitales();
   renderExamenFisico();
   renderLabsConsulta();
   
-  // Pre-llenar motivo si es subsecuente/control
-  if ((tipo === "subsecuente" || tipo === "control") && s.problemasActivos?.length > 0) {
+  // ✅ FORZAR recarga del contexto clínico si no se cargó bien
+  if (!s.contextoCargado || !document.querySelector("#consulta-contexto-clinico .consulta-contexto-card")) {
+    s.contextoCargado = false;  // permitir reintento
+    if (s.paciente?.subject_id) {
+      cargarContextoClinico(s.paciente.subject_id);
+    }
+  }
+  
+  // Pre-llenar motivo
+  if ((tipo === "subsecuente" || tipo === "control")) {
     const motivo = document.getElementById("cons-motivo");
     if (motivo && !motivo.value) {
-      motivo.placeholder = `Ej: Control de ${s.problemasActivos[0].descripcion}`;
+      if (s.consultasPrevias?.length > 0) {
+        motivo.placeholder = `Ej: Control de ${s.consultasPrevias[0].motivo_consulta || "consulta previa"}`;
+      } else if (s.problemasActivos?.length > 0) {
+        motivo.placeholder = `Ej: Control de ${s.problemasActivos[0].descripcion}`;
+      }
     }
   }
   
