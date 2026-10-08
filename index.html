@@ -8409,8 +8409,8 @@ function renderItemInforme(x) {
 
   return `
     <div class="informe-card" data-kind="consulta" 
-         data-search="${(x.nombre + " " + x.extra + " " + (x.motivo || "") + " " + (x.cie10 || "")).toLowerCase()}" 
-         onclick="abrirCasoUnificado('${x.id}', 'consulta', '${x.estado}')" 
+         data-search="${(x.nombre + " " + (x.extra || "") + " " + (x.caseId || "") + " " + (x.motivo || "") + " " + (x.cie10 || "")).toLowerCase()}"
+         onclick="abrirCasoUnificado('${x.id}', 'consulta', '${x.estado}', '${x.caseId}')"
          style="border-left:4px solid ${color}">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;margin-bottom:2px;display:flex;align-items:center;flex-wrap:wrap">
@@ -8436,23 +8436,50 @@ function renderItemInforme(x) {
 window.renderItemInforme = renderItemInforme;
 
 /* ═══════════════════════════════════════════════════════════
-   v23.6 — abrirCasoUnificado
+   v23.6.1 — abrirCasoUnificado
    Punto de entrada ÚNICO para casos guardados.
-   Detecta el tipo y delega al renderizador correcto.
+   Acepta caseIdHint para detectar tipo cuando el id es UUID.
    ═══════════════════════════════════════════════════════════ */
 
-window.abrirCasoUnificado = async function(id, tipo, estado) {
-  console.log(`[abrirCasoUnificado] id=${id} tipo=${tipo} estado=${estado}`);
+window.abrirCasoUnificado = async function(id, tipo, estado, caseIdHint) {
+  console.log(`[abrirCasoUnificado] id=${id} tipo=${tipo} estado=${estado} hint=${caseIdHint}`);
   showStatus("Cargando caso...", "info");
 
-  // ═══ PASO 1: Normalizar tipo si no viene ═══
+  // ═══ PASO 1: Normalizar tipo si no viene o es ambiguo ═══
+  // Prioridad: caseIdHint > prefijo de id > tipo param > fallback
+  if (caseIdHint) {
+    if (caseIdHint.startsWith("CONS-")) tipo = "consulta";
+    else if (caseIdHint.startsWith("ECO-")) tipo = "tamizaje";
+  }
+  
   if (!tipo) {
     if (id.startsWith("ECO-")) tipo = "tamizaje";
     else if (id.startsWith("CONS-")) tipo = "consulta";
-    else tipo = "tamizaje";
+    else {
+      // Si el id es UUID y no tenemos pista, intentar detectar
+      // consultando ambas tablas
+      console.warn("[abrirCasoUnificado] Tipo ambiguo, detectando...");
+      if (window.supabaseClient) {
+        // ¿Es una consulta?
+        const { data: cons } = await window.supabaseClient
+          .from("consultas")
+          .select("consulta_id")
+          .eq("consulta_id", id)
+          .maybeSingle();
+        if (cons) {
+          tipo = "consulta";
+        } else {
+          tipo = "tamizaje";
+        }
+      } else {
+        tipo = "tamizaje";
+      }
+    }
   }
 
-  // ═══ PASO 2: Preparar UI común (antes de renderizar) ═══
+  console.log(`[abrirCasoUnificado] Tipo final: ${tipo}`);
+
+  // ═══ PASO 2: Preparar UI común ═══
   document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
 
   // Forzar pestaña "captura" (porque sec-reporte vive dentro de sec-captura)
@@ -8461,7 +8488,6 @@ window.abrirCasoUnificado = async function(id, tipo, estado) {
     if (t.dataset.tab === "captura") t.classList.add("active");
   });
 
-  // Activar sec-captura Y sec-reporte
   const secCaptura = document.getElementById("sec-captura");
   if (secCaptura) secCaptura.classList.add("active");
 
@@ -8613,6 +8639,13 @@ async function _renderTamizajeGuardado(id) {
    Si está firmada → muestra documentos en #report-container.
    ═══════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════
+   v23.6.1 — _renderConsultaGuardada
+   Carga una consulta desde `consultas` + `artifacts`.
+   Si es borrador → carga en formulario SOAP.
+   Si está firmada → muestra documentos en #report-container.
+   ═══════════════════════════════════════════════════════════ */
+
 async function _renderConsultaGuardada(consultaId, estado) {
   console.log("[_renderConsultaGuardada] Cargando:", consultaId, "estado:", estado);
 
@@ -8621,11 +8654,16 @@ async function _renderConsultaGuardada(consultaId, estado) {
   // 1. Obtener la consulta
   const { data: consulta, error: errC } = await window.supabaseClient
     .from("consultas")
-    .select("case_id, subject_id, fecha_consulta, tipo, estado")
+    .select("consulta_id, case_id, subject_id, fecha_consulta, tipo, estado")
     .eq("consulta_id", consultaId)
     .single();
 
-  if (errC || !consulta) throw new Error("Consulta no encontrada");
+  if (errC || !consulta) {
+    console.error("[_renderConsultaGuardada] Error:", errC);
+    throw new Error("Consulta no encontrada: " + consultaId);
+  }
+
+  console.log("[_renderConsultaGuardada] Consulta encontrada:", consulta.case_id);
 
   // 2. Si es borrador → cargar en el formulario SOAP
   if (estado === "borrador" || estado === "pendiente_firma") {
@@ -8647,13 +8685,15 @@ async function _renderConsultaGuardada(consultaId, estado) {
     throw new Error("Módulo de consulta no cargado");
   }
 
-  // 3. Si está firmada → cargar artifacts
+  // 3. Si está firmada → cargar artifacts por case_id
   const { data: arts, error: errA } = await window.supabaseClient
     .from("artifacts")
     .select("tipo, html, artifact_id")
     .eq("case_id", consulta.case_id);
 
   if (errA) throw new Error("Error leyendo documentos: " + errA.message);
+
+  console.log(`[_renderConsultaGuardada] ${arts ? arts.length : 0} artifacts encontrados`);
 
   if (!arts || arts.length === 0) {
     const c = document.getElementById("report-container");
@@ -8688,10 +8728,20 @@ async function _renderConsultaGuardada(consultaId, estado) {
     constanciaAcompanamiento: docs.constancia_acompanamiento || null
   };
 
+  console.log("[_renderConsultaGuardada] Documentos mapeados:",
+    Object.keys(normalized).filter(k => normalized[k]));
+
   // 5. Guardar en estado global
   window._consultaState.consultaId = consultaId;
   window._consultaState.caseId = consulta.case_id;
   window._consultaState.docsGenerados = normalized;
+
+  // ═══ IMPORTANTE: limpiar casoActual para que no interfiera ═══
+  if (typeof casoActual !== "undefined") {
+    casoActual = null;
+  }
+  window._casoActual = null;
+  window._artifactsActuales = null;
 
   // 6. Mostrar en #report-container
   const c = document.getElementById("report-container");
@@ -8741,6 +8791,12 @@ async function _renderConsultaGuardada(consultaId, estado) {
   `;
 
   c.innerHTML = html;
+
+  // ═══ Ocultar botones de tamizaje (por si quedaron visibles) ═══
+  ["btn-row-descargas", "btn-row-lite", "btn-row-imagenes", "btn-row-receta"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
 
   showStatus(`✓ Consulta cargada (${Object.values(normalized).filter(Boolean).length} documentos)`, "success");
   console.log("[_renderConsultaGuardada] ✓ Completado");
@@ -8834,26 +8890,6 @@ window.abrirConsultaDesdeInformes = async function(consultaId, estado) {
   }
 };
 
-
-
-/* Abrir consulta desde la pestaña Informes */
-window.abrirConsultaDesdeInformes = async function(consultaId, estado) {
-  // Cambiar a pestaña consulta
-  if (typeof cambiarTab === "function") cambiarTab("consulta");
-  await new Promise(r => setTimeout(r, 200));
-
-  if (estado === "firmada" || estado === "rectificada") {
-    // Cargar documentos firmados
-    if (typeof verConsultaFirmada === "function") {
-      await verConsultaFirmada(consultaId);
-    }
-  } else {
-    // Cargar borrador en formulario
-    if (typeof abrirConsultaBorrador === "function") {
-      await abrirConsultaBorrador(consultaId);
-    }
-  }
-};
 
 /* Filtro por tipo */
 window.filtrarTipoInforme = function(tipo) {
@@ -15239,6 +15275,10 @@ window.marcarSolicitudCompletada = async function(solicitudId) {
    v23.6 — Aliases retrocompatibles
    Por si algún onclick viejo sigue llamando a las funciones
    antiguas, redirigimos al dispatcher unificado.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════
+   v23.6.1 — Aliases retrocompatibles
    ═══════════════════════════════════════════════════════════ */
 
 window.abrirCasoGuardado = function(id) {
