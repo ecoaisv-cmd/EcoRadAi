@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -8173,19 +8172,173 @@ async function guardarCasoActual() {
 async function renderCasosGuardados() {
   const c = document.getElementById("informes-lista-container");
   if (!c) return;
+
   try {
-    const cs = await listarCasosDB();
-    if (cs.length === 0) { c.innerHTML = '<div class="empty-state"><div class="icon">📁</div><p>No hay casos guardados</p></div>'; return; }
-    cs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    c.innerHTML = cs.map(x => {
-      const n = normalizarNivel(x.riesgo_global?.nivel || "MODERADO");
-      const nc = n === "MUY ALTO" ? "muy-alto" : n === "ALTO" ? "alto" : n === "MODERADO" ? "moderado" : "bajo";
-      const t = (x.interconsultas_ejecutadas || []).filter(ic => !ic.error).length > 0;
-      const tm = TAMIZAJES_REGISTRY.obtener(x.encounter?.estudio);
-      return '<div class="informe-card" onclick="abrirCasoGuardado(\'' + x.case_id + '\')"><div style="flex:1"><div style="font-size:13px;font-weight:600;margin-bottom:2px">' + (x.subject?.nombre || "Sin nombre") + '</div><div style="font-size:11px;color:var(--text-secondary)">' + (x.encounter?.fecha || "") + " · " + (tm?.meta.nombre || "") + " · " + x.case_id + (t ? " · 🩺" : "") + '</div></div><div class="timeline-risk ' + nc + '">' + n + '</div></div>';
-    }).join("");
-  } catch (e) { c.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Error</p></div>'; }
+    // ═══════════════════════════════════════════════════════
+    // Cargar TAMIZAJES (tabla cases) y CONSULTAS (tabla consultas)
+    // ═══════════════════════════════════════════════════════
+    const [casos, consultas] = await Promise.all([
+      listarCasosDB().catch(() => []),
+      (async () => {
+        if (!window.supabaseClient) return [];
+        const { data, error } = await window.supabaseClient
+          .from("consultas")
+          .select("consulta_id, case_id, subject_id, fecha_consulta, tipo, estado, motivo_consulta, cie10_principal, nivel_riesgo, complejidad, medico_nombre, operador_nombre, created_at")
+          .order("created_at", { ascending: false });
+        if (error) { console.error("[consultas]", error); return []; }
+        return data || [];
+      })()
+    ]);
+
+    const total = casos.length + consultas.length;
+    if (total === 0) {
+      c.innerHTML = '<div class="empty-state"><div class="icon">📁</div><p>No hay casos guardados</p></div>';
+      return;
+    }
+
+    // ═══ Unificar y ordenar por fecha ═══
+    const eventos = [
+      ...casos.map(x => ({
+        kind: "tamizaje",
+        id: x.case_id,
+        fecha: x.encounter?.fecha || x.created_at?.slice(0, 10),
+        timestamp: new Date(x.created_at || 0).getTime(),
+        nombre: x.subject?.nombre || "Sin nombre",
+        estudio: TAMIZAJES_REGISTRY.obtener(x.encounter?.estudio)?.meta?.nombre || "Tamizaje",
+        nivel: normalizarNivel(x.riesgo_global?.nivel || "MODERADO"),
+        tieneInterconsultas: (x.interconsultas_ejecutadas || []).filter(ic => !ic.error).length > 0,
+        extra: x.case_id
+      })),
+      ...consultas.map(c => ({
+        kind: "consulta",
+        id: c.consulta_id,
+        caseId: c.case_id,
+        fecha: c.fecha_consulta,
+        timestamp: new Date(c.created_at || 0).getTime(),
+        nombre: c.subject_id,
+        estudio: `Consulta — ${(c.tipo || "").replace("_", " ")}`,
+        nivel: normalizarNivel(c.nivel_riesgo || "MODERADO"),
+        estado: c.estado,
+        medico: c.medico_nombre,
+        motivo: c.motivo_consulta,
+        cie10: c.cie10_principal,
+        extra: c.case_id
+      }))
+    ].sort((a, b) => b.timestamp - a.timestamp);
+
+    // ═══ Buscador + filtros ═══
+    const htmlBuscador = `
+      <div style="margin-bottom:14px">
+        <input type="text" id="informes-buscador" 
+               placeholder="🔍 Buscar por nombre, ID, motivo, CIE-10..." 
+               oninput="filtrarInformes(this.value)"
+               style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-md);background:var(--bg);color:var(--text-primary);font-size:13px">
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-secondary btn-xs" onclick="filtrarTipoInforme('todos')" id="filtro-todos" style="font-size:10px">Todos (${total})</button>
+          <button class="btn btn-secondary btn-xs" onclick="filtrarTipoInforme('tamizaje')" id="filtro-tamizaje" style="font-size:10px">🩺 Tamizajes (${casos.length})</button>
+          <button class="btn btn-secondary btn-xs" onclick="filtrarTipoInforme('consulta')" id="filtro-consulta" style="font-size:10px">📋 Consultas (${consultas.length})</button>
+        </div>
+      </div>
+    `;
+
+    c.innerHTML = htmlBuscador + `<div id="informes-lista-inner">${eventos.map(renderItemInforme).join("")}</div>`;
+
+  } catch (e) {
+    console.error("[renderCasosGuardados]", e);
+    c.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Error al cargar</p></div>';
+  }
 }
+
+/* Render de cada ítem (tamizaje o consulta) */
+function renderItemInforme(x) {
+  const nc = x.nivel === "MUY ALTO" ? "muy-alto" : x.nivel === "ALTO" ? "alto" : x.nivel === "MODERADO" ? "moderado" : "bajo";
+  const icono = x.kind === "tamizaje" ? "🩺" : "📋";
+  const color = x.kind === "tamizaje" ? "#0071e3" : "#34c759";
+
+  if (x.kind === "tamizaje") {
+    return `
+      <div class="informe-card" data-kind="tamizaje" data-search="${(x.nombre + " " + x.extra + " " + x.estudio).toLowerCase()}" 
+           onclick="abrirCasoGuardado('${x.id}')" style="border-left:4px solid ${color}">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${icono} ${escapeHtml(x.nombre)}</div>
+          <div style="font-size:11px;color:var(--text-secondary)">
+            ${escapeHtml(x.fecha || "")} · ${escapeHtml(x.estudio)} · ${escapeHtml(x.extra)}
+            ${x.tieneInterconsultas ? " · 🩺 interconsultas" : ""}
+          </div>
+        </div>
+        <div class="timeline-risk ${nc}">${x.nivel}</div>
+      </div>
+    `;
+  } else {
+    const esBorrador = x.estado !== "firmada" && x.estado !== "rectificada";
+    const estadoBadge = esBorrador 
+      ? `<span style="background:#fff9e6;color:#8a6a00;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase">Borrador</span>`
+      : `<span style="background:#f0fff4;color:#1a4a2a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase">Firmada</span>`;
+    
+    return `
+      <div class="informe-card" data-kind="consulta" data-search="${(x.extra + " " + x.motivo + " " + (x.cie10 || "")).toLowerCase()}" 
+           onclick="abrirConsultaDesdeInformes('${x.id}', '${x.estado}')" style="border-left:4px solid ${color}">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">
+            ${icono} Consulta — ${escapeHtml(x.estudio)}
+            ${estadoBadge}
+          </div>
+          <div style="font-size:11px;color:var(--text-secondary)">
+            ${escapeHtml(x.fecha || "")} · ${escapeHtml(x.extra)}
+            ${x.medico ? " · Dr(a). " + escapeHtml(x.medico) : ""}
+            ${x.cie10 ? " · " + escapeHtml(x.cie10) : ""}
+          </div>
+          ${x.motivo ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${escapeHtml(x.motivo.substring(0, 80))}${x.motivo.length > 80 ? "…" : ""}</div>` : ""}
+        </div>
+        <div class="timeline-risk ${nc}">${x.nivel}</div>
+      </div>
+    `;
+  }
+}
+
+/* Abrir consulta desde la pestaña Informes */
+window.abrirConsultaDesdeInformes = async function(consultaId, estado) {
+  // Cambiar a la pestaña Consulta
+  if (typeof cambiarTab === "function") cambiarTab("consulta");
+
+  // Esperar a que el DOM se actualice
+  await new Promise(r => setTimeout(r, 200));
+
+  if (estado === "firmada" || estado === "rectificada") {
+    // Mostrar documentos firmados
+    if (typeof verConsultaFirmada === "function") {
+      await verConsultaFirmada(consultaId);
+    }
+  } else {
+    // Cargar borrador en el formulario
+    if (typeof abrirConsultaBorrador === "function") {
+      await abrirConsultaBorrador(consultaId);
+    }
+  }
+};
+
+/* Filtro por tipo */
+window.filtrarTipoInforme = function(tipo) {
+  document.querySelectorAll("[id^='filtro-']").forEach(b => {
+    b.classList.remove("btn-primary");
+    b.classList.add("btn-secondary");
+  });
+  const activo = document.getElementById("filtro-" + tipo);
+  if (activo) { activo.classList.remove("btn-secondary"); activo.classList.add("btn-primary"); }
+
+  document.querySelectorAll("#informes-lista-inner .informe-card").forEach(card => {
+    card.style.display = (tipo === "todos" || card.dataset.kind === tipo) ? "flex" : "none";
+  });
+};
+
+/* Filtro por texto */
+window.filtrarInformes = function(query) {
+  const q = (query || "").trim().toLowerCase();
+  document.querySelectorAll("#informes-lista-inner .informe-card").forEach(card => {
+    const texto = card.dataset.search || "";
+    card.style.display = (!q || texto.includes(q)) ? "flex" : "none";
+  });
+};
 async function abrirCasoGuardado(id) {
   try {
     const caso = await obtenerCasoDB(id);
@@ -12297,7 +12450,8 @@ function mostrarDocumentosGenerados(docs) {
   const card = document.getElementById("consulta-documentos-card");
   const botones = document.getElementById("consulta-documentos-botones");
   if (!card || !botones) return;
-  
+
+  const s = window._consultaState;
   const lista = [
     { key: "notaClinica", nombre: "📋 Nota clínica SOAP", html: docs.notaClinica },
     { key: "receta", nombre: "💊 Receta médica", html: docs.receta },
@@ -12305,15 +12459,35 @@ function mostrarDocumentosGenerados(docs) {
     { key: "ordenesImagen", nombre: "🖼️ Órdenes de imagen", html: docs.ordenesImagen },
     { key: "referencia", nombre: "📤 Hoja de referencia", html: docs.referencia }
   ].filter(x => x.html);
-  
-  botones.innerHTML = lista.map(x => `
-    <button class="btn btn-secondary" onclick="verDocumentoConsulta('${x.key}')" style="font-size:12px">
-      ${x.nombre} — Ver / Descargar
-    </button>
-  `).join("");
-  
+
+  botones.innerHTML = `
+    <div style="background:#f0fff4;border-left:4px solid var(--positive);padding:12px 14px;border-radius:0 8px 8px 0;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:#1a4a2a;margin-bottom:4px">
+        ✅ Consulta firmada — ${s.caseId || ""}
+      </div>
+      <div style="font-size:11px;color:#1a4a2a">
+        ${lista.length} documento(s) generado(s) y guardado(s) en el sistema.
+      </div>
+    </div>
+    ${lista.map(x => `
+      <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;padding:10px 12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:6px">
+        <div style="font-size:12px;font-weight:600;color:var(--corp)">${x.nombre}</div>
+        <button class="btn btn-secondary btn-xs" onclick="verDocumentoConsulta('${x.key}')" style="font-size:11px">👁️ Ver</button>
+        <button class="btn btn-primary btn-xs" onclick="descargarDocumentoSoloPDF('${x.key}')" style="font-size:11px">📥 PDF</button>
+      </div>
+    `).join("")}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
+      <button class="btn btn-primary" onclick="descargarTodosPDFsConsulta()" style="font-size:12px">
+        📥 Descargar TODOS los PDFs
+      </button>
+      <button class="btn btn-success" onclick="verConsultaEnInformes()" style="font-size:12px">
+        📁 Ver en Informes
+      </button>
+    </div>
+  `;
+
   card.style.display = "block";
-  
+
   // Ocultar formularios
   ["consulta-paciente-card", "consulta-tipo-card", "consulta-subjetivo-card",
    "consulta-objetivo-card", "consulta-analisis-card", "consulta-plan-card",
@@ -12321,9 +12495,112 @@ function mostrarDocumentosGenerados(docs) {
     const el = document.getElementById(id);
     if (el) el.style.display = "none";
   });
-  
+
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
+
+/* Descarga un solo documento sin modal */
+window.descargarDocumentoSoloPDF = async function(key) {
+  const docs = window._consultaState.docsGenerados;
+  if (!docs || !docs[key]) { showStatus("Documento no disponible", "warning"); return; }
+
+  // Crear contenedor temporal
+  const temp = document.createElement("div");
+  temp.id = "temp-doc-consulta";
+  temp.style.cssText = "position:fixed;left:-99999px;top:0;width:800px;background:#fff;padding:0";
+  temp.innerHTML = docs[key];
+  document.body.appendChild(temp);
+
+  showStatus("Generando PDF...", "info");
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+    const mg = 10;
+    const cw = pw - 2 * mg;
+    let y = mg;
+
+    // Bloques atómicos
+    const bloques = [];
+    const root = temp.querySelector("div[style*='max-width:800px']") || temp;
+
+    const h4s = root.querySelectorAll("h4");
+    if (h4s.length >= 3) {
+      const header = root.querySelector("div[style*='background:linear-gradient']");
+      if (header) bloques.push(header);
+      const contenedor = h4s[0]?.parentElement;
+      if (contenedor) {
+        Array.from(contenedor.children).forEach(hijo => {
+          if (hijo.querySelector("h4")) bloques.push(hijo);
+        });
+        const firma = contenedor.querySelector("div[style*='background:#f8fbff']");
+        if (firma) bloques.push(firma);
+      }
+    } else {
+      const header = root.querySelector("div[style*='background:#1a3a5c']");
+      if (header) bloques.push(header);
+      const body = root.querySelector("div[style*='padding:22px 26px'], div[style*='padding:20px 24px']");
+      if (body) Array.from(body.children).forEach(hijo => bloques.push(hijo));
+    }
+    if (bloques.length === 0) bloques.push(root);
+
+    for (const bloque of bloques) {
+      const canvas = await html2canvas(bloque, { scale: 2, useCORS: true, backgroundColor: "#ffffff", windowWidth: 700 });
+      const imgH = (canvas.height * cw) / canvas.width;
+      if (y + imgH > ph - mg) { pdf.addPage(); y = mg; }
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, y, cw, imgH);
+      y += imgH + 3;
+    }
+
+    const total = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= total; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(8); pdf.setTextColor(150);
+      pdf.text("EcoRadAi · Consulta · " + new Date().toLocaleDateString("es-ES"), mg, ph - 5);
+      pdf.text("Página " + i + " de " + total, pw - mg, ph - 5, { align: "right" });
+    }
+
+    const caseId = window._consultaState.caseId || "CONS";
+    pdf.save(`Consulta_${key}_${caseId}.pdf`);
+    showStatus(`PDF descargado (${total} pág.)`, "success");
+  } catch (e) {
+    console.error("[descargarDocumentoSoloPDF]", e);
+    showStatus("Error: " + e.message, "error");
+  } finally {
+    document.body.removeChild(temp);
+  }
+};
+
+/* Descarga todos los PDFs en secuencia */
+window.descargarTodosPDFsConsulta = async function() {
+  const docs = window._consultaState.docsGenerados;
+  if (!docs) { showStatus("No hay documentos", "warning"); return; }
+
+  const keys = ["notaClinica", "receta", "ordenesLab", "ordenesImagen", "referencia"]
+    .filter(k => docs[k]);
+
+  showStatus(`Descargando ${keys.length} PDFs...`, "info");
+
+  for (const key of keys) {
+    await descargarDocumentoSoloPDF(key);
+    await new Promise(r => setTimeout(r, 800));  // Pausa entre descargas
+  }
+  showStatus(`✓ ${keys.length} PDFs descargados`, "success");
+};
+
+/* Ir a la pestaña Informes y buscar la consulta */
+window.verConsultaEnInformes = function() {
+  const caseId = window._consultaState.caseId;
+  if (typeof cambiarTab === "function") cambiarTab("informes");
+  setTimeout(() => {
+    const buscador = document.getElementById("informes-buscador");
+    if (buscador && caseId) {
+      buscador.value = caseId;
+      if (typeof filtrarInformes === "function") filtrarInformes(caseId);
+    }
+  }, 300);
+};
 
 window.verDocumentoConsulta = function(key) {
   const docs = window._consultaState.docsGenerados;
@@ -12352,44 +12629,134 @@ window.verDocumentoConsulta = function(key) {
 
 window.descargarDocumentoConsultaPDF = async function(key) {
   const cont = document.getElementById("contenido-doc-consulta");
-  if (!cont) return;
-  
+  if (!cont) { showStatus("Documento no visible", "error"); return; }
+
   showStatus("Generando PDF...", "info");
+
   try {
+    // Clonar el contenido para no afectar el DOM original
+    const clon = cont.cloneNode(true);
+    clon.style.cssText = "position:fixed;left:-99999px;top:0;width:700px;background:#fff;padding:0";
+    document.body.appendChild(clon);
+
+    // Convertir data URLs a blob URLs (evita problemas con html2canvas)
+    const imagenes = clon.querySelectorAll('img');
+    for (const img of imagenes) {
+      const src = img.getAttribute('src');
+      if (src && src.startsWith('data:image')) {
+        try {
+          const resp = await fetch(src);
+          const blob = await resp.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          img.setAttribute('src', blobUrl);
+          img.dataset.blobUrl = blobUrl;
+        } catch (e) { console.warn('[PDF Consulta] Imagen no convertida:', e); }
+      }
+    }
+    await Promise.all(Array.from(imagenes).map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise(res => { img.onload = res; img.onerror = res; });
+    }));
+
+    // ═══ Configurar PDF ═══
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF("p", "mm", "a4");
     const pw = pdf.internal.pageSize.getWidth();
     const ph = pdf.internal.pageSize.getHeight();
     const mg = 10;
     const cw = pw - 2 * mg;
-    
-    const canvas = await html2canvas(cont, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-    const imgH = (canvas.height * cw) / canvas.width;
-    
-    if (imgH <= ph - 2 * mg) {
-      pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, mg, cw, imgH);
+    let y = mg;
+
+    // ═══ Identificar bloques atómicos por tipo de documento ═══
+    // Nota clínica: cada sección S/O/A/P/firma es un bloque
+    // Receta/Órdenes/Referencia: header + body + firma
+    const bloques = [];
+
+    const root = clon.querySelector("div[style*='max-width:800px'], div[style*='max-width: 800px']") || clon;
+
+    // Intento 1: secciones tipo nota clínica (por <h4>)
+    const seccionesNota = root.querySelectorAll("h4");
+    if (seccionesNota.length >= 3) {
+      // Es una nota clínica → cada h4 y su contenido
+      const headerNota = root.querySelector("div[style*='background:linear-gradient']") || root.firstElementChild;
+      if (headerNota) bloques.push(headerNota);
+
+      const contenedorPadre = seccionesNota[0]?.parentElement;
+      if (contenedorPadre) {
+        // Cada sección es el padre directo de cada h4 (div con margin-bottom)
+        Array.from(contenedorPadre.children).forEach(hijo => {
+          if (hijo.querySelector("h4")) bloques.push(hijo);
+        });
+        // Firma
+        const firma = contenedorPadre.querySelector("div[style*='background:#f8fbff']");
+        if (firma) bloques.push(firma);
+      }
     } else {
-      const pxPorMm = canvas.width / cw;
-      const altoPaginaPx = (ph - 2 * mg) * pxPorMm;
-      let offsetY = 0, pagina = 0;
-      while (offsetY < canvas.height) {
-        if (pagina > 0) pdf.addPage();
-        const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
-        const temp = document.createElement("canvas");
-        temp.width = canvas.width;
-        temp.height = altoCorte;
-        temp.getContext("2d").drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
-        pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, cw, altoCorte / pxPorMm);
-        offsetY += altoCorte;
-        pagina++;
+      // Receta / orden / referencia: bloques grandes
+      const header = root.querySelector("div[style*='background:#1a3a5c']");
+      if (header) bloques.push(header);
+
+      const body = root.querySelector("div[style*='padding:22px 26px'], div[style*='padding:20px 24px']");
+      if (body) {
+        // Subdividir el body por <h3> o <table>
+        const hijos = Array.from(body.children);
+        hijos.forEach(hijo => bloques.push(hijo));
       }
     }
-    
-    pdf.save(`Consulta_${key}_${new Date().toISOString().slice(0, 10)}.pdf`);
-    showStatus("PDF descargado", "success");
+
+    // Fallback: si no detectamos bloques, capturar todo
+    if (bloques.length === 0) bloques.push(clon);
+
+    console.log("[PDF Consulta] Bloques detectados:", bloques.length);
+
+    // ═══ Procesar cada bloque ═══
+    for (const bloque of bloques) {
+      const canvas = await html2canvas(bloque, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        windowWidth: 700
+      });
+
+      const imgW = cw;
+      const imgH = (canvas.height * imgW) / canvas.width;
+
+      // Si NO cabe en la página actual, saltar de página
+      if (y + imgH > ph - mg) {
+        pdf.addPage();
+        y = mg;
+      }
+
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, y, imgW, imgH);
+      y += imgH + 3;
+    }
+
+    // ═══ Pie de página ═══
+    const total = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= total; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(8);
+      pdf.setTextColor(150);
+      pdf.text("EcoRadAi · Consulta · " + new Date().toLocaleDateString("es-ES"), mg, ph - 5);
+      pdf.text("Página " + i + " de " + total, pw - mg, ph - 5, { align: "right" });
+    }
+
+    const caseId = window._consultaState.caseId || "CONS";
+    pdf.save(`Consulta_${key}_${caseId}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    showStatus(`PDF descargado (${total} página${total > 1 ? "s" : ""})`, "success");
+
   } catch (e) {
-    console.error(e);
+    console.error("[descargarDocumentoConsultaPDF]", e);
     showStatus("Error: " + e.message, "error");
+  } finally {
+    // Limpiar clon
+    const clonActivo = document.body.querySelector("div[style*='left:-99999px'][style*='width:700px']");
+    if (clonActivo) {
+      clonActivo.querySelectorAll('img[data-blob-url]').forEach(img => {
+        if (img.dataset.blobUrl) URL.revokeObjectURL(img.dataset.blobUrl);
+      });
+      document.body.removeChild(clonActivo);
+    }
   }
 };
 
