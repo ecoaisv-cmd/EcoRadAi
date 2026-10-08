@@ -14731,16 +14731,15 @@ if (typeof window.showStatus !== "function") {
    ═══════════════════════════════════════════════════════════════════ */
 
 async function _consultaPDF_contenedorAPDF(contenedor, nombreArchivo, etiqueta) {
-  if (!contenedor) {
-    throw new Error("Contenedor no encontrado en el DOM");
-  }
+  if (!contenedor) throw new Error("Contenedor no encontrado en el DOM");
 
   const rect = contenedor.getBoundingClientRect();
-  console.log(`[PDF Consulta] Convirtiendo "${etiqueta}": ${rect.width.toFixed(0)}x${rect.height.toFixed(0)}px`);
+  console.log(`[PDF] ═══════════════════════════════════════════════════`);
+  console.log(`[PDF] Convertir "${etiqueta}"`);
+  console.log(`[PDF] Contenedor: ${rect.width.toFixed(0)}x${rect.height.toFixed(0)}px`);
+  console.log(`[PDF] ═══════════════════════════════════════════════════`);
 
-  if (rect.height < 20) {
-    throw new Error("El contenedor está vacío o no visible");
-  }
+  if (rect.height < 20) throw new Error("El contenedor está vacío o no visible");
 
   // ═══ Configurar PDF A4 ═══
   const { jsPDF } = window.jspdf;
@@ -14752,127 +14751,200 @@ async function _consultaPDF_contenedorAPDF(contenedor, nombreArchivo, etiqueta) 
   const chMax = ph - 2 * mg;
   let y = mg;
 
-  // ═══ Detectar secciones atómicas ═══
+  // ═══ Detectar bloques CORRECTAMENTE ═══
   const bloques = [];
 
-  // 1. Header (div con gradiente o background oscuro)
+  // ─── PASO 1: Header ───
   const header = contenedor.querySelector("div[style*='linear-gradient']")
               || contenedor.querySelector("div[style*='background:#1a3a5c']")
               || contenedor.querySelector(".report-header, .receta-header-sep, .lv2-header");
   if (header) {
     bloques.push(header);
-    console.log("[PDF Consulta] + Header detectado");
+    console.log(`[PDF] + Header (${header.getBoundingClientRect().width.toFixed(0)}x${header.getBoundingClientRect().height.toFixed(0)}px)`);
   }
 
-  // 2. Cada sección por h4
-  const h4s = contenedor.querySelectorAll("h4");
-  console.log(`[PDF Consulta] ${h4s.length} secciones h4 encontradas`);
+  // ─── PASO 2: Detectar el body-container REAL ───
+  // Un body-container válido debe tener una altura > 500px (contiene todas las secciones)
+  // Buscamos TODOS los candidatos con padding y elegimos el MÁS GRANDE.
+  const candidatosBody = contenedor.querySelectorAll("div[style*='padding:20px 24px'], div[style*='padding:22px 26px'], div[style*='padding:20px'], div[style*='padding:22px'], div[style*='padding: 20px'], div[style*='padding: 22px']");
 
-  h4s.forEach((h4, i) => {
-    const seccion = h4.parentElement;
-    if (seccion && !bloques.includes(seccion)) {
-      bloques.push(seccion);
-      console.log(`[PDF Consulta] + Sección ${i + 1}: "${h4.textContent.substring(0, 40)}"`);
+  let bodyContainer = null;
+  let maxAltura = 0;
+  candidatosBody.forEach(cand => {
+    if (cand === header) return; // no contar el header
+    const h = cand.getBoundingClientRect().height;
+    if (h > maxAltura) {
+      maxAltura = h;
+      bodyContainer = cand;
     }
   });
 
-  // 3. Fallback: hijos directos del body (para receta, órdenes, referencia)
-  if (bloques.length <= 1) {
-    const body = contenedor.querySelector("div[style*='padding:20px'], div[style*='padding:22px'], div[style*='padding: 20px'], div[style*='padding: 22px']");
-    if (body) {
-      console.log(`[PDF Consulta] Fallback: ${body.children.length} hijos del body`);
-      Array.from(body.children).forEach(hijo => {
+  if (bodyContainer) {
+    console.log(`[PDF] + Body-container real: ${bodyContainer.getBoundingClientRect().width.toFixed(0)}x${maxAltura.toFixed(0)}px`);
+  } else {
+    console.warn(`[PDF] ⚠️ NO se encontró body-container`);
+  }
+
+  // ─── PASO 3: Capturar hijos del body-container REAL ───
+  if (bodyContainer) {
+    const hijos = Array.from(bodyContainer.children);
+    console.log(`[PDF] Body-container con ${hijos.length} hijos directos`);
+
+    hijos.forEach((hijo, i) => {
+      const r = hijo.getBoundingClientRect();
+      const t = (hijo.textContent || "").trim().substring(0, 40).replace(/\s+/g, " ");
+      console.log(`[PDF]   + Hijo ${i + 1}: <${hijo.tagName.toLowerCase()}> ${r.width.toFixed(0)}x${r.height.toFixed(0)}px "${t}"`);
+      bloques.push(hijo);
+    });
+  } else {
+    // Fallback: buscar por h4 (más confiable que padding)
+    console.warn(`[PDF] ⚠️ Usando fallback: buscar por <h4>`);
+    const h4s = contenedor.querySelectorAll("h4");
+    console.log(`[PDF] ${h4s.length} h4 encontrados`);
+
+    // Detectar el padre común de todos los h4 (ese es el body real)
+    let bodyPadre = null;
+    if (h4s.length > 0) {
+      bodyPadre = h4s[0].parentElement?.parentElement;
+    }
+
+    if (bodyPadre) {
+      console.log(`[PDF] Body padre (padre de los h4): <${bodyPadre.tagName.toLowerCase()}>`);
+      Array.from(bodyPadre.children).forEach((hijo, i) => {
         const r = hijo.getBoundingClientRect();
-        if (r.height > 5 && r.width > 5) bloques.push(hijo);
+        if (r.height > 5 && r.width > 5) {
+          bloques.push(hijo);
+          console.log(`[PDF]   + Hijo ${i + 1}: <${hijo.tagName.toLowerCase()}> ${r.width.toFixed(0)}x${r.height.toFixed(0)}px`);
+        }
+      });
+    } else {
+      // Último recurso: hijos directos del contenedor
+      console.warn(`[PDF] ⚠️ Fallback extremo: hijos directos del contenedor`);
+      Array.from(contenedor.children).forEach(hijo => {
+        if (hijo !== header) {
+          const r = hijo.getBoundingClientRect();
+          if (r.height > 5 && r.width > 5) bloques.push(hijo);
+        }
       });
     }
   }
 
-  // 4. Último recurso: capturar todo el contenedor
-  if (bloques.length === 0) {
-    console.warn("[PDF Consulta] Sin bloques detectados, capturando contenedor completo");
-    bloques.push(contenedor);
-  }
+  console.log(`[PDF] ═══════════════════════════════════════════════════`);
+  console.log(`[PDF] Total bloques a capturar: ${bloques.length}`);
+  console.log(`[PDF] ═══════════════════════════════════════════════════`);
 
-  console.log(`[PDF Consulta] Total bloques: ${bloques.length}`);
+  if (bloques.length === 0) throw new Error("No se detectaron bloques para capturar");
 
   // ═══ Capturar cada bloque ═══
   let capturados = 0;
+  const fallidos = [];
+
   for (let i = 0; i < bloques.length; i++) {
     const bloque = bloques[i];
     const r = bloque.getBoundingClientRect();
+    const t = (bloque.textContent || "").trim().substring(0, 40).replace(/\s+/g, " ");
 
-    if (r.height < 5 || r.width < 5) {
-      console.warn(`[PDF Consulta] Bloque ${i + 1} muy pequeño, saltando`);
+    console.log(`[PDF] ─────────────────────────────`);
+    console.log(`[PDF] Bloque ${i + 1}/${bloques.length}: <${bloque.tagName.toLowerCase()}> ${r.width.toFixed(0)}x${r.height.toFixed(0)}px`);
+    console.log(`[PDF] Texto: "${t}"`);
+
+    if (r.height < 2 || r.width < 2) {
+      console.warn(`[PDF] ⚠️ Saltando: dimensiones muy pequeñas`);
+      fallidos.push({ i: i + 1, texto: t, razon: "dimensiones pequeñas" });
       continue;
     }
 
+    let canvas;
     try {
-      const canvas = await html2canvas(bloque, {
+      canvas = await html2canvas(bloque, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: "#ffffff",
-        logging: false
+        logging: false,
+        windowWidth: 800
       });
-
-      if (!canvas || canvas.width === 0 || canvas.height === 0) {
-        console.warn(`[PDF Consulta] Bloque ${i + 1} canvas vacío, saltando`);
-        continue;
-      }
-
-      const imgW = cw;
-      const imgH = (canvas.height * imgW) / canvas.width;
-
-      // Salto de página si no cabe (excepto primero)
-      if (capturados > 0 && y + imgH > ph - mg) {
-        pdf.addPage();
-        y = mg;
-      }
-
-      // Si el bloque excede la página, partirlo
-      if (imgH > chMax) {
-        console.log(`[PDF Consulta] Bloque ${i + 1} excede página, partiendo`);
-        const pxPorMm = canvas.width / cw;
-        const altoPaginaPx = chMax * pxPorMm;
-        let offsetY = 0;
-        let primerCorte = true;
-
-        while (offsetY < canvas.height) {
-          const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
-          const temp = document.createElement("canvas");
-          temp.width = canvas.width;
-          temp.height = altoCorte;
-          const ctx = temp.getContext("2d");
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, temp.width, temp.height);
-          ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
-
-          if (!primerCorte) pdf.addPage();
-          pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoCorte / pxPorMm);
-
-          offsetY += altoCorte;
-          primerCorte = false;
-        }
-        y = mg;
-      } else {
-        pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, y, imgW, imgH);
-        y += imgH + 3;
-      }
-
-      capturados++;
-      console.log(`[PDF Consulta] ✓ Bloque ${i + 1} capturado`);
-
     } catch (err) {
-      console.error(`[PDF Consulta] Error en bloque ${i + 1}:`, err);
+      console.error(`[PDF] ❌ Error html2canvas:`, err.message);
+      fallidos.push({ i: i + 1, texto: t, razon: "html2canvas: " + err.message });
+      continue;
     }
+
+    if (!canvas || canvas.width === 0 || canvas.height === 0) {
+      console.warn(`[PDF] ❌ Canvas vacío`);
+      fallidos.push({ i: i + 1, texto: t, razon: "canvas vacío" });
+      continue;
+    }
+
+    // Validar píxeles no-blancos
+    const ctx = canvas.getContext("2d");
+    const sampleW = Math.min(canvas.width, 200);
+    const sampleH = Math.min(canvas.height, 200);
+    const imageData = ctx.getImageData(0, 0, sampleW, sampleH);
+    let pixelesNoBlancos = 0;
+    for (let j = 0; j < imageData.data.length; j += 4) {
+      if (imageData.data[j] < 250 || imageData.data[j+1] < 250 || imageData.data[j+2] < 250) {
+        pixelesNoBlancos++;
+      }
+    }
+
+    if (pixelesNoBlancos < 5) {
+      console.warn(`[PDF] ⚠️ Canvas en blanco (${pixelesNoBlancos} px no-blancos)`);
+      fallidos.push({ i: i + 1, texto: t, razon: "canvas en blanco" });
+      continue;
+    }
+
+    const imgW = cw;
+    const imgH = (canvas.height * imgW) / canvas.width;
+    console.log(`[PDF] ✅ Capturado → ${imgW.toFixed(1)}x${imgH.toFixed(1)}mm (${pixelesNoBlancos} px)`);
+
+    if (capturados > 0 && y + imgH > ph - mg) {
+      pdf.addPage();
+      y = mg;
+      console.log(`[PDF] → Nueva página`);
+    }
+
+    if (imgH > chMax) {
+      console.log(`[PDF] → Bloque grande, partiendo`);
+      const pxPorMm = canvas.width / cw;
+      const altoPaginaPx = chMax * pxPorMm;
+      let offsetY = 0;
+      let primerCorte = true;
+
+      while (offsetY < canvas.height) {
+        const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
+        const temp = document.createElement("canvas");
+        temp.width = canvas.width;
+        temp.height = altoCorte;
+        const ctx2 = temp.getContext("2d");
+        ctx2.fillStyle = "#ffffff";
+        ctx2.fillRect(0, 0, temp.width, temp.height);
+        ctx2.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
+
+        if (!primerCorte) pdf.addPage();
+        pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoCorte / pxPorMm);
+        offsetY += altoCorte;
+        primerCorte = false;
+      }
+      y = mg;
+    } else {
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, y, imgW, imgH);
+      y += imgH + 3;
+    }
+
+    capturados++;
   }
 
-  if (capturados === 0) {
-    throw new Error("No se pudo capturar ningún bloque del documento.");
+  console.log(`[PDF] ═══════════════════════════════════════════════════`);
+  console.log(`[PDF] Bloques capturados: ${capturados}/${bloques.length}`);
+  if (fallidos.length > 0) {
+    console.warn(`[PDF] ⚠️ Bloques fallidos:`, fallidos);
   }
+  console.log(`[PDF] ═══════════════════════════════════════════════════`);
 
-  // ═══ Pie de página ═══
+  if (capturados === 0) throw new Error("No se pudo capturar ningún bloque");
+
+  // Pie de página
   const total = pdf.internal.getNumberOfPages();
   for (let i = 1; i <= total; i++) {
     pdf.setPage(i);
@@ -14883,10 +14955,9 @@ async function _consultaPDF_contenedorAPDF(contenedor, nombreArchivo, etiqueta) 
   }
 
   pdf.save(nombreArchivo);
-  console.log(`[PDF Consulta] ✅ Guardado: ${nombreArchivo} (${total} página${total > 1 ? "s" : ""})`);
-  return { paginas: total, bloques: capturados };
+  console.log(`[PDF] ✅ Guardado: ${nombreArchivo} (${total} páginas)`);
+  return { paginas: total, bloques: capturados, fallidos };
 }
-
 /* ═══════════════════════════════════════════════════════════
    API PÚBLICA — SOLO CONSULTAS
    ═══════════════════════════════════════════════════════════ */
