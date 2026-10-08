@@ -8628,6 +8628,24 @@ async function _renderTamizajeGuardado(id) {
   actualizarVisibilidadBotones();
   setupEventListeners();
 
+    // ═══ Mostrar botones de tamizaje (por si quedaron ocultos) ═══
+  [
+    "btn-row-descargas", 
+    "btn-row-lite", 
+    "btn-row-imagenes", 
+    "btn-row-receta",
+    "btn-cambiar-estudio",
+    "btn-guardar",
+    "btn-reset",
+    "btn-email-medico",
+    "btn-email-lite",
+    "btn-whatsapp-medico",
+    "btn-whatsapp-lite"
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "";
+  });
+  
   showStatus(`✓ Tamizaje cargado (${Object.keys(m).length} documentos)`, "success");
   console.log("[_renderTamizajeGuardado] ✓ Completado");
 }
@@ -8778,22 +8796,51 @@ async function _renderConsultaGuardada(consultaId, estado) {
     `;
   });
 
-  // 7. Botones de descarga
+    // 7. Botones individuales por documento
+  const listaDocBotones = [];
+  const infoDocs = {
+    notaClinica: { nombre: "📋 Nota clínica SOAP", key: "notaClinica" },
+    receta: { nombre: "💊 Receta médica", key: "receta" },
+    ordenesLab: { nombre: "🔬 Órdenes de laboratorio", key: "ordenesLab" },
+    ordenesImagen: { nombre: "🖼️ Órdenes de imagen", key: "ordenesImagen" },
+    referencia: { nombre: "📤 Hoja de referencia", key: "referencia" },
+    constanciaIncapacidad: { nombre: "📝 Constancia de incapacidad", key: "constanciaIncapacidad" },
+    constanciaAcompanamiento: { nombre: "👨‍👩‍👧 Constancia de acompañamiento", key: "constanciaAcompanamiento" }
+  };
+
+  Object.entries(normalized).forEach(([key, docHTML]) => {
+    if (!docHTML) return;
+    const info = infoDocs[key];
+    if (!info) return;
+    listaDocBotones.push(`
+      <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;padding:10px 12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:6px">
+        <div style="font-size:12px;font-weight:600;color:var(--corp)">${info.nombre}</div>
+        <button class="btn btn-secondary btn-xs" onclick="verDocumentoConsulta('${info.key}')" style="font-size:11px">👁️ Ver</button>
+        <button class="btn btn-primary btn-xs" onclick="descargarDocumentoSoloPDF('${info.key}')" style="font-size:11px">📥 PDF</button>
+      </div>
+    `);
+  });
+
   html += `
-    <div class="btn-row no-print" style="margin-top:16px">
-      <button class="btn btn-primary" onclick="descargarTodosDocumentosConsulta()">
-        📥 Descargar TODOS los PDFs
-      </button>
-      <button class="btn btn-secondary" onclick="verConsultaEnInformes()">
-        📁 Volver a Informes
-      </button>
+    <div class="no-print" style="margin-top:16px;padding-top:16px;border-top:2px solid var(--border)">
+      <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">
+        📄 Documentos individuales
+      </div>
+      ${listaDocBotones.join("")}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
+        <button class="btn btn-primary" onclick="descargarTodosDocumentosConsulta()" style="font-size:12px">
+          📥 Descargar TODOS los PDFs
+        </button>
+        <button class="btn btn-secondary" onclick="verConsultaEnInformes()" style="font-size:12px">
+          📁 Volver a Informes
+        </button>
+      </div>
     </div>
   `;
-
-  c.innerHTML = html;
+ 
 
   // ═══ Ocultar botones de tamizaje (por si quedaron visibles) ═══
-  ["btn-row-descargas", "btn-row-lite", "btn-row-imagenes", "btn-row-receta"].forEach(id => {
+  ["btn-row-descargas", "btn-row-lite", "btn-row-imagenes", "btn-row-receta", "btn-cambiar-estudio", "btn-guardar","btn-reset","btn-email-medico","btn-email-lite","btn-whatsapp-medico","btn-whatsapp-lite"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = "none";
   });
