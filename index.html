@@ -14707,235 +14707,121 @@ if (typeof window.showStatus !== "function") {
   };
 }
 
-/* ═══════════════════════════════════════════════════════════
-   FUNCIÓN NÚCLEO: _descargarPDFDocumentoConsulta
-   Recibe HTML crudo y genera el PDF con seccionado atómico
-   ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   v24.0 — DESCARGA DE PDF — MÓDULO CONSULTAS (únicamente)
+   ═══════════════════════════════════════════════════════════════════
+   
+   Este bloque SOLO se encarga de las descargas del módulo Consulta.
+   NO toca el módulo de Tamizajes (que ya funciona).
+   
+   LÓGICA:
+   - El informe ya está renderizado en el DOM del modal
+   - Lo convertimos a PDF con seccionado atómico por <h4>
+   ═══════════════════════════════════════════════════════════════════ */
 
-async function _descargarPDFDocumentoConsulta(htmlContent, nombreArchivo, tipo) {
-  if (!htmlContent || typeof htmlContent !== "string" || htmlContent.length < 100) {
-    throw new Error("Documento vacío o inválido (" + (htmlContent?.length || 0) + " chars)");
+async function _consultaPDF_contenedorAPDF(contenedor, nombreArchivo, etiqueta) {
+  if (!contenedor) {
+    throw new Error("Contenedor no encontrado en el DOM");
   }
 
-  console.log(`[PDF Consulta] ══════════════════════════════════`);
-  console.log(`[PDF Consulta] Generando "${tipo}" — ${htmlContent.length} chars`);
-  console.log(`[PDF Consulta] ══════════════════════════════════`);
+  const rect = contenedor.getBoundingClientRect();
+  console.log(`[PDF Consulta] Convirtiendo "${etiqueta}": ${rect.width.toFixed(0)}x${rect.height.toFixed(0)}px`);
 
-  // ═══ 1. Crear contenedor temporal VISIBLE fuera de pantalla ═══
-  // IMPORTANTE: NO usar display:none, ni visibility:hidden, ni opacity:0
-  // html2canvas necesita medir el layout real del DOM
-  const temp = document.createElement("div");
-  temp.id = "temp-pdf-consulta-" + Date.now();
-  temp.style.cssText = `
-    position: fixed !important;
-    left: -10000px !important;
-    top: 0 !important;
-    width: 800px !important;
-    min-height: 100px !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    z-index: -1 !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    display: block !important;
-    overflow: visible !important;
-    pointer-events: none !important;
-  `;
-  temp.innerHTML = htmlContent;
-  document.body.appendChild(temp);
+  if (rect.height < 20) {
+    throw new Error("El contenedor está vacío o no visible");
+  }
 
-  // ═══ 2. Esperar a que el navegador pinte el DOM ═══
-  await new Promise(r => setTimeout(r, 400));
+  // ═══ Configurar PDF A4 ═══
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF("p", "mm", "a4");
+  const pw = pdf.internal.pageSize.getWidth();
+  const ph = pdf.internal.pageSize.getHeight();
+  const mg = 8;
+  const cw = pw - 2 * mg;
+  const chMax = ph - 2 * mg;
+  let y = mg;
 
-  try {
-    // ═══ 3. Verificar dimensiones reales ═══
-    const rectTemp = temp.getBoundingClientRect();
-    console.log(`[PDF Consulta] Contenedor temporal: ${rectTemp.width.toFixed(0)}x${rectTemp.height.toFixed(0)}px`);
+  // ═══ Detectar secciones atómicas ═══
+  const bloques = [];
 
-    if (rectTemp.height < 10) {
-      throw new Error("El contenedor quedó con altura 0. El HTML no se renderizó. Verifica que el documento guardado en BD no esté vacío.");
+  // 1. Header (div con gradiente o background oscuro)
+  const header = contenedor.querySelector("div[style*='linear-gradient']")
+              || contenedor.querySelector("div[style*='background:#1a3a5c']")
+              || contenedor.querySelector(".report-header, .receta-header-sep, .lv2-header");
+  if (header) {
+    bloques.push(header);
+    console.log("[PDF Consulta] + Header detectado");
+  }
+
+  // 2. Cada sección por h4
+  const h4s = contenedor.querySelectorAll("h4");
+  console.log(`[PDF Consulta] ${h4s.length} secciones h4 encontradas`);
+
+  h4s.forEach((h4, i) => {
+    const seccion = h4.parentElement;
+    if (seccion && !bloques.includes(seccion)) {
+      bloques.push(seccion);
+      console.log(`[PDF Consulta] + Sección ${i + 1}: "${h4.textContent.substring(0, 40)}"`);
     }
+  });
 
-    // ═══ 4. Convertir imágenes data URLs a blob URLs ═══
-    const imagenes = temp.querySelectorAll("img");
-    for (const img of imagenes) {
-      const src = img.getAttribute("src");
-      if (src && src.startsWith("data:image")) {
-        try {
-          const resp = await fetch(src);
-          const blob = await resp.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          img.setAttribute("src", blobUrl);
-          img.dataset.blobUrl = blobUrl;
-        } catch (e) {
-          console.warn("[PDF Consulta] Imagen no convertida:", e.message);
-        }
-      }
-    }
-
-    // Esperar carga de imágenes
-    await Promise.all(Array.from(imagenes).map(img => {
-      if (img.complete && img.naturalHeight > 0) return Promise.resolve();
-      return new Promise(res => {
-        img.onload = res;
-        img.onerror = res;
-        setTimeout(res, 2000);
-      });
-    }));
-
-    // ═══ 5. Detectar ROOT del documento ═══
-    const rootIds = [
-      "report-nota-clinica",
-      "report-receta-consulta",
-      "report-orden-lab",
-      "report-orden-imagen",
-      "report-referencia"
-    ];
-
-    let root = null;
-    for (const id of rootIds) {
-      root = temp.querySelector(`#${id}`);
-      if (root) {
-        console.log(`[PDF Consulta] ✓ Root detectado: #${id}`);
-        break;
-      }
-    }
-
-    // Fallback: buscar por clase o primer hijo
-    if (!root) {
-      root = temp.querySelector(".report-medico")
-          || temp.querySelector(".report-receta-separada")
-          || temp.firstElementChild;
-      if (root) console.log(`[PDF Consulta] Root por fallback: ${root.className || root.tagName}`);
-    }
-
-    if (!root) {
-      throw new Error("No se detectó el root del documento");
-    }
-
-    const rectRoot = root.getBoundingClientRect();
-    console.log(`[PDF Consulta] Root: ${rectRoot.width.toFixed(0)}x${rectRoot.height.toFixed(0)}px`);
-
-    if (rectRoot.height < 10) {
-      throw new Error("El root del documento tiene altura 0");
-    }
-
-    // ═══ 6. Detectar BLOQUES ATÓMICOS ═══
-    let bloques = [];
-
-    // Estrategia A: contenedor del body por padding
-    const bodyContainer = root.querySelector("div[style*='padding:20px 24px']")
-                      || root.querySelector("div[style*='padding:22px 26px']")
-                      || root.querySelector("div[style*='padding:20px']")
-                      || root.querySelector("div[style*='padding: 20px']")
-                      || root.querySelector("div[style*='padding:22px']")
-                      || root.querySelector("div[style*='padding: 22px']");
-
-    if (bodyContainer) {
-      const hijos = Array.from(bodyContainer.children);
-      console.log(`[PDF Consulta] Body container con ${hijos.length} hijos`);
-
-      hijos.forEach((hijo, i) => {
+  // 3. Fallback: hijos directos del body (para receta, órdenes, referencia)
+  if (bloques.length <= 1) {
+    const body = contenedor.querySelector("div[style*='padding:20px'], div[style*='padding:22px'], div[style*='padding: 20px'], div[style*='padding: 22px']");
+    if (body) {
+      console.log(`[PDF Consulta] Fallback: ${body.children.length} hijos del body`);
+      Array.from(body.children).forEach(hijo => {
         const r = hijo.getBoundingClientRect();
-        if (r.height > 2 && r.width > 2) {
-          bloques.push(hijo);
-        } else {
-          console.log(`[PDF Consulta] Hijo ${i} ignorado (${r.width.toFixed(0)}x${r.height.toFixed(0)}px)`);
-        }
+        if (r.height > 5 && r.width > 5) bloques.push(hijo);
       });
     }
+  }
 
-    // Estrategia B: buscar secciones por <h4>
-    if (bloques.length === 0) {
-      console.log("[PDF Consulta] Estrategia B: buscando por h4");
-      const h4s = root.querySelectorAll("h4");
-      h4s.forEach(h4 => {
-        const padre = h4.parentElement;
-        if (padre) {
-          const r = padre.getBoundingClientRect();
-          if (r.height > 2 && r.width > 2) bloques.push(padre);
-        }
+  // 4. Último recurso: capturar todo el contenedor
+  if (bloques.length === 0) {
+    console.warn("[PDF Consulta] Sin bloques detectados, capturando contenedor completo");
+    bloques.push(contenedor);
+  }
+
+  console.log(`[PDF Consulta] Total bloques: ${bloques.length}`);
+
+  // ═══ Capturar cada bloque ═══
+  let capturados = 0;
+  for (let i = 0; i < bloques.length; i++) {
+    const bloque = bloques[i];
+    const r = bloque.getBoundingClientRect();
+
+    if (r.height < 5 || r.width < 5) {
+      console.warn(`[PDF Consulta] Bloque ${i + 1} muy pequeño, saltando`);
+      continue;
+    }
+
+    try {
+      const canvas = await html2canvas(bloque, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false
       });
-    }
-
-    // Estrategia C: header + body
-    if (bloques.length === 0) {
-      console.log("[PDF Consulta] Estrategia C: header + body completo");
-      const header = root.querySelector("div[style*='background:linear-gradient']")
-                  || root.querySelector("div[style*='background:#1a3a5c']");
-      if (header) bloques.push(header);
-      if (bodyContainer) bloques.push(bodyContainer);
-    }
-
-    // Fallback total
-    if (bloques.length === 0) {
-      console.log("[PDF Consulta] Fallback: capturando root completo");
-      bloques = [root];
-    }
-
-    console.log(`[PDF Consulta] Total bloques a capturar: ${bloques.length}`);
-
-    // ═══ 7. Configurar PDF ═══
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF("p", "mm", "a4");
-    const pw = pdf.internal.pageSize.getWidth();
-    const ph = pdf.internal.pageSize.getHeight();
-    const mg = 10;
-    const cw = pw - 2 * mg;
-    const chMax = ph - 2 * mg;
-    let y = mg;
-    let capturados = 0;
-
-    // ═══ 8. Capturar cada bloque ═══
-    for (let i = 0; i < bloques.length; i++) {
-      const bloque = bloques[i];
-      const rect = bloque.getBoundingClientRect();
-
-      console.log(`[PDF Consulta] Bloque ${i + 1}/${bloques.length}: ${rect.width.toFixed(0)}x${rect.height.toFixed(0)}px`);
-
-      if (rect.height < 2 || rect.width < 2) {
-        console.warn(`[PDF Consulta] Bloque ${i} sin dimensiones, saltando`);
-        continue;
-      }
-
-      let canvas;
-      try {
-        canvas = await html2canvas(bloque, {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: "#ffffff",
-          windowWidth: 800,
-          scrollX: 0,
-          scrollY: 0,
-          logging: false
-        });
-      } catch (e) {
-        console.warn(`[PDF Consulta] Error capturando bloque ${i}:`, e.message);
-        continue;
-      }
 
       if (!canvas || canvas.width === 0 || canvas.height === 0) {
-        console.warn(`[PDF Consulta] Bloque ${i} canvas vacío, saltando`);
+        console.warn(`[PDF Consulta] Bloque ${i + 1} canvas vacío, saltando`);
         continue;
       }
 
       const imgW = cw;
       const imgH = (canvas.height * imgW) / canvas.width;
 
-      console.log(`[PDF Consulta] Bloque ${i} → ${imgW.toFixed(1)}x${imgH.toFixed(1)}mm`);
-
-      // Salto de página si no cabe
-      if (y + imgH > ph - mg && capturados > 0) {
+      // Salto de página si no cabe (excepto primero)
+      if (capturados > 0 && y + imgH > ph - mg) {
         pdf.addPage();
         y = mg;
       }
 
       // Si el bloque excede la página, partirlo
       if (imgH > chMax) {
-        console.log(`[PDF Consulta] Bloque ${i} excede página, partiendo en cortes`);
+        console.log(`[PDF Consulta] Bloque ${i + 1} excede página, partiendo`);
         const pxPorMm = canvas.width / cw;
         const altoPaginaPx = chMax * pxPorMm;
         let offsetY = 0;
@@ -14943,19 +14829,16 @@ async function _descargarPDFDocumentoConsulta(htmlContent, nombreArchivo, tipo) 
 
         while (offsetY < canvas.height) {
           const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
-
-          const temp2 = document.createElement("canvas");
-          temp2.width = canvas.width;
-          temp2.height = altoCorte;
-          const ctx2 = temp2.getContext("2d");
-          ctx2.fillStyle = "#ffffff";
-          ctx2.fillRect(0, 0, temp2.width, temp2.height);
-          ctx2.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
-
-          const altoMm = altoCorte / pxPorMm;
+          const temp = document.createElement("canvas");
+          temp.width = canvas.width;
+          temp.height = altoCorte;
+          const ctx = temp.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, temp.width, temp.height);
+          ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
 
           if (!primerCorte) pdf.addPage();
-          pdf.addImage(temp2.toDataURL("image/png"), "PNG", mg, mg, imgW, altoMm);
+          pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoCorte / pxPorMm);
 
           offsetY += altoCorte;
           primerCorte = false;
@@ -14967,49 +14850,152 @@ async function _descargarPDFDocumentoConsulta(htmlContent, nombreArchivo, tipo) 
       }
 
       capturados++;
+      console.log(`[PDF Consulta] ✓ Bloque ${i + 1} capturado`);
+
+    } catch (err) {
+      console.error(`[PDF Consulta] Error en bloque ${i + 1}:`, err);
     }
-
-    console.log(`[PDF Consulta] Bloques capturados: ${capturados}/${bloques.length}`);
-
-    if (capturados === 0) {
-      throw new Error("No se pudo capturar ningún bloque. El documento puede estar vacío o contener solo elementos no renderizables.");
-    }
-
-    // ═══ 9. Pie de página ═══
-    const total = pdf.internal.getNumberOfPages();
-    for (let i = 1; i <= total; i++) {
-      pdf.setPage(i);
-      pdf.setFontSize(8);
-      pdf.setTextColor(150);
-      pdf.text("EcoRadAi · Consulta · " + new Date().toLocaleDateString("es-ES"), mg, ph - 5);
-      pdf.text("Página " + i + " de " + total, pw - mg, ph - 5, { align: "right" });
-    }
-
-    // ═══ 10. Guardar ═══
-    pdf.save(nombreArchivo);
-    console.log(`[PDF Consulta] ✅ "${nombreArchivo}" — ${total} pág, ${capturados} bloques`);
-    window.showStatus(`PDF descargado (${total} página${total > 1 ? "s" : ""})`, "success");
-
-    return { paginas: total, bloques: capturados };
-
-  } finally {
-    // Limpiar blob URLs
-    temp.querySelectorAll("img[data-blob-url]").forEach(img => {
-      if (img.dataset.blobUrl) URL.revokeObjectURL(img.dataset.blobUrl);
-    });
-    // Remover contenedor temporal
-    if (temp.parentNode) temp.parentNode.removeChild(temp);
   }
+
+  if (capturados === 0) {
+    throw new Error("No se pudo capturar ningún bloque del documento.");
+  }
+
+  // ═══ Pie de página ═══
+  const total = pdf.internal.getNumberOfPages();
+  for (let i = 1; i <= total; i++) {
+    pdf.setPage(i);
+    pdf.setFontSize(8);
+    pdf.setTextColor(150);
+    pdf.text(`EcoRadAi · Consulta · ${new Date().toLocaleDateString("es-ES")}`, mg, ph - 4);
+    pdf.text(`Página ${i} de ${total}`, pw - mg, ph - 4, { align: "right" });
+  }
+
+  pdf.save(nombreArchivo);
+  console.log(`[PDF Consulta] ✅ Guardado: ${nombreArchivo} (${total} página${total > 1 ? "s" : ""})`);
+  return { paginas: total, bloques: capturados };
 }
 
 /* ═══════════════════════════════════════════════════════════
-   DESCARGA DESDE EL LISTADO (usa docsGenerados en memoria)
+   API PÚBLICA — SOLO CONSULTAS
    ═══════════════════════════════════════════════════════════ */
 
+/* Descarga desde el modal abierto (#contenido-doc-consulta) */
+window.descargarDocumentoConsultaPDF = async function(key) {
+  const contenedor = document.getElementById("contenido-doc-consulta");
+  if (!contenedor) {
+    window.showStatus("No hay documento visible. Abre el documento primero.", "error");
+    return;
+  }
 
+  const etiquetas = {
+    notaClinica: "Nota_Clinica",
+    receta: "Receta",
+    ordenesLab: "Ordenes_Laboratorio",
+    ordenesImagen: "Ordenes_Imagen",
+    referencia: "Hoja_Referencia"
+  };
+  const etiqueta = etiquetas[key] || key;
+  const caseId = window._consultaState?.caseId || "CONS";
+  const nombreArchivo = `${etiqueta}_${caseId}_${new Date().toISOString().slice(0,10)}.pdf`;
 
+  window.showStatus("Generando PDF...", "info");
+  try {
+    await _consultaPDF_contenedorAPDF(contenedor, nombreArchivo, etiqueta);
+    window.showStatus("PDF descargado", "success");
+  } catch (e) {
+    console.error("[descargarDocumentoConsultaPDF]", e);
+    window.showStatus("Error: " + e.message, "error");
+  }
+};
 
-console.log("[PDF Consulta] ✓ Módulo de descarga unificado cargado");
+/* Descarga desde el listado (sin modal abierto) */
+window.descargarDocumentoSoloPDF = async function(key) {
+  const docs = window._consultaState?.docsGenerados;
+  if (!docs || !docs[key]) {
+    window.showStatus("Documento no disponible", "warning");
+    return;
+  }
+
+  // Contenedor temporal VISIBLE fuera de pantalla
+  const temp = document.createElement("div");
+  temp.id = "consulta-pdf-temp";
+  temp.style.cssText = `
+    position: fixed !important;
+    left: -10000px !important;
+    top: 0 !important;
+    width: 800px !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    visibility: visible !important;
+    display: block !important;
+  `;
+  temp.innerHTML = docs[key];
+  document.body.appendChild(temp);
+
+  await new Promise(r => setTimeout(r, 300));
+
+  const etiquetas = {
+    notaClinica: "Nota_Clinica",
+    receta: "Receta",
+    ordenesLab: "Ordenes_Laboratorio",
+    ordenesImagen: "Ordenes_Imagen",
+    referencia: "Hoja_Referencia"
+  };
+  const etiqueta = etiquetas[key] || key;
+  const caseId = window._consultaState?.caseId || "CONS";
+  const nombreArchivo = `${etiqueta}_${caseId}_${new Date().toISOString().slice(0,10)}.pdf`;
+
+  window.showStatus("Generando PDF...", "info");
+  try {
+    await _consultaPDF_contenedorAPDF(temp, nombreArchivo, etiqueta);
+    window.showStatus("PDF descargado", "success");
+  } catch (e) {
+    console.error("[descargarDocumentoSoloPDF]", e);
+    window.showStatus("Error: " + e.message, "error");
+  } finally {
+    if (temp.parentNode) temp.parentNode.removeChild(temp);
+  }
+};
+
+/* Descarga secuencial de todos los documentos de la consulta */
+window.descargarTodosPDFsConsulta = async function() {
+  const docs = window._consultaState?.docsGenerados;
+  if (!docs) {
+    window.showStatus("Sin documentos generados", "error");
+    return;
+  }
+
+  const keys = Object.keys(docs).filter(k => docs[k]);
+  if (keys.length === 0) {
+    window.showStatus("Sin documentos", "error");
+    return;
+  }
+
+  window.showStatus(`Descargando ${keys.length} PDFs...`, "info");
+
+  let ok = 0;
+  let fail = 0;
+
+  for (const key of keys) {
+    try {
+      await window.descargarDocumentoSoloPDF(key);
+      ok++;
+      await new Promise(r => setTimeout(r, 800));
+    } catch (e) {
+      console.error(`[descargarTodosPDFsConsulta] Error en ${key}:`, e);
+      fail++;
+    }
+  }
+
+  if (fail === 0) {
+    window.showStatus(`✓ ${ok} PDFs descargados`, "success");
+  } else {
+    window.showStatus(`⚠️ ${ok} descargados, ${fail} con error`, "warning");
+  }
+};
+
+console.log("[PDF Consulta] ✓ Módulo de descarga v24.0 cargado");
 console.log("[Consulta] C.1 + C.2 + C.3 cargados correctamente");
 console.log("[Consulta] Cierre, firma y persistencia cargados");
 console.log("%c Módulo Consulta Médica v23.5 listo ", "background:#1a3a5c;color:white;padding:6px 12px;border-radius:4px;font-weight:bold;font-size:12px");
