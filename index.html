@@ -13381,8 +13381,282 @@ async function _capturarDocumentoAPDF(htmlContent, nombreArchivo, tipo) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   v23.8 — Helper compartido: capturar documento como PDF
+   Detecta la estructura real del HTML guardado en BD
+   Solo para el módulo de CONSULTAS
+   ═══════════════════════════════════════════════════════════ */
+
+async function _capturarDocumentoAPDF(htmlContent, nombreArchivo, tipo) {
+  if (!htmlContent || typeof htmlContent !== "string" || htmlContent.length < 100) {
+    throw new Error("Documento vacío o inválido");
+  }
+  
+  console.log(`[PDF] Generando ${tipo} (${htmlContent.length} chars)`);
+  
+  // ═══ 1. Crear contenedor temporal VISIBLE fuera de pantalla ═══
+  const temp = document.createElement("div");
+  temp.id = "temp-pdf-container";
+  temp.style.cssText = `
+    position: fixed !important;
+    left: -10000px !important;
+    top: 0 !important;
+    width: 800px !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: -1 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: block !important;
+  `;
+  temp.innerHTML = htmlContent;
+  document.body.appendChild(temp);
+  
+  // Esperar a que el navegador pinte el DOM
+  await new Promise(r => setTimeout(r, 300));
+  
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+    const mg = 10;
+    const cw = pw - 2 * mg;
+    const chMax = ph - 2 * mg;
+    let y = mg;
+    
+    // ═══ 2. Detectar root por ID (los 5 posibles) ═══
+    const rootIds = [
+      "report-nota-clinica",
+      "report-receta-consulta",
+      "report-orden-lab",
+      "report-orden-imagen",
+      "report-referencia"
+    ];
+    
+    let root = null;
+    for (const id of rootIds) {
+      root = temp.querySelector(`#${id}`);
+      if (root) {
+        console.log(`[PDF] Root detectado: #${id}`);
+        break;
+      }
+    }
+    
+    // Fallback: buscar por clase
+    if (!root) {
+      root = temp.querySelector(".report-medico") 
+          || temp.querySelector(".report-receta-separada") 
+          || temp.firstElementChild;
+      if (root) console.log(`[PDF] Root detectado por clase: ${root.className}`);
+    }
+    
+    if (!root) {
+      console.warn("[PDF] No se detectó root, usando temp completo");
+      root = temp;
+    }
+    
+    // ═══ 3. Detectar bloques atómicos ═══
+    let bloques = [];
+    
+    // Estrategia A: Buscar contenedor del body por padding (formato real)
+    const bodyContainer = root.querySelector("div[style*='padding:20px 24px']")
+                      || root.querySelector("div[style*='padding:22px 26px']")
+                      || root.querySelector("div[style*='padding:20px']")
+                      || root.querySelector("div[style*='padding: 20px']")
+                      || root.querySelector("div[style*='padding:22px']")
+                      || root.querySelector("div[style*='padding: 22px']");
+    
+    if (bodyContainer) {
+      console.log(`[PDF] Body container encontrado con ${bodyContainer.children.length} hijos`);
+      
+      // Extraer cada hijo directo como bloque atómico
+      Array.from(bodyContainer.children).forEach((hijo, i) => {
+        const rect = hijo.getBoundingClientRect();
+        if (rect.height > 2) {
+          bloques.push(hijo);
+        } else {
+          console.log(`[PDF] Hijo ${i} ignorado (height: ${rect.height}px)`);
+        }
+      });
+    }
+    
+    // Estrategia B: Si no hay body container, buscar secciones por h4
+    if (bloques.length === 0) {
+      console.log("[PDF] Estrategia B: buscando por h4");
+      const h4s = root.querySelectorAll("h4");
+      if (h4s.length > 0) {
+        h4s.forEach(h4 => {
+          const padre = h4.parentElement;
+          if (padre && padre.getBoundingClientRect().height > 2) {
+            bloques.push(padre);
+          }
+        });
+      }
+    }
+    
+    // Estrategia C: Header + body completo
+    if (bloques.length === 0) {
+      console.log("[PDF] Estrategia C: header + body completo");
+      const header = root.querySelector("div[style*='background:linear-gradient']")
+                  || root.querySelector("div[style*='background:#1a3a5c']");
+      if (header) bloques.push(header);
+      
+      if (bodyContainer) {
+        bloques.push(bodyContainer);
+      }
+    }
+    
+    // Fallback total
+    if (bloques.length === 0) {
+      console.log("[PDF] Sin bloques detectados, capturando root completo");
+      bloques = [root];
+    }
+    
+    console.log(`[PDF] Total bloques a capturar: ${bloques.length}`);
+    
+    // ═══ 4. Convertir imágenes data URLs a blob URLs ═══
+    const imagenes = temp.querySelectorAll("img");
+    for (const img of imagenes) {
+      const src = img.getAttribute("src");
+      if (src && src.startsWith("data:image")) {
+        try {
+          const resp = await fetch(src);
+          const blob = await resp.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          img.setAttribute("src", blobUrl);
+          img.dataset.blobUrl = blobUrl;
+        } catch (e) {
+          console.warn("[PDF] Imagen no convertida:", e.message);
+        }
+      }
+    }
+    
+    // Esperar carga de imágenes
+    await Promise.all(Array.from(imagenes).map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise(res => {
+        img.onload = res;
+        img.onerror = res;
+        setTimeout(res, 2000);
+      });
+    }));
+    
+    // ═══ 5. Capturar cada bloque ═══
+    let capturados = 0;
+    for (let i = 0; i < bloques.length; i++) {
+      const bloque = bloques[i];
+      const rect = bloque.getBoundingClientRect();
+      
+      console.log(`[PDF] Capturando bloque ${i + 1}/${bloques.length} (${rect.width.toFixed(0)}x${rect.height.toFixed(0)}px)`);
+      
+      if (rect.height < 2 || rect.width < 2) {
+        console.warn(`[PDF] Bloque ${i} sin dimensiones, saltando`);
+        continue;
+      }
+      
+      let canvas;
+      try {
+        canvas = await html2canvas(bloque, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: "#ffffff",
+          windowWidth: 800,
+          scrollX: 0,
+          scrollY: 0,
+          logging: false
+        });
+      } catch (e) {
+        console.warn(`[PDF] Error capturando bloque ${i}:`, e.message);
+        continue;
+      }
+      
+      if (canvas.width === 0 || canvas.height === 0) {
+        console.warn(`[PDF] Bloque ${i} canvas vacío, saltando`);
+        continue;
+      }
+      
+      const imgW = cw;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      
+      console.log(`[PDF] Bloque ${i} → ${imgW.toFixed(1)}x${imgH.toFixed(1)}mm`);
+      
+      // Salto de página si no cabe
+      if (y + imgH > ph - mg && capturados > 0) {
+        pdf.addPage();
+        y = mg;
+      }
+      
+      // Si el bloque es más grande que la página, partirlo
+      if (imgH > chMax) {
+        console.log(`[PDF] Bloque ${i} más grande que página, partiendo...`);
+        const pxPorMm = canvas.width / cw;
+        const altoPaginaPx = chMax * pxPorMm;
+        let offsetY = 0;
+        
+        while (offsetY < canvas.height) {
+          const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
+          
+          const temp2 = document.createElement("canvas");
+          temp2.width = canvas.width;
+          temp2.height = altoCorte;
+          const ctx2 = temp2.getContext("2d");
+          ctx2.fillStyle = "#ffffff";
+          ctx2.fillRect(0, 0, temp2.width, temp2.height);
+          ctx2.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
+          
+          const altoMm = altoCorte / pxPorMm;
+          pdf.addImage(temp2.toDataURL("image/png"), "PNG", mg, mg, imgW, altoMm);
+          
+          offsetY += altoCorte;
+          if (offsetY < canvas.height) pdf.addPage();
+        }
+        y = mg;
+      } else {
+        pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, y, imgW, imgH);
+        y += imgH + 3;
+      }
+      
+      capturados++;
+    }
+    
+    console.log(`[PDF] Bloques capturados: ${capturados}/${bloques.length}`);
+    
+    if (capturados === 0) {
+      throw new Error("No se pudo capturar ningún bloque del documento");
+    }
+    
+    // ═══ 6. Pie de página ═══
+    const total = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= total; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(8);
+      pdf.setTextColor(150);
+      pdf.text("EcoRadAi · " + new Date().toLocaleDateString("es-ES"), mg, ph - 5);
+      pdf.text("Página " + i + " de " + total, pw - mg, ph - 5, { align: "right" });
+    }
+    
+    pdf.save(nombreArchivo);
+    console.log(`[PDF] ✅ ${tipo} guardado: ${total} página(s)`);
+    showStatus(`PDF descargado (${total} página${total > 1 ? "s" : ""})`, "success");
+    
+    return { paginas: total, bloques: capturados };
+    
+  } finally {
+    // Limpiar blob URLs
+    temp.querySelectorAll("img[data-blob-url]").forEach(img => {
+      if (img.dataset.blobUrl) URL.revokeObjectURL(img.dataset.blobUrl);
+    });
+    // Remover contenedor temporal
+    if (temp.parentNode) temp.parentNode.removeChild(temp);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
    v23.8 — descargarDocumentoSoloPDF
-   Usa el helper compartido
+   Descarga un documento desde el listado del paso "Documentos generados"
+   Solo para el módulo de CONSULTAS
    ═══════════════════════════════════════════════════════════ */
 
 window.descargarDocumentoSoloPDF = async function(key) {
@@ -13404,7 +13678,8 @@ window.descargarDocumentoSoloPDF = async function(key) {
 
 /* ═══════════════════════════════════════════════════════════
    v23.8 — descargarDocumentoConsultaPDF
-   Usa el helper compartido
+   Descarga desde el modal abierto (botón 📥 PDF del visor)
+   Solo para el módulo de CONSULTAS
    ═══════════════════════════════════════════════════════════ */
 
 window.descargarDocumentoConsultaPDF = async function(key) {
