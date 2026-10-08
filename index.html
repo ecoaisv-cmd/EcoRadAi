@@ -8362,44 +8362,55 @@ async function renderCasosGuardados() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   v23.6 — renderItemInforme (único, sin duplicados)
+   v23.6 — renderItemInforme (ÚNICO)
+   Dispatcher unificado: usa un solo handler `abrirCasoUnificado`
+   con el tipo correcto en cada tarjeta.
    ═══════════════════════════════════════════════════════════ */
 
 function renderItemInforme(x) {
-  const nc = x.nivel === "MUY ALTO" ? "muy-alto" : x.nivel === "ALTO" ? "alto" : x.nivel === "MODERADO" ? "moderado" : "bajo";
+  const nc = x.nivel === "MUY ALTO" ? "muy-alto"
+           : x.nivel === "ALTO" ? "alto"
+           : x.nivel === "MODERADO" ? "moderado"
+           : "bajo";
+
   const icono = x.kind === "tamizaje" ? "🩺" : "📋";
   const color = x.kind === "tamizaje" ? "#0071e3" : "#34c759";
-  
+
+  // ═══ TAMIZAJE ═══
   if (x.kind === "tamizaje") {
     return `
       <div class="informe-card" data-kind="tamizaje" 
            data-search="${(x.nombre + " " + x.extra + " " + x.estudio).toLowerCase()}" 
-           onclick="abrirCasoGuardado('${x.id}')" 
+           onclick="abrirCasoUnificado('${x.id}', 'tamizaje')" 
            style="border-left:4px solid ${color}">
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${icono} ${escapeHtml(x.nombre)}</div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">
+            ${icono} ${escapeHtml(x.nombre)}
+          </div>
           <div style="font-size:11px;color:var(--text-secondary)">
             ${escapeHtml(x.fecha || "")} · ${escapeHtml(x.estudio)}
             ${x.edad ? " · " + x.edad + " años" : ""}
             ${x.tieneInterconsultas ? " · 🩺 interconsultas" : ""}
           </div>
-          <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-family:monospace">${escapeHtml(x.extra)}</div>
+          <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-family:monospace">
+            ${escapeHtml(x.extra)}
+          </div>
         </div>
         <div class="timeline-risk ${nc}">${x.nivel}</div>
       </div>
     `;
   }
-  
-  // Consulta
+
+  // ═══ CONSULTA ═══
   const esBorrador = x.estado !== "firmada" && x.estado !== "rectificada";
   const estadoBadge = esBorrador
     ? `<span style="background:#fff9e6;color:#8a6a00;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;margin-left:6px">Borrador</span>`
     : `<span style="background:#f0fff4;color:#1a4a2a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;margin-left:6px">Firmada</span>`;
-  
+
   return `
     <div class="informe-card" data-kind="consulta" 
          data-search="${(x.nombre + " " + x.extra + " " + (x.motivo || "") + " " + (x.cie10 || "")).toLowerCase()}" 
-         onclick="abrirConsultaDesdeInformes('${x.id}', '${x.estado}')" 
+         onclick="abrirCasoUnificado('${x.id}', 'consulta', '${x.estado}')" 
          style="border-left:4px solid ${color}">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;margin-bottom:2px;display:flex;align-items:center;flex-wrap:wrap">
@@ -8413,12 +8424,365 @@ function renderItemInforme(x) {
         </div>
         ${x.cie10 ? `<div style="font-size:10px;color:var(--accent);font-weight:600;margin-top:2px">CIE-10: ${escapeHtml(x.cie10)}</div>` : ""}
         ${x.motivo ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">${escapeHtml(x.motivo.substring(0, 80))}${x.motivo.length > 80 ? "…" : ""}</div>` : ""}
-        <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-family:monospace">${escapeHtml(x.extra)}</div>
+        <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-family:monospace">
+          ${escapeHtml(x.extra)}
+        </div>
       </div>
       <div class="timeline-risk ${nc}">${x.nivel}</div>
     </div>
   `;
 }
+
+window.renderItemInforme = renderItemInforme;
+
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — abrirCasoUnificado
+   Punto de entrada ÚNICO para casos guardados.
+   Detecta el tipo y delega al renderizador correcto.
+   ═══════════════════════════════════════════════════════════ */
+
+window.abrirCasoUnificado = async function(id, tipo, estado) {
+  console.log(`[abrirCasoUnificado] id=${id} tipo=${tipo} estado=${estado}`);
+  showStatus("Cargando caso...", "info");
+
+  // ═══ PASO 1: Normalizar tipo si no viene ═══
+  if (!tipo) {
+    if (id.startsWith("ECO-")) tipo = "tamizaje";
+    else if (id.startsWith("CONS-")) tipo = "consulta";
+    else tipo = "tamizaje";
+  }
+
+  // ═══ PASO 2: Preparar UI común (antes de renderizar) ═══
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+
+  // Forzar pestaña "captura" (porque sec-reporte vive dentro de sec-captura)
+  document.querySelectorAll("#tabs-principales .tab").forEach(t => {
+    t.classList.remove("active");
+    if (t.dataset.tab === "captura") t.classList.add("active");
+  });
+
+  // Activar sec-captura Y sec-reporte
+  const secCaptura = document.getElementById("sec-captura");
+  if (secCaptura) secCaptura.classList.add("active");
+
+  const secReporte = document.getElementById("sec-reporte");
+  if (secReporte) secReporte.classList.add("active");
+
+  // Ocultar subsecciones de captura
+  ["sec-config", "sec-empleado", "sec-estudio", "sec-vitales", "sec-labs",
+   "sec-clinica", "sec-protocolo", "sec-imagenes", "sec-analisis",
+   "sec-interconsultas", "sec-tratamiento"].forEach(sid => {
+    const el = document.getElementById(sid);
+    if (el) el.classList.remove("active");
+  });
+
+  // ═══ PASO 3: Dispatch por tipo ═══
+  try {
+    if (tipo === "tamizaje") {
+      await _renderTamizajeGuardado(id);
+    } else if (tipo === "consulta") {
+      await _renderConsultaGuardada(id, estado);
+    } else {
+      throw new Error("Tipo desconocido: " + tipo);
+    }
+
+    // ═══ PASO 4: Scroll al tope ═══
+    window.scrollTo({ top: 0, behavior: "smooth" });
+
+  } catch (e) {
+    console.error("[abrirCasoUnificado] ERROR:", e);
+    showStatus("Error al abrir: " + e.message, "error");
+
+    const c = document.getElementById("report-container");
+    if (c) {
+      c.innerHTML = `
+        <div style="padding:24px;text-align:center;background:#fff3f3;border:1.5px solid #ff3b30;border-radius:12px;max-width:600px;margin:20px auto">
+          <div style="font-size:32px;margin-bottom:8px">❌</div>
+          <div style="font-size:14px;font-weight:700;color:#7a1a1a;margin-bottom:8px">
+            Error al abrir el caso
+          </div>
+          <div style="font-size:12px;color:#5a1a1a;line-height:1.6">
+            ${escapeHtml(e.message)}
+          </div>
+        </div>
+      `;
+    }
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — _renderTamizajeGuardado
+   Carga un caso de tamizaje desde `cases` + `artifacts`.
+   Escribe en #report-container.
+   ═══════════════════════════════════════════════════════════ */
+
+async function _renderTamizajeGuardado(id) {
+  console.log("[_renderTamizajeGuardado] Cargando:", id);
+
+  // 1. Cargar caso
+  const caso = await obtenerCasoDB(id);
+  if (!caso) {
+    throw new Error("Caso no encontrado en la base de datos");
+  }
+
+  // 2. Cargar artifacts
+  const art = await obtenerArtifactsPorCasoDB(id);
+  const m = {};
+  art.forEach(a => { m[a.tipo] = a.html; });
+
+  console.log(`[_renderTamizajeGuardado] ${art.length} artifacts leídos`);
+
+  // 3. Limpieza de headers residuales
+  Object.keys(m).forEach(k => {
+    if (typeof m[k] === "string") {
+      m[k] = m[k]
+        .replace(/<tr>\s*<td>\s*M[ée]trica\s*<\/td>\s*<td>\s*Valor\s*<\/td>\s*<td>\s*Referencia\s*<\/td>\s*<td>\s*(Estado|Flag)\s*<\/td>\s*<\/tr>/gi, "")
+        .replace(/<tr>\s*<td>\s*Par[áa]metro\s*<\/td>\s*<td>\s*Valor\s*<\/td>\s*<td>\s*Referencia\s*<\/td>\s*<td>\s*(Estado|Flag)\s*<\/td>\s*<\/tr>/gi, "");
+    }
+  });
+
+  // 4. Guardar en estado global
+  casoActual = caso;
+  window._casoActual = caso;
+  window._artifactsActuales = m;
+
+  // Limpiar estado de consulta para evitar colisiones
+  if (window._consultaState) {
+    window._consultaState.docsGenerados = null;
+  }
+
+  // 5. Renderizar
+  const c = document.getElementById("report-container");
+  if (!c) throw new Error("Contenedor #report-container no encontrado");
+
+  // Caso A: sin artifacts
+  if (Object.keys(m).length === 0) {
+    c.innerHTML = `
+      <div style="padding:24px;text-align:center;background:#fff9e6;border:1.5px solid #ff9500;border-radius:12px;max-width:600px;margin:20px auto">
+        <div style="font-size:32px;margin-bottom:8px">⚠️</div>
+        <div style="font-size:14px;font-weight:700;color:#8a6a00;margin-bottom:8px">
+          Este caso no tiene documentos guardados
+        </div>
+        <div style="font-size:12px;color:#5a4a00;line-height:1.6;margin-bottom:14px">
+          El caso <code style="background:#fff;padding:2px 6px;border-radius:4px;font-family:monospace">${escapeHtml(id)}</code>
+          existe en la base de datos, pero sus documentos no fueron guardados.
+        </div>
+        <button onclick="verImagenes('${id}')" class="btn btn-warning btn-sm" style="width:auto;font-size:11px">
+          🖼️ Ver imágenes
+        </button>
+      </div>
+    `;
+    showStatus("Caso sin documentos", "warning");
+    return;
+  }
+
+  // Caso B: con artifacts
+  const tieneInterconsultas = (caso.interconsultas_ejecutadas || []).filter(ic => !ic.error).length > 0;
+
+  let html = "";
+  if (m.informeMedico) {
+    html += '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--accent)">INFORME MÉDICO</div>' + m.informeMedico + '</div>';
+  }
+  if (tieneInterconsultas) {
+    html += '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--warning)">INTERCONSULTAS</div>' + renderInterconsultasEjecutadas(caso) + '</div>';
+  }
+  if (m.imagenes) {
+    html += '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--warning)">IMÁGENES</div>' + m.imagenes + '</div>';
+  }
+  if (m.receta) {
+    html += '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--corp)">RECETA</div>' + m.receta + '</div>';
+  }
+  if (m.lite) {
+    html += '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--positive)">INFORME LITE</div>' + m.lite + '</div>';
+  }
+
+  c.innerHTML = html || '<div class="empty-state"><div class="icon">📄</div><p>Sin documentos</p></div>';
+
+  // 6. Actualizar UI
+  actualizarVisibilidadBotones();
+  setupEventListeners();
+
+  showStatus(`✓ Tamizaje cargado (${Object.keys(m).length} documentos)`, "success");
+  console.log("[_renderTamizajeGuardado] ✓ Completado");
+}
+
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — _renderConsultaGuardada
+   Carga una consulta desde `consultas` + `artifacts`.
+   Si es borrador → carga en formulario SOAP.
+   Si está firmada → muestra documentos en #report-container.
+   ═══════════════════════════════════════════════════════════ */
+
+async function _renderConsultaGuardada(consultaId, estado) {
+  console.log("[_renderConsultaGuardada] Cargando:", consultaId, "estado:", estado);
+
+  if (!window.supabaseClient) throw new Error("Sin conexión a Supabase");
+
+  // 1. Obtener la consulta
+  const { data: consulta, error: errC } = await window.supabaseClient
+    .from("consultas")
+    .select("case_id, subject_id, fecha_consulta, tipo, estado")
+    .eq("consulta_id", consultaId)
+    .single();
+
+  if (errC || !consulta) throw new Error("Consulta no encontrada");
+
+  // 2. Si es borrador → cargar en el formulario SOAP
+  if (estado === "borrador" || estado === "pendiente_firma") {
+    if (typeof abrirConsultaBorrador === "function") {
+      // Cambiar a pestaña consulta
+      document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+      const secConsulta = document.getElementById("sec-consulta");
+      if (secConsulta) secConsulta.classList.add("active");
+
+      document.querySelectorAll("#tabs-principales .tab").forEach(t => {
+        t.classList.remove("active");
+        if (t.dataset.tab === "consulta") t.classList.add("active");
+      });
+
+      await abrirConsultaBorrador(consultaId);
+      showStatus("✓ Borrador cargado para edición", "success");
+      return;
+    }
+    throw new Error("Módulo de consulta no cargado");
+  }
+
+  // 3. Si está firmada → cargar artifacts
+  const { data: arts, error: errA } = await window.supabaseClient
+    .from("artifacts")
+    .select("tipo, html, artifact_id")
+    .eq("case_id", consulta.case_id);
+
+  if (errA) throw new Error("Error leyendo documentos: " + errA.message);
+
+  if (!arts || arts.length === 0) {
+    const c = document.getElementById("report-container");
+    if (c) {
+      c.innerHTML = `
+        <div style="padding:24px;text-align:center;background:#fff9e6;border:1.5px solid #ff9500;border-radius:12px;max-width:600px;margin:20px auto">
+          <div style="font-size:32px;margin-bottom:8px">⚠️</div>
+          <div style="font-size:14px;font-weight:700;color:#8a6a00;margin-bottom:8px">
+            Consulta sin documentos
+          </div>
+          <div style="font-size:12px;color:#5a4a00">
+            La consulta <code>${escapeHtml(consulta.case_id)}</code> existe pero no tiene documentos guardados.
+          </div>
+        </div>
+      `;
+    }
+    showStatus("Consulta sin documentos", "warning");
+    return;
+  }
+
+  // 4. Mapear por tipo (normalizando nombres)
+  const docs = {};
+  arts.forEach(a => { docs[a.tipo] = a.html; });
+
+  const normalized = {
+    notaClinica: docs.notaClinica || docs.nota_clinica || null,
+    receta: docs.receta || null,
+    ordenesLab: docs.orden_laboratorio || docs.ordenesLab || null,
+    ordenesImagen: docs.orden_imagen || docs.ordenesImagen || null,
+    referencia: docs.referencia || null,
+    constanciaIncapacidad: docs.constancia_incapacidad || null,
+    constanciaAcompanamiento: docs.constancia_acompanamiento || null
+  };
+
+  // 5. Guardar en estado global
+  window._consultaState.consultaId = consultaId;
+  window._consultaState.caseId = consulta.case_id;
+  window._consultaState.docsGenerados = normalized;
+
+  // 6. Mostrar en #report-container
+  const c = document.getElementById("report-container");
+  if (!c) throw new Error("Contenedor #report-container no encontrado");
+
+  let html = `
+    <div style="background:#f0fff4;border-left:4px solid var(--positive);padding:12px 14px;border-radius:0 8px 8px 0;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:#1a4a2a;margin-bottom:4px">
+        ✅ Consulta firmada — ${escapeHtml(consulta.case_id)}
+      </div>
+      <div style="font-size:11px;color:#1a4a2a">
+        ${Object.values(normalized).filter(Boolean).length} documento(s) disponible(s)
+      </div>
+    </div>
+  `;
+
+  const titulos = {
+    notaClinica: "📋 NOTA CLÍNICA SOAP",
+    receta: "💊 RECETA MÉDICA",
+    ordenesLab: "🔬 ÓRDENES DE LABORATORIO",
+    ordenesImagen: "🖼️ ÓRDENES DE IMAGEN",
+    referencia: "📤 HOJA DE REFERENCIA",
+    constanciaIncapacidad: "📝 CONSTANCIA DE INCAPACIDAD",
+    constanciaAcompanamiento: "👨‍👩‍👧 CONSTANCIA DE ACOMPAÑAMIENTO"
+  };
+
+  Object.entries(normalized).forEach(([key, docHTML]) => {
+    if (!docHTML) return;
+    html += `
+      <div style="margin-bottom:24px">
+        <div class="seccion-titulo-preview" style="color:var(--accent)">${titulos[key]}</div>
+        ${docHTML}
+      </div>
+    `;
+  });
+
+  // 7. Botones de descarga
+  html += `
+    <div class="btn-row no-print" style="margin-top:16px">
+      <button class="btn btn-primary" onclick="descargarTodosDocumentosConsulta()">
+        📥 Descargar TODOS los PDFs
+      </button>
+      <button class="btn btn-secondary" onclick="verConsultaEnInformes()">
+        📁 Volver a Informes
+      </button>
+    </div>
+  `;
+
+  c.innerHTML = html;
+
+  showStatus(`✓ Consulta cargada (${Object.values(normalized).filter(Boolean).length} documentos)`, "success");
+  console.log("[_renderConsultaGuardada] ✓ Completado");
+}
+
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — descargarTodosDocumentosConsulta
+   Descarga secuencial de todos los PDFs de una consulta.
+   ═══════════════════════════════════════════════════════════ */
+
+window.descargarTodosDocumentosConsulta = async function() {
+  const docs = window._consultaState.docsGenerados;
+  if (!docs) { showStatus("Sin documentos", "error"); return; }
+
+  const keys = Object.keys(docs).filter(k => docs[k]);
+  if (keys.length === 0) { showStatus("Sin documentos", "error"); return; }
+
+  showStatus(`Descargando ${keys.length} PDFs...`, "info");
+
+  for (const key of keys) {
+    try {
+      // Inyectar temporalmente el doc en un contenedor con el ID esperado
+      // para que descargarDocumentoConsultaPDF lo encuentre
+      const tempDiv = document.createElement("div");
+      tempDiv.id = "contenido-doc-consulta";
+      tempDiv.style.cssText = "position:fixed;left:-99999px;top:0";
+      tempDiv.innerHTML = docs[key];
+      document.body.appendChild(tempDiv);
+
+      await window.descargarDocumentoConsultaPDF(key);
+
+      // Esperar 500ms entre descargas (para que el navegador no las bloquee)
+      await new Promise(r => setTimeout(r, 500));
+
+      document.body.removeChild(tempDiv);
+    } catch (e) {
+      console.warn(`Error descargando ${key}:`, e);
+    }
+  }
+
+  showStatus(`✓ ${keys.length} PDFs descargados`, "success");
+};
 
 /* ═══════════════════════════════════════════════════════════
    v23.6 — Filtros (con botón activo correcto)
@@ -8469,103 +8833,8 @@ window.abrirConsultaDesdeInformes = async function(consultaId, estado) {
     }
   }
 };
-/* Render de cada ítem (tamizaje o consulta) — MEJORADO */
-function renderItemInforme(x) {
-  const nc = x.nivel === "MUY ALTO" ? "muy-alto" : x.nivel === "ALTO" ? "alto" : x.nivel === "MODERADO" ? "moderado" : "bajo";
-  const icono = x.kind === "tamizaje" ? "🩺" : "📋";
-  const color = x.kind === "tamizaje" ? "#0071e3" : "#34c759";
 
-  if (x.kind === "tamizaje") {
-    return `
-      <div class="informe-card" data-kind="tamizaje" data-search="${(x.nombre + " " + x.extra + " " + x.estudio).toLowerCase()}" 
-           onclick="abrirCasoGuardado('${x.id}')" style="border-left:4px solid ${color}">
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${icono} ${escapeHtml(x.nombre)}</div>
-          <div style="font-size:11px;color:var(--text-secondary)">
-            ${escapeHtml(x.fecha || "")} · ${escapeHtml(x.estudio)} · ${escapeHtml(x.extra)}
-            ${x.tieneInterconsultas ? " · 🩺 interconsultas" : ""}
-          </div>
-        </div>
-        <div class="timeline-risk ${nc}">${x.nivel}</div>
-      </div>
-    `;
-  } else {
-    const esBorrador = x.estado !== "firmada" && x.estado !== "rectificada";
-    const estadoBadge = esBorrador 
-      ? `<span style="background:#fff9e6;color:#8a6a00;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase">Borrador</span>`
-      : `<span style="background:#f0fff4;color:#1a4a2a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase">Firmada</span>`;
-    
-    return `
-      <div class="informe-card" data-kind="consulta" data-search="${(x.nombre + " " + x.extra + " " + (x.motivo || "") + " " + (x.cie10 || "")).toLowerCase()}" 
-           onclick="abrirConsultaDesdeInformes('${x.id}', '${x.estado}')" style="border-left:4px solid ${color}">
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">
-            ${icono} ${escapeHtml(x.nombre)}
-            ${estadoBadge}
-          </div>
-          <div style="font-size:11px;color:var(--text-secondary)">
-            ${escapeHtml(x.fecha || "")} · ${escapeHtml(x.estudio)}
-            ${x.paciente_edad ? " · " + x.paciente_edad + " años" : ""}
-            ${x.medico ? " · Dr(a). " + escapeHtml(x.medico) : ""}
-            ${x.cie10 ? " · " + escapeHtml(x.cie10) : ""}
-          </div>
-          <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-family:monospace">
-            ${escapeHtml(x.extra)}
-          </div>
-          ${x.motivo ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">${escapeHtml(x.motivo.substring(0, 80))}${x.motivo.length > 80 ? "…" : ""}</div>` : ""}
-        </div>
-        <div class="timeline-risk ${nc}">${x.nivel}</div>
-      </div>
-    `;
-  }
-}
 
-/* Render de cada ítem (tamizaje o consulta) */
-function renderItemInforme(x) {
-  const nc = x.nivel === "MUY ALTO" ? "muy-alto" : x.nivel === "ALTO" ? "alto" : x.nivel === "MODERADO" ? "moderado" : "bajo";
-  const icono = x.kind === "tamizaje" ? "🩺" : "📋";
-  const color = x.kind === "tamizaje" ? "#0071e3" : "#34c759";
-
-  if (x.kind === "tamizaje") {
-    return `
-      <div class="informe-card" data-kind="tamizaje" data-search="${(x.nombre + " " + x.extra + " " + x.estudio).toLowerCase()}" 
-           onclick="abrirCasoGuardado('${x.id}')" style="border-left:4px solid ${color}">
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${icono} ${escapeHtml(x.nombre)}</div>
-          <div style="font-size:11px;color:var(--text-secondary)">
-            ${escapeHtml(x.fecha || "")} · ${escapeHtml(x.estudio)} · ${escapeHtml(x.extra)}
-            ${x.tieneInterconsultas ? " · 🩺 interconsultas" : ""}
-          </div>
-        </div>
-        <div class="timeline-risk ${nc}">${x.nivel}</div>
-      </div>
-    `;
-  } else {
-    const esBorrador = x.estado !== "firmada" && x.estado !== "rectificada";
-    const estadoBadge = esBorrador 
-      ? `<span style="background:#fff9e6;color:#8a6a00;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase">Borrador</span>`
-      : `<span style="background:#f0fff4;color:#1a4a2a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase">Firmada</span>`;
-    
-    return `
-      <div class="informe-card" data-kind="consulta" data-search="${(x.extra + " " + x.motivo + " " + (x.cie10 || "")).toLowerCase()}" 
-           onclick="abrirConsultaDesdeInformes('${x.id}', '${x.estado}')" style="border-left:4px solid ${color}">
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">
-            ${icono} Consulta — ${escapeHtml(x.estudio)}
-            ${estadoBadge}
-          </div>
-          <div style="font-size:11px;color:var(--text-secondary)">
-            ${escapeHtml(x.fecha || "")} · ${escapeHtml(x.extra)}
-            ${x.medico ? " · Dr(a). " + escapeHtml(x.medico) : ""}
-            ${x.cie10 ? " · " + escapeHtml(x.cie10) : ""}
-          </div>
-          ${x.motivo ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${escapeHtml(x.motivo.substring(0, 80))}${x.motivo.length > 80 ? "…" : ""}</div>` : ""}
-        </div>
-        <div class="timeline-risk ${nc}">${x.nivel}</div>
-      </div>
-    `;
-  }
-}
 
 /* Abrir consulta desde la pestaña Informes */
 window.abrirConsultaDesdeInformes = async function(consultaId, estado) {
@@ -14965,6 +15234,21 @@ window.marcarSolicitudCompletada = async function(solicitudId) {
     console.error("[marcarSolicitudCompletada]", e);
     showStatus("Error: " + e.message, "error");
   }
+};
+/* ═══════════════════════════════════════════════════════════
+   v23.6 — Aliases retrocompatibles
+   Por si algún onclick viejo sigue llamando a las funciones
+   antiguas, redirigimos al dispatcher unificado.
+   ═══════════════════════════════════════════════════════════ */
+
+window.abrirCasoGuardado = function(id) {
+  console.warn("[DEPRECATED] abrirCasoGuardado → usa abrirCasoUnificado");
+  return window.abrirCasoUnificado(id, "tamizaje");
+};
+
+window.abrirConsultaDesdeInformes = function(consultaId, estado) {
+  console.warn("[DEPRECATED] abrirConsultaDesdeInformes → usa abrirCasoUnificado");
+  return window.abrirCasoUnificado(consultaId, "consulta", estado);
 };
 
 console.log("[Consulta] C.1 + C.2 + C.3 cargados correctamente");
