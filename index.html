@@ -8608,47 +8608,100 @@ window.filtrarInformes = function(query) {
     card.style.display = (!q || texto.includes(q)) ? "flex" : "none";
   });
 };
+/* ═══════════════════════════════════════════════════════════
+   v23.7 — abrirCasoGuardado con soporte consultas + tamizajes
+   Lee artifacts por case_id + fallback + diagnóstico claro
+   ═══════════════════════════════════════════════════════════ */
+
 async function abrirCasoGuardado(id) {
   try {
+    console.log("[abrirCasoGuardado] Cargando caso:", id);
+    
     const caso = await obtenerCasoDB(id);
-    if (!caso) return;
+    if (!caso) {
+      showStatus("Caso no encontrado en la base de datos", "error");
+      console.error("[abrirCasoGuardado] obtenerCasoDB devolvió null:", id);
+      return;
+    }
+    
     const art = await obtenerArtifactsPorCasoDB(id);
+    console.log(`[abrirCasoGuardado] ${art.length} artifacts leídos para`, id);
+    
     const m = {};
     art.forEach(a => { m[a.tipo] = a.html; });
-
-// ═══════════════════════════════════════════════════════════
-// v23.4.3 — Limpiar headers de tabla residuales
-// ═══════════════════════════════════════════════════════════
-Object.keys(m).forEach(k => {
-  if (typeof m[k] === "string") {
-    m[k] = m[k]
-      .replace(/<tr>\s*<td>\s*M[ée]trica\s*<\/td>\s*<td>\s*Valor\s*<\/td>\s*<td>\s*Referencia\s*<\/td>\s*<td>\s*(Estado|Flag)\s*<\/td>\s*<\/tr>/gi, "")
-      .replace(/<tr>\s*<td>\s*Par[áa]metro\s*<\/td>\s*<td>\s*Valor\s*<\/td>\s*<td>\s*Referencia\s*<\/td>\s*<td>\s*(Estado|Flag)\s*<\/td>\s*<\/tr>/gi, "")
-      .replace(/<p>\s*M[ée]trica\s*[|I\/]\s*Valor\s*[|I\/]\s*Referencia\s*[|I\/]\s*(Estado|Flag)\s*<\/p>/gi, "")
-      .replace(/<p>\s*Par[áa]metro\s*[|I\/]\s*Valor\s*[|I\/]\s*Referencia\s*[|I\/]\s*(Estado|Flag)\s*<\/p>/gi, "");
-  }
-});
+    
+    // ═══ Si no hay artifacts, mostrar mensaje claro ═══
+    if (Object.keys(m).length === 0) {
+      console.warn("[abrirCasoGuardado] Sin artifacts para case_id:", id);
+      const c = document.getElementById("report-container");
+      if (c) {
+        c.innerHTML = `
+          <div style="padding:24px;text-align:center;background:#fff9e6;border:1.5px solid #ff9500;border-radius:12px;max-width:600px;margin:0 auto">
+            <div style="font-size:32px;margin-bottom:8px">⚠️</div>
+            <div style="font-size:14px;font-weight:700;color:#8a6a00;margin-bottom:8px">
+              Este caso no tiene documentos guardados
+            </div>
+            <div style="font-size:12px;color:#5a4a00;line-height:1.6;margin-bottom:14px">
+              El caso <code style="background:#fff;padding:2px 6px;border-radius:4px;font-family:monospace">${escapeHtml(id)}</code>
+              existe en la base de datos, pero sus documentos no fueron guardados o no se pueden leer.
+              <br><br>
+              <strong>Causas probables:</strong><br>
+              • El informe no se firmó con "Generar informe final"<br>
+              • Las políticas RLS bloquean la lectura de <code>artifacts</code><br>
+              • Los documentos fallaron al guardarse
+            </div>
+            <div style="display:flex;gap:8px;justify-content:center">
+              <button onclick="verImagenes('${id}')" class="btn btn-warning btn-sm" style="width:auto;font-size:11px">🖼️ Ver imágenes</button>
+            </div>
+          </div>
+        `;
+      }
+      casoActual = caso;
+      window._casoActual = caso;
+      document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+      const sr = document.getElementById("sec-reporte");
+      if (sr) sr.classList.add("active");
+      return;
+    }
+    
+    // ═══ Limpieza de headers residuales ═══
+    Object.keys(m).forEach(k => {
+      if (typeof m[k] === "string") {
+        m[k] = m[k]
+          .replace(/<tr>\s*<td>\s*M[ée]trica\s*<\/td>\s*<td>\s*Valor\s*<\/td>\s*<td>\s*Referencia\s*<\/td>\s*<td>\s*(Estado|Flag)\s*<\/td>\s*<\/tr>/gi, "")
+          .replace(/<tr>\s*<td>\s*Par[áa]metro\s*<\/td>\s*<td>\s*Valor\s*<\/td>\s*<td>\s*Referencia\s*<\/td>\s*<td>\s*(Estado|Flag)\s*<\/td>\s*<\/tr>/gi, "");
+      }
+    });
+    
     casoActual = caso;
     window._casoActual = caso;
     window._artifactsActuales = m;
-    const t = (caso.interconsultas_ejecutadas || []).filter(ic => !ic.error).length > 0;
+    
+    const tieneInterconsultas = (caso.interconsultas_ejecutadas || []).filter(ic => !ic.error).length > 0;
     const c = document.getElementById("report-container");
     if (c) {
-      c.innerHTML = '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--accent)">INFORME MÉDICO</div>' + (m.informeMedico || "") + '</div>'
-        + (t ? '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--warning)">INTERCONSULTAS</div>' + renderInterconsultasEjecutadas(caso) + "</div>" : "")
+      c.innerHTML = 
+        (m.informeMedico ? '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--accent)">INFORME MÉDICO</div>' + m.informeMedico + '</div>' : "")
+        + (tieneInterconsultas ? '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--warning)">INTERCONSULTAS</div>' + renderInterconsultasEjecutadas(caso) + "</div>" : "")
         + (m.imagenes ? '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--warning)">IMÁGENES</div>' + m.imagenes + "</div>" : "")
         + (m.receta ? '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--corp)">RECETA</div>' + m.receta + "</div>" : "")
-        + '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--positive)">INFORME LITE</div>' + (m.lite || "") + "</div>";
+        + (m.lite ? '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--positive)">INFORME LITE</div>' + m.lite + "</div>" : "");
     }
+    
     cambiarTab("captura");
     document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
     const sr = document.getElementById("sec-reporte");
     if (sr) sr.classList.add("active");
     actualizarVisibilidadBotones();
     setupEventListeners();
-    showStatus("Caso cargado", "success");
-  } catch (e) { showStatus("Error: " + e.message, "error"); }
+    showStatus(`Caso cargado (${Object.keys(m).length} documentos)`, "success");
+    
+  } catch (e) {
+    console.error("[abrirCasoGuardado]", e);
+    showStatus("Error: " + e.message, "error");
+  }
 }
+
 async function renderPacientesLista() {
   const c = document.getElementById("pacientes-lista-container");
   if (!c) return;
