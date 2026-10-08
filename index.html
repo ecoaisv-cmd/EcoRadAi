@@ -7857,10 +7857,18 @@ async function generarInformeFinal() {
     const r = recomendarPlanPorRiesgo(n);
     const art = renderArtifacts(casoActual, g, d, n, r);
     Object.assign(casoActual.artifacts, art);
-    for (const [k, h] of Object.entries(art)) {
-      if (k === "imagenes") continue;
-      await guardarArtifactDB({ artifact_id: casoActual.case_id + ":" + k, case_id: casoActual.case_id, tipo: k, html: h, created_at: new Date().toISOString() });
-    }
+// ═══ v23.6.2 FIX: guardar TODOS los artifacts, incluido "imagenes" ═══
+for (const [k, h] of Object.entries(art)) {
+  if (!h) continue; // Solo saltar si está vacío
+  await guardarArtifactDB({ 
+    artifact_id: casoActual.case_id + ":" + k, 
+    case_id: casoActual.case_id, 
+    tipo: k, 
+    html: h, 
+    created_at: new Date().toISOString() 
+  });
+  console.log(`[generarInformeFinal] ✓ Artifact guardado: ${k}`);
+}
     await guardarCasoDB(casoActual);
     renderFullReport(casoActual, art, d, n, r);
     showStatus("✓ Informe final generado y firmado.", "success");
@@ -8613,8 +8621,19 @@ async function _renderTamizajeGuardado(id) {
     html += '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--warning)">INTERCONSULTAS</div>' + renderInterconsultasEjecutadas(caso) + '</div>';
   }
   if (m.imagenes) {
-    html += '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--warning)">IMÁGENES</div>' + m.imagenes + '</div>';
+  html += '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--warning)">IMÁGENES</div>' + m.imagenes + '</div>';
+} else if (caso.acquisition?.imagenes?.length > 0) {
+  // ═══ v23.6.2 FALLBACK: regenerar HTML de imágenes si no está en artifacts ═══
+  console.log("[_renderTamizajeGuardado] Regenerando HTML de imágenes (no estaba en artifacts)");
+  try {
+    const htmlImgs = renderPaginasImagenes(null, caso.encounter?.fecha || "", id, caso);
+    if (htmlImgs) {
+      html += '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--warning)">IMÁGENES</div>' + htmlImgs + '</div>';
+    }
+  } catch (e) {
+    console.warn("[_renderTamizajeGuardado] Error regenerando imágenes:", e);
   }
+}
   if (m.receta) {
     html += '<div style="margin-bottom:24px"><div class="seccion-titulo-preview" style="color:var(--corp)">RECETA</div>' + m.receta + '</div>';
   }
@@ -8645,7 +8664,7 @@ async function _renderTamizajeGuardado(id) {
     const el = document.getElementById(id);
     if (el) el.style.display = "";
   });
-  
+
   showStatus(`✓ Tamizaje cargado (${Object.keys(m).length} documentos)`, "success");
   console.log("[_renderTamizajeGuardado] ✓ Completado");
 }
@@ -8821,7 +8840,7 @@ async function _renderConsultaGuardada(consultaId, estado) {
     `);
   });
 
-  html += `
+    html += `
     <div class="no-print" style="margin-top:16px;padding-top:16px;border-top:2px solid var(--border)">
       <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">
         📄 Documentos individuales
@@ -8837,6 +8856,17 @@ async function _renderConsultaGuardada(consultaId, estado) {
       </div>
     </div>
   `;
+
+  // ═══ v23.6.2 FIX CRÍTICO: asignar HTML al contenedor ═══
+  c.innerHTML = html;
+
+  // ═══ Ocultar botones de tamizaje (por si quedaron visibles) ═══
+  ["btn-row-descargas", "btn-row-lite", "btn-row-imagenes", "btn-row-receta", "btn-cambiar-estudio", "btn-guardar","btn-reset","btn-email-medico","btn-email-lite","btn-whatsapp-medico","btn-whatsapp-lite"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+
+  showStatus(`✓ Consulta cargada (${Object.values(normalized).filter(Boolean).length} documentos)`, "success");
  
 
   // ═══ Ocultar botones de tamizaje (por si quedaron visibles) ═══
