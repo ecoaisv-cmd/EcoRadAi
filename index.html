@@ -14117,12 +14117,12 @@ function renderOrdenesLabHTML(s, firma) {
       </div>
 
       <div style="margin-bottom:16px">
-        ${renderBloqueFirma({
-          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
-          csspm: firma.csspm || "JVPM 16054",
-          especialidad: firma.especialidad || "Medico Validador",
-          medico_id: "EDUARDO_MAZZINI"
-        }, fecha)}
+      ${renderBloqueFirma({
+       nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+       csspm: firma.csspm || "JVPM 16054",
+       especialidad: firma.especialidad || "Medico Validador",
+       medico_id: "EDUARDO_MAZZINI"
+     }, new Date().toLocaleDateString("es-ES"))}
       </div>
 
       <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
@@ -14185,11 +14185,11 @@ function renderOrdenesImagenHTML(s, firma) {
 
       <div style="margin-bottom:16px">
         ${renderBloqueFirma({
-          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
-          csspm: firma.csspm || "JVPM 16054",
-          especialidad: firma.especialidad || "Medico Validador",
-          medico_id: "EDUARDO_MAZZINI"
-        }, fecha)}
+        nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+        csspm: firma.csspm || "JVPM 16054",
+        especialidad: firma.especialidad || "Medico Validador",
+        medico_id: "EDUARDO_MAZZINI"
+      }, new Date().toLocaleDateString("es-ES"))}
       </div>
 
       <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
@@ -14271,12 +14271,12 @@ function renderHojaReferenciaHTML(s, firma) {
         : ""}
 
       <div style="margin-bottom:16px">
-        ${renderBloqueFirma({
-          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
-          csspm: firma.csspm || "JVPM 16054",
-          especialidad: firma.especialidad || "Medico Validador",
-          medico_id: "EDUARDO_MAZZINI"
-        }, fecha)}
+         ${renderBloqueFirma({
+         nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+         csspm: firma.csspm || "JVPM 16054",
+         especialidad: firma.especialidad || "Medico Validador",
+         medico_id: "EDUARDO_MAZZINI"
+       }, new Date().toLocaleDateString("es-ES"))}
       </div>
 
       <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
