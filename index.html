@@ -4666,6 +4666,152 @@ window.SECCIONES_POR_TAMIZAJE = SECCIONES_POR_TAMIZAJE;
    - construirInstruccionJSON refuerza obligatoriedad
    - sendToProxyBasico con reintento si falta JSON
    ═══════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════
+   v23.10 — SELLOS DE MÉDICOS DESDE SUPABASE STORAGE
+   ═══════════════════════════════════════════════════════════ */
+
+// ─── Configuración ───
+const SELLOS_BUCKET = "firmas-medicos";
+let SELLOS_BASE_URL = null; // Se calcula cuando se carga la config
+
+// ─── Mapa de médicos → carpeta del sello ───
+// Añade aquí más médicos cuando los tengas
+const MEDICOS_SELLOS = {
+  "EDUARDO_MAZZINI": "edumazzini",
+  // "PATRICIA_LOPEZ": "patricialopez",
+  // "JUAN_CARLOS": "juancarlos",
+};
+
+// ─── Mapa de médicos → datos completos (para el bloque de firma) ───
+const MEDICOS_DATOS = {
+  "EDUARDO_MAZZINI": {
+    nombre: "Dr. Eduardo José Mazzini López",
+    especialidad: "Medicina General",
+    csspm: "JVPM 16054",
+    carpeta: "edumazzini"
+  },
+  // Añade más médicos aquí
+};
+
+/**
+ * Inicializa la URL base de sellos (llamar después de cargar config)
+ */
+function initSellosURL() {
+  if (!SUPABASE_URL) {
+    console.warn("[Sellos] SUPABASE_URL no está definida aún");
+    return;
+  }
+  SELLOS_BASE_URL = `${SUPABASE_URL}/storage/v1/object/public/${SELLOS_BUCKET}`;
+  console.log("[Sellos] ✓ URL base configurada:", SELLOS_BASE_URL);
+}
+
+/**
+ * Obtiene la URL pública del sello del médico.
+ * @param {string} medicoId - Identificador del médico (default: EDUARDO_MAZZINI)
+ * @returns {string} URL del PNG del sello
+ */
+function obtenerURLSello(medicoId) {
+  if (!SELLOS_BASE_URL) initSellosURL();
+
+  // Prioridad: usar carpeta del mapa MEDICOS_DATOS, luego MEDICOS_SELLOS
+  const carpeta = MEDICOS_DATOS[medicoId]?.carpeta
+               || MEDICOS_SELLOS[medicoId]
+               || "edumazzini"; // fallback por defecto
+
+  return `${SELLOS_BASE_URL}/${carpeta}/sello-firma.png`;
+}
+
+/**
+ * Precarga el sello en memoria (mejora el rendimiento).
+ * @param {string} medicoId - Identificador del médico
+ */
+function precargarSello(medicoId) {
+  const url = obtenerURLSello(medicoId);
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.src = url;
+  img.onload = () => console.log("[Sellos] ✓ Precargado:", url);
+  img.onerror = () => console.warn("[Sellos] ⚠️ No se pudo precargar:", url);
+}
+
+/**
+ * Renderiza el bloque de firma con el sello del médico.
+ * 
+ * @param {Object} firma - { nombre, csspm, especialidad, medico_id }
+ * @param {string} fecha - Fecha en formato legible
+ * @param {Object} opciones - { ancho: 280, medicoId: "EDUARDO_MAZZINI" }
+ * @returns {string} HTML del bloque
+ */
+function renderBloqueFirma(firma, fecha, opciones = {}) {
+  const ancho = opciones.ancho || 280;
+  const medicoId = opciones.medicoId || firma?.medico_id || "EDUARDO_MAZZINI";
+  const datosMedico = MEDICOS_DATOS[medicoId] || {};
+
+  // Usar datos del parámetro `firma` si vienen, sino del mapa MEDICOS_DATOS
+  const nombre = firma?.nombre || datosMedico.nombre || "Médico Validador";
+  const especialidad = firma?.especialidad || datosMedico.especialidad || "Médico Responsable";
+  const csspm = firma?.csspm || datosMedico.csspm || "N/E";
+  const urlSello = obtenerURLSello(medicoId);
+
+  return `
+    <div style="text-align:center;padding:24px 20px;margin-top:20px;page-break-inside:avoid;break-inside:avoid">
+      
+      <!-- Título -->
+      <div style="font-size:11px;font-weight:700;color:#1a3a5c;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">
+        ✍️ Firma del Médico Validador
+      </div>
+      
+      <!-- Sello + firma manuscrita (desde Supabase) -->
+      <div style="margin-bottom:16px">
+        <img src="${urlSello}" 
+             alt="Sello y firma del ${escapeHtml(nombre)}"
+             crossorigin="anonymous"
+             style="max-width:${ancho}px;width:100%;height:auto;display:block;margin:0 auto">
+      </div>
+      
+      <!-- Datos del médico -->
+      <div style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:4px">
+        ${escapeHtml(nombre)}
+      </div>
+      <div style="font-size:11px;color:#333;margin-bottom:4px">
+        ${escapeHtml(especialidad)}
+      </div>
+      <div style="font-size:11px;font-weight:600;color:#1a3a5c">
+        CSSPM: ${escapeHtml(csspm)}
+      </div>
+      
+      <!-- Fecha -->
+      <div style="font-size:10px;color:#86868b;margin-top:8px">
+        Fecha: ${escapeHtml(fecha)}
+      </div>
+      
+      <!-- Nota sobre firma electrónica -->
+      <div style="margin-top:16px;padding:10px 14px;background:#f0f7ff;border-left:3px solid #0071e3;border-radius:0 6px 6px 0;font-size:9.5px;color:#1a3a5c;text-align:left;line-height:1.5">
+        <strong>📌 Documento firmado electrónicamente:</strong><br>
+        Esta firma visual es complementada por una firma electrónica PAdES verificable con Adobe Acrobat Reader.
+      </div>
+      
+    </div>
+  `;
+}
+
+/**
+ * Obtiene los datos del médico por ID (para usar en otros lugares).
+ */
+function obtenerDatosMedico(medicoId) {
+  return MEDICOS_DATOS[medicoId] || MEDICOS_DATOS["EDUARDO_MAZZINI"];
+}
+
+// Exponer al scope global
+window.obtenerURLSello = obtenerURLSello;
+window.renderBloqueFirma = renderBloqueFirma;
+window.precargarSello = precargarSello;
+window.obtenerDatosMedico = obtenerDatosMedico;
+window.MEDICOS_DATOS = MEDICOS_DATOS;
+
+console.log("[v23.10] Módulo de sellos cargado");
+
 /* ═══════════════════════════════════════════════════════════
    CONEXIÓN SUPABASE — EcoRadAi v23.4
    ═══════════════════════════════════════════════════════════ */
@@ -4789,7 +4935,12 @@ async function initSupabase() {
 
   supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   console.log("[Supabase] ✓ Cliente inicializado");
+    // ⬇ AÑADIR ESTA LÍNEA
+  initSellosURL();
   
+  // Precargar el sello del médico por defecto
+  precargarSello("EDUARDO_MAZZINI");
+
   // ⬇⬇⬇ EXPONER GLOBALMENTE ⬇⬇⬇
   window.supabaseClient = supabaseClient;
   window.SUPABASE_URL = SUPABASE_URL;
@@ -6542,21 +6693,13 @@ function renderInformeMedico(p, caso, g, f, id, d, nivel) {
       headerHTML +
       '<div class="report-body">' +
         seccionesHTML + ih +
-        '<div class="report-section firma-section">' +
-          '<h4>Firma del Médico Validador</h4>' +
-          '<div class="firma-unica">' +
-            '<div class="firma-title">Médico Validador</div>' +
-            '<div class="firma-linea"></div>' +
-            '<div class="firma-nombre">' + esc(firma.nombre || g("c-medico") || "No especificado") + '</div>' +
-            '<div class="firma-rol">' + esc(firma.rol || "Médico Responsable") + '</div>' +
-            '<div class="firma-csspm">CSSPM: ' + esc(firma.csspm || g("c-csspm") || "N/E") + '</div>' +
-            '<div class="firma-fecha">Fecha: ' + f + '</div>' +
-            '<div class="hash">SHA-256: ' + esc(firma.hash || "pendiente") + '</div>' +
-          '</div>' +
-          '<div class="firma-aviso-ia">Este informe fue elaborado con asistencia de IA' +
-            (ti ? " + " + (caso.interconsultas_ejecutadas || []).filter(ic => !ic.error).length + " interconsultas" : "") +
-            '. El médico firmante asume la responsabilidad clínica.' +
-          '</div>' +
+        '<div class="report-section">' +
+           renderBloqueFirma({
+           nombre: firma.nombre || g("c-medico") || "Dr. Eduardo José Mazzini López",
+           csspm: firma.csspm || g("c-csspm") || "JVPM 16054",
+           especialidad: firma.especialidad || "Medico Validador",
+           medico_id: "EDUARDO_MAZZINI"
+           }, f) +
         '</div>' +
         '<div class="report-section">' +
           '<h4>Referencias</h4>' +
@@ -6670,12 +6813,12 @@ function renderRecetaSeparada(p, caso, g, f, id) {
     + '</div>'
     + '<h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin-bottom:12px">PRESCRIPCIÓN</h3>'
     + ft + nh
-    + '<div class="receta-firma-unica">'
-    + '<div class="firma-linea"></div>'
-    + '<p style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:3px">' + esc(firma.nombre || g("c-medico") || "Médico Validador") + '</p>'
-    + '<p style="font-size:11px;color:#1a3a5c;font-weight:600">CSSPM: ' + esc(firma.csspm || g("c-csspm") || "N/E") + '</p>'
-    + '<p style="font-size:10px;color:#86868b;margin-top:6px">Fecha: ' + f + '</p>'
-    + '</div>'
+    renderBloqueFirma({
+     nombre: firma.nombre || g("c-medico") || "Dr. Eduardo José Mazzini López",
+     csspm: firma.csspm || g("c-csspm") || "JVPM 16054",
+     especialidad: firma.especialidad || "Medico Validador",
+     medico_id: "EDUARDO_MAZZINI"
+    }, f)
     + '<div class="receta-pie-sep">'
     + '<div style="max-width:70%">SHA-256: ' + esc(firma.hash || "pendiente") + '</div>'
     + '<div>Receta: ' + id + '</div>'
@@ -6813,16 +6956,15 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
   /* ─── Firma ─── */
   const firma = caso.signatures?.medico || {};
   const firmaHTML = `
-    <div class="lv2-section">
-      <h4>✍️ Firma del médico</h4>
-      <div class="lv2-firma">
-        <div class="linea"></div>
-        <p class="nombre">${esc(firma.nombre || g("c-medico") || "Médico Validador")}</p>
-        <p class="csspm">CSSPM: ${esc(firma.csspm || g("c-csspm") || "N/E")}</p>
-        <div class="hash">SHA-256: ${esc(firma.hash || "pendiente")}</div>
-      </div>
-    </div>
-  `;
+  <div class="lv2-section">
+    ${renderBloqueFirma({
+      nombre: firma.nombre || g("c-medico") || "Dr. Eduardo José Mazzini López",
+      csspm: firma.csspm || g("c-csspm") || "JVPM 16054",
+      especialidad: firma.especialidad || "Medico Validador",
+      medico_id: "EDUARDO_MAZZINI"
+    }, f, { ancho: 240 })}
+  </div>
+`;
 
   /* ─── Render final ─── */
   const empresa = g("c-empresa") || "";
@@ -13823,22 +13965,14 @@ function renderNotaClinicaHTML(s, firma) {
         ${seg.proxima_cita_dias ? `<p style="margin-top:8px"><strong>Próxima cita:</strong> en ${seg.proxima_cita_dias} días (${esc(seg.proxima_cita_tipo || "control")})</p>` : ""}
       </div>
 
-      <div style="margin-bottom:16px">
-        <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">FIRMA DEL MÉDICO TRATANTE</h4>
-        <div style="background:#f8fbff;padding:20px;border-radius:8px;border:1px solid #d0d8e0;text-align:center;margin-top:8px">
-          <div style="max-width:420px;margin:0 auto;border:2px solid #1a3a5c;border-radius:8px;padding:20px 24px;background:#fff">
-            <div style="border-bottom:1.5px solid #1a3a5c;padding-bottom:10px;margin-bottom:14px;font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1.2px;font-weight:700">Médico Tratante</div>
-            <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:36px auto 8px"></div>
-            <div style="font-size:13px;color:#1a3a5c;font-weight:700;margin-bottom:4px">${esc(firma.nombre)}</div>
-            <div style="font-size:11px;color:#333">${esc(firma.especialidad || "Médico Responsable")}</div>
-            <div style="font-size:11px;color:#1a3a5c;font-weight:600;margin-top:4px">CSSPM: ${esc(firma.csspm)}</div>
-            <div style="font-size:10px;color:#86868b;margin-top:6px">Fecha: ${esc(fecha)}</div>
-            <div style="font-size:8px;color:#999;font-family:monospace;word-break:break-all;margin-top:10px;padding-top:10px;border-top:1px solid #d0d8e0">
-              SHA-256: ${esc(firma.hash || "pendiente")}
-            </div>
-          </div>
-        </div>
-      </div>
+      '<div style="margin-bottom:16px">' +
+         renderBloqueFirma({
+         nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+         csspm: firma.csspm || "JVPM 16054",
+         especialidad: firma.especialidad || "Medico Validador",
+         medico_id: "EDUARDO_MAZZINI"
+         }, fecha) +
+      '</div>'
 
       <div style="margin-bottom:16px">
         <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">AVISO LEGAL</h4>
@@ -13914,13 +14048,12 @@ function renderRecetaHTML(s, firma) {
           </div>`
         : ""}
 
-      <div style="max-width:420px;margin:36px auto 0;padding:20px 24px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;text-align:center">
-        <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:36px auto 8px"></div>
-        <p style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(firma.nombre)}</p>
-        <p style="font-size:11px;color:#333;margin-bottom:3px">${esc(firma.especialidad || "Médico Tratante")}</p>
-        <p style="font-size:11px;color:#1a3a5c;font-weight:600">CSSPM: ${esc(firma.csspm)}</p>
-        <p style="font-size:10px;color:#86868b;margin-top:6px">Fecha: ${new Date().toLocaleDateString("es-ES")}</p>
-      </div>
+    renderBloqueFirma({
+        nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+        csspm: firma.csspm || "JVPM 16054",
+        especialidad: firma.especialidad || "Medico Validador",
+        medico_id: "EDUARDO_MAZZINI"
+        }, new Date().toLocaleDateString("es-ES"))
 
       <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace;word-break:break-all">
         <div style="max-width:70%">SHA-256: ${esc(firma.hash || "pendiente")}</div>
@@ -13981,12 +14114,12 @@ function renderOrdenesLabHTML(s, firma) {
         </ul>
       </div>
 
-      <div style="max-width:420px;margin:36px auto 0;padding:20px 24px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;text-align:center">
-        <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:36px auto 8px"></div>
-        <p style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(firma.nombre)}</p>
-        <p style="font-size:11px;color:#333;margin-bottom:3px">${esc(firma.especialidad || "Médico Tratante")}</p>
-        <p style="font-size:11px;color:#1a3a5c;font-weight:600">CSSPM: ${esc(firma.csspm)}</p>
-      </div>
+     renderBloqueFirma({
+       nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+       csspm: firma.csspm || "JVPM 16054",
+       especialidad: firma.especialidad || "Medico Validador",
+       medico_id: "EDUARDO_MAZZINI"
+       }, new Date().toLocaleDateString("es-ES"))
 
       <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
         <div>SHA-256: ${esc(firma.hash || "pendiente")}</div>
@@ -14046,12 +14179,12 @@ function renderOrdenesImagenHTML(s, firma) {
         </ul>
       </div>
 
-      <div style="max-width:420px;margin:36px auto 0;padding:20px 24px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;text-align:center">
-        <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:36px auto 8px"></div>
-        <p style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(firma.nombre)}</p>
-        <p style="font-size:11px;color:#333;margin-bottom:3px">${esc(firma.especialidad || "Médico Tratante")}</p>
-        <p style="font-size:11px;color:#1a3a5c;font-weight:600">CSSPM: ${esc(firma.csspm)}</p>
-      </div>
+      renderBloqueFirma({
+        nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+        csspm: firma.csspm || "JVPM 16054",
+        especialidad: firma.especialidad || "Medico Validador",
+        medico_id: "EDUARDO_MAZZINI"
+        }, new Date().toLocaleDateString("es-ES"))
 
       <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
         <div>SHA-256: ${esc(firma.hash || "pendiente")}</div>
@@ -14131,12 +14264,12 @@ function renderHojaReferenciaHTML(s, firma) {
           </div>`
         : ""}
 
-      <div style="max-width:420px;margin:36px auto 0;padding:20px 24px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;text-align:center">
-        <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:36px auto 8px"></div>
-        <p style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(firma.nombre)}</p>
-        <p style="font-size:11px;color:#333;margin-bottom:3px">${esc(firma.especialidad || "Médico Tratante")}</p>
-        <p style="font-size:11px;color:#1a3a5c;font-weight:600">CSSPM: ${esc(firma.csspm)}</p>
-      </div>
+      renderBloqueFirma({
+         nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+         csspm: firma.csspm || "JVPM 16054",
+         especialidad: firma.especialidad || "Medico Validador",
+         medico_id: "EDUARDO_MAZZINI"
+         }, new Date().toLocaleDateString("es-ES"))
 
       <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
         <div>SHA-256: ${esc(firma.hash || "pendiente")}</div>
