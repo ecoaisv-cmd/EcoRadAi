@@ -13965,14 +13965,14 @@ function renderNotaClinicaHTML(s, firma) {
         ${seg.proxima_cita_dias ? `<p style="margin-top:8px"><strong>Próxima cita:</strong> en ${seg.proxima_cita_dias} días (${esc(seg.proxima_cita_tipo || "control")})</p>` : ""}
       </div>
 
-      '<div style="margin-bottom:16px">' +
-         renderBloqueFirma({
+         '<div style="margin-bottom:16px">
+         ${renderBloqueFirma({
          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
          csspm: firma.csspm || "JVPM 16054",
          especialidad: firma.especialidad || "Medico Validador",
          medico_id: "EDUARDO_MAZZINI"
-         }, fecha) +
-      '</div>'
+         }, fecha)}
+      </div>
 
       <div style="margin-bottom:16px">
         <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">AVISO LEGAL</h4>
@@ -14048,7 +14048,7 @@ function renderRecetaHTML(s, firma) {
           </div>`
         : ""}
 
-    renderBloqueFirma({
+      + renderBloqueFirma({
         nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
         csspm: firma.csspm || "JVPM 16054",
         especialidad: firma.especialidad || "Medico Validador",
@@ -14114,7 +14114,7 @@ function renderOrdenesLabHTML(s, firma) {
         </ul>
       </div>
 
-     renderBloqueFirma({
+     + renderBloqueFirma({
        nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
        csspm: firma.csspm || "JVPM 16054",
        especialidad: firma.especialidad || "Medico Validador",
@@ -14179,7 +14179,7 @@ function renderOrdenesImagenHTML(s, firma) {
         </ul>
       </div>
 
-      renderBloqueFirma({
+      + renderBloqueFirma({
         nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
         csspm: firma.csspm || "JVPM 16054",
         especialidad: firma.especialidad || "Medico Validador",
@@ -14264,7 +14264,7 @@ function renderHojaReferenciaHTML(s, firma) {
           </div>`
         : ""}
 
-      renderBloqueFirma({
+       + renderBloqueFirma({
          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
          csspm: firma.csspm || "JVPM 16054",
          especialidad: firma.especialidad || "Medico Validador",
