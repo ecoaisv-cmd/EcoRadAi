@@ -13965,7 +13965,7 @@ function renderNotaClinicaHTML(s, firma) {
         ${seg.proxima_cita_dias ? `<p style="margin-top:8px"><strong>Próxima cita:</strong> en ${seg.proxima_cita_dias} días (${esc(seg.proxima_cita_tipo || "control")})</p>` : ""}
       </div>
 
-         '<div style="margin-bottom:16px">
+      <div style="margin-bottom:16px">
          ${renderBloqueFirma({
          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
          csspm: firma.csspm || "JVPM 16054",
@@ -14048,12 +14048,14 @@ function renderRecetaHTML(s, firma) {
           </div>`
         : ""}
 
-      + renderBloqueFirma({
-        nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
-        csspm: firma.csspm || "JVPM 16054",
-        especialidad: firma.especialidad || "Medico Validador",
-        medico_id: "EDUARDO_MAZZINI"
-        }, new Date().toLocaleDateString("es-ES"))
+      <div style="margin-bottom:16px">
+        ${renderBloqueFirma({
+          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+          csspm: firma.csspm || "JVPM 16054",
+          especialidad: firma.especialidad || "Medico Validador",
+          medico_id: "EDUARDO_MAZZINI"
+        }, new Date().toLocaleDateString("es-ES"))}
+      </div>
 
       <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace;word-break:break-all">
         <div style="max-width:70%">SHA-256: ${esc(firma.hash || "pendiente")}</div>
@@ -14114,12 +14116,14 @@ function renderOrdenesLabHTML(s, firma) {
         </ul>
       </div>
 
-     + renderBloqueFirma({
-       nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
-       csspm: firma.csspm || "JVPM 16054",
-       especialidad: firma.especialidad || "Medico Validador",
-       medico_id: "EDUARDO_MAZZINI"
-       }, new Date().toLocaleDateString("es-ES"))
+      <div style="margin-bottom:16px">
+        ${renderBloqueFirma({
+          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+          csspm: firma.csspm || "JVPM 16054",
+          especialidad: firma.especialidad || "Medico Validador",
+          medico_id: "EDUARDO_MAZZINI"
+        }, fecha)}
+      </div>
 
       <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
         <div>SHA-256: ${esc(firma.hash || "pendiente")}</div>
@@ -14179,12 +14183,14 @@ function renderOrdenesImagenHTML(s, firma) {
         </ul>
       </div>
 
-      + renderBloqueFirma({
-        nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
-        csspm: firma.csspm || "JVPM 16054",
-        especialidad: firma.especialidad || "Medico Validador",
-        medico_id: "EDUARDO_MAZZINI"
-        }, new Date().toLocaleDateString("es-ES"))
+      <div style="margin-bottom:16px">
+        ${renderBloqueFirma({
+          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+          csspm: firma.csspm || "JVPM 16054",
+          especialidad: firma.especialidad || "Medico Validador",
+          medico_id: "EDUARDO_MAZZINI"
+        }, fecha)}
+      </div>
 
       <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
         <div>SHA-256: ${esc(firma.hash || "pendiente")}</div>
@@ -14264,12 +14270,14 @@ function renderHojaReferenciaHTML(s, firma) {
           </div>`
         : ""}
 
-       + renderBloqueFirma({
-         nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
-         csspm: firma.csspm || "JVPM 16054",
-         especialidad: firma.especialidad || "Medico Validador",
-         medico_id: "EDUARDO_MAZZINI"
-         }, new Date().toLocaleDateString("es-ES"))
+      <div style="margin-bottom:16px">
+        ${renderBloqueFirma({
+          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+          csspm: firma.csspm || "JVPM 16054",
+          especialidad: firma.especialidad || "Medico Validador",
+          medico_id: "EDUARDO_MAZZINI"
+        }, fecha)}
+      </div>
 
       <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace">
         <div>SHA-256: ${esc(firma.hash || "pendiente")}</div>
