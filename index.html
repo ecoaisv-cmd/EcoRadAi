@@ -14433,7 +14433,7 @@ window.verConsultaFirmada = async function(consultaId) {
     const { data: consulta, error: errC } = await window.supabaseClient
       .from("consultas")
       .select("case_id, subject_id, fecha_consulta, tipo, estado")
-      .eq("consulta_id", consultaId)
+      .like("artifact_id", consultaId + ":%");
       .single();
     
     if (errC || !consulta) {
