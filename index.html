@@ -13660,7 +13660,7 @@ function mostrarDocumentosGenerados(docs) {
     { key: "receta", nombre: "💊 Receta médica", html: docs.receta },
     { key: "ordenesLab", nombre: "🔬 Órdenes de laboratorio", html: docs.ordenesLab },
     { key: "ordenesImagen", nombre: "🖼️ Órdenes de imagen", html: docs.ordenesImagen },
-    { key: "referencia", nombre: "📤 Hoja de referencia", html: docs.referencia }
+    { key: "referencia", nombre: "📤 Hoja de referencia", html: docs.referencia },
     { key: "constanciaIncapacidad", nombre: "📝 Constancia de incapacidad", html: docs.constanciaIncapacidad },
     { key: "constanciaAcompanamiento", nombre: "👨‍👩‍👧 Constancia de acompañamiento", html: docs.constanciaAcompanamiento }
   ].filter(x => x.html);
@@ -14666,12 +14666,11 @@ window.verConsultaFirmada = async function(consultaId) {
   
   try {
     // 1) Obtener la consulta para saber su case_id
-    const { data: consulta, error: errC } = await window.supabaseClient
+        const { data: consulta, error: errC } = await window.supabaseClient
       .from("consultas")
       .select("case_id, subject_id, fecha_consulta, tipo, estado")
-      .like("artifact_id", consultaId + ":%");
+      .eq("consulta_id", consultaId)
       .single();
-    
     if (errC || !consulta) {
       showStatus("Consulta no encontrada", "error");
       return;
