@@ -14575,12 +14575,15 @@ window.abrirConsultaBorrador = async function(consultaId) {
       .eq("subject_id", data.subject_id)
       .single();
     
-    if (pac) {
+        if (pac) {
       s.paciente = pac;
       window._pacienteActual = pac;
       renderInfoPacienteConsulta(pac);
       await cargarContextoClinico(pac.subject_id);
     }
+    
+    // ═══ FIX: Inicializar constanciasEmitidas ═══
+    s.constanciasEmitidas = {};
     
     cargarConsultaEnFormulario(data.payload);
     mostrarPaso(data.estado === "borrador" ? 3 : 5);
@@ -14596,6 +14599,9 @@ window.cargarConsultaEnFormulario = function(payload) {
   if (!payload) return;
   const s = window._consultaState;
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ""; };
+
+  // ═══ FIX: Inicializar constanciasEmitidas ═══
+  if (!s.constanciasEmitidas) s.constanciasEmitidas = {};
   
   set("cons-motivo", payload.S_subjetivo?.motivo_consulta);
   set("cons-enfermedad-actual", payload.S_subjetivo?.enfermedad_actual);
@@ -15486,6 +15492,9 @@ window.descargarTodosPDFsConsulta = async function() {
 window.abrirModalConstancia = function(tipo) {
   const s = window._consultaState;
   if (!s.paciente) { showStatus("Falta paciente", "error"); return; }
+
+  // ═══ FIX: Blindaje contra undefined ═══
+  if (!s.constanciasEmitidas) s.constanciasEmitidas = {};
 
   const esIncapacidad = tipo === "incapacidad";
   const titulo = esIncapacidad ? "📝 Nueva constancia de incapacidad" : "👨‍👩‍👧 Nueva constancia de acompañamiento";
