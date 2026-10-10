@@ -15958,7 +15958,444 @@ window.eliminarConstancia = function(tipo) {
     showStatus("Constancia eliminada", "success");
   }
 };
+/* ═══════════════════════════════════════════════════════════════════
+   MÓDULO CONSULTA ESPECIALIDAD — v23.8
+   ═══════════════════════════════════════════════════════════════════
+   
+   Contextos según práctica clínica de El Salvador:
+   - Pediátrico:     0 – 12 años
+   - Adolescente:    12 – 18 años
+   - General (adulto): 18 – 60 años
+   - Adulto mayor:   ≥ 60 años
+   - Ginecológico:   mujer con problema ginecológico (cualquier edad adulta)
+   - Obstétrico:     embarazo activo (cualquier edad)
+   
+   NO añade tamizajes preventivos. Solo adapta el razonamiento
+   clínico del problema agudo que el paciente trae hoy.
+   ═══════════════════════════════════════════════════════════════════ */
 
+(function() {
+  "use strict";
+
+  console.log("[Consulta Especialidad] Cargando módulo v23.8...");
+
+  /* ═══════════════════════════════════════════════════════════
+     1. OBJETO DE CONTEXTOS
+     ═══════════════════════════════════════════════════════════ */
+
+  const CONTEXTOS = {
+    general: {
+      id: "general",
+      icono: "🩺",
+      nombre: "General",
+      descripcion: "Adulto 18 – 60",
+      prompt: ""
+    },
+
+    pediatrico: {
+      id: "pediatrico",
+      icono: "🧒",
+      nombre: "Pediátrico",
+      descripcion: "0 – 12 años",
+      prompt: `
+
+CONTEXTO DEL PACIENTE: Es un PACIENTE PEDIÁTRICO (0 a 12 años, según definición de El Salvador).
+Adapta el análisis a la edad pediátrica:
+- Usa DOSIS PEDIÁTRICAS en mg/kg para todo fármaco.
+- Ajusta diagnósticos diferenciales según la edad (no es lo mismo un lactante que un escolar).
+- Considera presentaciones pediátricas (jarabes, suspensiones, gotas, supositorios).
+- Identifica signos de alarma pediátricos: letargo, dificultad respiratoria, deshidratación, fiebre en menores de 3 meses, rechazo alimentario, fontanela abombada o hundida.
+- Ajusta los valores de referencia de laboratorio según edad.
+- Considera siempre el peso actual del paciente para el cálculo de dosis.
+- Si es menor de 5 años, prioriza deshidratación y dificultad respiratoria.
+- Si es escolar (6-12 años), considera el entorno escolar y el rendimiento académico.`
+    },
+
+    adolescente: {
+      id: "adolescente",
+      icono: "🧑",
+      nombre: "Adolescente",
+      descripcion: "12 – 18 años",
+      prompt: `
+
+CONTEXTO DEL PACIENTE: Es un PACIENTE ADOLESCENTE (12 a 18 años, según definición de El Salvador).
+Adapta el análisis a la adolescencia:
+- Usa dosis de adulto cuando el peso lo permita, o ajusta por peso si es necesario.
+- Considera diagnósticos propios de la adolescencia: salud mental (depresión, ansiedad, TCA), consumo de sustancias, ITS, embarazo no planificado, acné, trastornos menstruales.
+- Evalúa el riesgo psicosocial: entorno familiar, escolar, relaciones, conductas de riesgo.
+- Garantiza confidencialidad según normativa vigente, especialmente en salud sexual y reproductiva.
+- Ajusta la comunicación al nivel de desarrollo del adolescente.
+- Si hay signos de alarma psiquiátrica (ideación suicida, autolesión), prioriza evaluación urgente.`
+    },
+
+    adulto_mayor: {
+      id: "adulto_mayor",
+      icono: "👴",
+      nombre: "Adulto mayor",
+      descripcion: "≥ 60 años",
+      prompt: `
+
+CONTEXTO DEL PACIENTE: Es un PACIENTE ADULTO MAYOR (60 años o más, según definición de El Salvador).
+Adapta el análisis a la geriatría:
+- Revisa SIEMPRE la lista completa de medicamentos por riesgo de polifarmacia e interacciones.
+- Ajusta dosis por función renal y hepática (usualmente disminuidas).
+- Evalúa riesgo de caídas, fragilidad y sarcopenia.
+- Considera deterioro cognitivo (delirium, demencia) en el diagnóstico diferencial cuando hay síntomas inespecíficos.
+- Prioriza diagnósticos con presentación atípica (IAM sin dolor, neumonía sin fiebre, hipotiroidismo con astenia).
+- Considera siempre el contexto social: red de apoyo, autonomía, cuidado familiar.
+- Aplica criterios de Beers si prescribes fármacos potencialmente inapropiados en el adulto mayor.
+- Evita benzodiacepinas y anticolinérgicos salvo indicación precisa.`
+    },
+
+    ginecologico: {
+      id: "ginecologico",
+      icono: "🌸",
+      nombre: "Ginecológico",
+      descripcion: "Mujer · problema gineco",
+      prompt: `
+
+CONTEXTO DEL PACIENTE: Es una PACIENTE CON PROBLEMA GINECOLÓGICO.
+Adapta el análisis al contexto ginecológico:
+- SIEMPRE descarta embarazo en edad reproductiva antes de cualquier fármaco o estudio.
+- Ajusta el diagnóstico diferencial a patología ginecológica (no lo mezcles con patología general).
+- Evita fármacos teratogénicos si hay posibilidad de embarazo.
+- Considera el ciclo menstrual y la edad de la paciente para interpretar síntomas.
+- Si el síntoma lo justifica, incluye en el plan la realización de citología, US ginecológico o mamografía.`
+    },
+
+    obstetrico: {
+      id: "obstetrico",
+      icono: "🤰",
+      nombre: "Obstétrico",
+      descripcion: "Embarazo activo",
+      prompt: `
+
+CONTEXTO DEL PACIENTE: Es una PACIENTE EMBARAZADA.
+Adapta el análisis al contexto obstétrico:
+- Ajusta TODO fármaco por categoría de riesgo en embarazo (ACOG/FDA). NUNCA uses categoría D o X.
+- Evalúa el síntoma actual considerando el embarazo como condición de fondo.
+- Descarta siempre signos de alarma obstétrica: sangrado vaginal, contracciones, cefalea intensa, visión borrosa, epigastralgia, edemas súbitos.
+- Ajusta valores de referencia de laboratorio a rangos del embarazo.
+- Si el síntoma lo justifica, incluye en el plan evaluación obstétrica (US, monitorización fetal, consulta a obstetricia).`
+    }
+  };
+
+  /* ═══════════════════════════════════════════════════════════
+     2. FUNCIÓN DE AUTO-SUGERENCIA SEGÚN EDAD Y SEXO
+     Devuelve el ID de contexto sugerido, o null si no aplica.
+     ═══════════════════════════════════════════════════════════ */
+
+  function sugerirContextoPorEdad(edad, sexo) {
+    const e = parseInt(edad) || 0;
+    if (e <= 0) return null;
+    if (e < 12) return "pediatrico";
+    if (e < 18) return "adolescente";
+    if (e < 60) return null;  // adulto → general, no forzamos
+    return "adulto_mayor";
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     3. INYECCIÓN DE HTML EN EL PASO 2
+     ═══════════════════════════════════════════════════════════ */
+
+  function inyectarSelectorHTML() {
+    const card = document.getElementById("consulta-tipo-card");
+    if (!card) {
+      console.warn("[Consulta Especialidad] No se encontró #consulta-tipo-card");
+      return false;
+    }
+
+    if (document.getElementById("consulta-contexto-selector")) return true;
+
+    const pacienteInfo = card.querySelector("#consulta-paciente-info");
+    if (!pacienteInfo) {
+      console.warn("[Consulta Especialidad] No se encontró #consulta-paciente-info");
+      return false;
+    }
+
+    const selectorHTML = `
+      <div id="consulta-contexto-selector" style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--border)">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
+          👤 Contexto del paciente
+        </div>
+        <div class="estudio-selector" style="grid-template-columns:repeat(3,1fr);gap:6px">
+          ${Object.values(CONTEXTOS).map(c => `
+            <div class="estudio-card ${c.id === "general" ? "active" : ""}"
+                 data-contexto="${c.id}"
+                 onclick="seleccionarContexto('${c.id}')">
+              <div class="estudio-icon">${c.icono}</div>
+              <div class="estudio-nombre">${c.nombre}</div>
+              <div class="estudio-desc">${c.descripcion}</div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+
+    pacienteInfo.insertAdjacentHTML("afterend", selectorHTML);
+    console.log("[Consulta Especialidad] ✓ Selector HTML inyectado (6 contextos)");
+    return true;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     4. FUNCIÓN PÚBLICA: seleccionarContexto
+     ═══════════════════════════════════════════════════════════ */
+
+  window.seleccionarContexto = function(ctx) {
+    if (!CONTEXTOS[ctx]) {
+      console.warn("[Consulta Especialidad] Contexto inválido:", ctx);
+      return;
+    }
+
+    if (window._consultaState) {
+      window._consultaState.contexto = ctx;
+    }
+
+    document.querySelectorAll("[data-contexto]").forEach(c => {
+      c.classList.toggle("active", c.dataset.contexto === ctx);
+    });
+
+    console.log("[Consulta Especialidad] Contexto:", ctx);
+
+    if (typeof window.showStatus === "function") {
+      window.showStatus("Contexto: " + CONTEXTOS[ctx].nombre, "success");
+    }
+  };
+
+  /* ═══════════════════════════════════════════════════════════
+     5. WRAPPER DE construirPromptConsulta
+     ═══════════════════════════════════════════════════════════ */
+
+  function instalarWrapperPrompt() {
+    if (typeof window.construirPromptConsulta !== "function") {
+      console.warn("[Consulta Especialidad] construirPromptConsulta no existe aún");
+      return false;
+    }
+
+    if (window.construirPromptConsulta._conContexto) return true;
+
+    const _original = window.construirPromptConsulta;
+
+    const _conContexto = function() {
+      const base = _original.apply(this, arguments);
+      const s = window._consultaState || {};
+      const ctx = s.contexto || "general";
+      const bloque = CONTEXTOS[ctx]?.prompt || "";
+      return base + bloque;
+    };
+
+    _conContexto._conContexto = true;
+    _conContexto._original = _original;
+
+    window.construirPromptConsulta = _conContexto;
+
+    console.log("[Consulta Especialidad] ✓ Wrapper de prompt instalado");
+    return true;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     6. WRAPPER DE construirPayloadConsulta
+     ═══════════════════════════════════════════════════════════ */
+
+  function instalarWrapperPayload() {
+    if (typeof window.construirPayloadConsulta !== "function") {
+      console.warn("[Consulta Especialidad] construirPayloadConsulta no expuesta globalmente");
+      return false;
+    }
+
+    if (window.construirPayloadConsulta._conContexto) return true;
+
+    const _original = window.construirPayloadConsulta;
+
+    const _conContexto = function() {
+      const payload = _original.apply(this, arguments);
+      const s = window._consultaState || {};
+      payload.contexto = s.contexto || "general";
+      return payload;
+    };
+
+    _conContexto._conContexto = true;
+    _conContexto._original = _original;
+
+    window.construirPayloadConsulta = _conContexto;
+
+    console.log("[Consulta Especialidad] ✓ Wrapper de payload instalado");
+    return true;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     7. WRAPPER DE consultaReset
+     ═══════════════════════════════════════════════════════════ */
+
+  function instalarWrapperReset() {
+    if (typeof window.consultaReset !== "function") {
+      console.warn("[Consulta Especialidad] consultaReset no existe aún");
+      return false;
+    }
+
+    if (window.consultaReset._conContexto) return true;
+
+    const _original = window.consultaReset;
+
+    const _conContexto = function() {
+      _original.apply(this, arguments);
+
+      if (window._consultaState) {
+        window._consultaState.contexto = "general";
+      }
+
+      setTimeout(() => {
+        document.querySelectorAll("[data-contexto]").forEach(c => {
+          c.classList.toggle("active", c.dataset.contexto === "general");
+        });
+      }, 50);
+
+      console.log("[Consulta Especialidad] Reset → contexto general");
+    };
+
+    _conContexto._conContexto = true;
+    _conContexto._original = _original;
+
+    window.consultaReset = _conContexto;
+
+    console.log("[Consulta Especialidad] ✓ Wrapper de reset instalado");
+    return true;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     8. WRAPPER DE cargarConsultaEnFormulario
+     ═══════════════════════════════════════════════════════════ */
+
+  function instalarWrapperCargar() {
+    if (typeof window.cargarConsultaEnFormulario !== "function") {
+      console.warn("[Consulta Especialidad] cargarConsultaEnFormulario no existe aún");
+      return false;
+    }
+
+    if (window.cargarConsultaEnFormulario._conContexto) return true;
+
+    const _original = window.cargarConsultaEnFormulario;
+
+    const _conContexto = function(payload) {
+      _original.apply(this, arguments);
+
+      if (payload && payload.contexto && CONTEXTOS[payload.contexto]) {
+        setTimeout(() => {
+          window.seleccionarContexto(payload.contexto);
+          console.log("[Consulta Especialidad] Contexto restaurado desde payload:", payload.contexto);
+        }, 100);
+      }
+    };
+
+    _conContexto._conContexto = true;
+    _conContexto._original = _original;
+
+    window.cargarConsultaEnFormulario = _conContexto;
+
+    console.log("[Consulta Especialidad] ✓ Wrapper de carga instalado");
+    return true;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     9. WRAPPER DE seleccionarPacienteConsulta
+     Auto-sugiere contexto según rango etario de El Salvador.
+     ═══════════════════════════════════════════════════════════ */
+
+  function instalarWrapperSeleccionarPaciente() {
+    if (typeof window.seleccionarPacienteConsulta !== "function") {
+      console.warn("[Consulta Especialidad] seleccionarPacienteConsulta no existe aún");
+      return false;
+    }
+
+    if (window.seleccionarPacienteConsulta._conContexto) return true;
+
+    const _original = window.seleccionarPacienteConsulta;
+
+    const _conContexto = async function(subjectId) {
+      const resultado = await _original.apply(this, arguments);
+
+      const s = window._consultaState;
+      if (s && s.paciente) {
+        const edad = parseInt(s.paciente.edad) || 0;
+        const sugerido = sugerirContextoPorEdad(edad, s.paciente.sexo);
+        if (sugerido) {
+          setTimeout(() => {
+            window.seleccionarContexto(sugerido);
+            console.log(`[Consulta Especialidad] Auto-contexto: ${sugerido} (edad ${edad})`);
+          }, 200);
+        }
+      }
+
+      return resultado;
+    };
+
+    _conContexto._conContexto = true;
+    _conContexto._original = _original;
+
+    window.seleccionarPacienteConsulta = _conContexto;
+
+    console.log("[Consulta Especialidad] ✓ Wrapper de selección instalado");
+    return true;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     10. INICIALIZACIÓN CON REINTENTOS
+     ═══════════════════════════════════════════════════════════ */
+
+  let intentos = 0;
+  const MAX_INTENTOS = 30;
+
+  function inicializar() {
+    intentos++;
+
+    const okHTML = inyectarSelectorHTML();
+    const okPrompt = instalarWrapperPrompt();
+    const okPayload = instalarWrapperPayload();
+    const okReset = instalarWrapperReset();
+    const okCargar = instalarWrapperCargar();
+    const okPaciente = instalarWrapperSeleccionarPaciente();
+
+    const todoListo = okHTML && okPrompt && okPayload && okReset && okCargar && okPaciente;
+
+    if (todoListo) {
+      console.log("[Consulta Especialidad] ✓ Módulo completamente inicializado en intento " + intentos);
+      return;
+    }
+
+    if (intentos < MAX_INTENTOS) {
+      setTimeout(inicializar, 200);
+    } else {
+      console.warn("[Consulta Especialidad] Timeout. Estado de wrappers:", {
+        HTML: okHTML,
+        prompt: okPrompt,
+        payload: okPayload,
+        reset: okReset,
+        cargar: okCargar,
+        paciente: okPaciente
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(inicializar, 300));
+  } else {
+    setTimeout(inicializar, 300);
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     11. API PÚBLICA
+     ═══════════════════════════════════════════════════════════ */
+
+  window.ConsultaEspecialidad = {
+    contextos: CONTEXTOS,
+    seleccionar: window.seleccionarContexto,
+    obtenerActual: () => window._consultaState?.contexto || "general",
+    sugerirPorEdad: sugerirContextoPorEdad,
+    reinit: inicializar
+  };
+
+  console.log("[Consulta Especialidad] ✓ Módulo cargado (esperando DOM)");
+})();
 console.log("[PDF Consulta] ✓ Módulo de descarga v24.0 cargado");
 console.log("[Consulta] C.1 + C.2 + C.3 cargados correctamente");
 console.log("[Consulta] Cierre, firma y persistencia cargados");
