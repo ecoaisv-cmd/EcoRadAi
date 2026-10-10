@@ -1907,7 +1907,22 @@ input[type="checkbox"]{width:auto}
         </select>
       </div>
     </div>
+    
+    <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:20px 0 8px">📝 Constancias</h4>
+    <p style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px">
+      Emite constancias de incapacidad o acompañamiento. Se incluirán al firmar la consulta.
+    </p>
 
+    <div class="btn-row" style="margin-bottom:10px">
+      <button class="btn btn-secondary btn-sm" onclick="abrirModalConstancia('incapacidad')" style="font-size:12px">
+        ➕ Incapacidad
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="abrirModalConstancia('acompanamiento')" style="font-size:12px">
+        ➕ Acompañamiento
+      </button>
+    </div>
+
+    <div id="consulta-constancias-lista" style="margin-bottom:12px"></div>
     <div id="consulta-complejidad-card" style="margin-top:16px;padding:12px;background:var(--accent-light);border-radius:var(--radius-md);border:1.5px solid var(--accent)"></div>
 
     <div class="btn-row" style="margin-top:16px">
@@ -11255,6 +11270,7 @@ window.consultaReset = function() {
   s.complejidadCalculada = null;
   s.complejidadFinal = null;
   s.docsGenerados = null;
+  s.constanciasEmitidas = {};
   
   // Limpiar campos
   ["consulta-buscador", "cons-motivo", "cons-enfermedad-actual", "cons-eva", "cons-evolucion",
@@ -12512,6 +12528,7 @@ window.consultaIrAPlan = function() {
   mostrarPaso(6);
   calcularComplejidadLocal();
   renderComplejidadCard();
+  renderConstanciasEmitidas();
 };
 
 window.consultaVolverAAnalisis = function() {
@@ -13644,6 +13661,8 @@ function mostrarDocumentosGenerados(docs) {
     { key: "ordenesLab", nombre: "🔬 Órdenes de laboratorio", html: docs.ordenesLab },
     { key: "ordenesImagen", nombre: "🖼️ Órdenes de imagen", html: docs.ordenesImagen },
     { key: "referencia", nombre: "📤 Hoja de referencia", html: docs.referencia }
+    { key: "constanciaIncapacidad", nombre: "📝 Constancia de incapacidad", html: docs.constanciaIncapacidad },
+    { key: "constanciaAcompanamiento", nombre: "👨‍👩‍👧 Constancia de acompañamiento", html: docs.constanciaAcompanamiento }
   ].filter(x => x.html);
 
   botones.innerHTML = `
@@ -13984,6 +14003,223 @@ function renderNotaClinicaHTML(s, firma) {
     </div>
   </div>`);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   SPRINT 2 — CONSTANCIA DE INCAPACIDAD MÉDICA
+   ═══════════════════════════════════════════════════════════ */
+
+function renderConstanciaIncapacidadHTML(s, firma, datos) {
+  const cor = corregirOrtografia;
+  const esc = escapeHtml;
+  const p = s.paciente;
+  if (!datos) return null;
+
+  const constanciaId = (s.caseId || "CONS") + "-INC";
+
+  let dias = datos.dias;
+  if (!dias && datos.fecha_inicio && datos.fecha_fin) {
+    const ini = new Date(datos.fecha_inicio);
+    const fin = new Date(datos.fecha_fin);
+    dias = Math.max(1, Math.round((fin - ini) / (1000 * 60 * 60 * 24)) + 1);
+  }
+
+  return limpiarTextoPDF(`<div class="report-receta-separada" id="report-constancia-incapacidad" style="background:#fff;color:#1d1d1f;width:100%;max-width:800px;margin:0 auto;border:2px solid #1a3a5c;border-radius:12px;overflow:hidden">
+
+    <div style="background:#1a3a5c;color:#fff;text-align:center;padding:16px">
+      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85">Ecosistema de Salud EcoRadAi</div>
+      <h2 style="font-size:18px;font-weight:700;letter-spacing:1.5px;margin:6px 0">CONSTANCIA DE INCAPACIDAD MÉDICA</h2>
+      <div style="font-size:10px;opacity:0.85">Documento médico-legal</div>
+    </div>
+
+    <div style="padding:22px 26px">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;background:#f8f9fa;border-left:4px solid #0071e3;border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:18px;font-size:11px">
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Paciente</span>${esc(p.nombre)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">ID</span>${esc(p.subject_id)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Edad / Sexo</span>${esc(String(p.edad))} años · ${esc(p.sexo)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">DUI</span>${esc(p.dui || "No registrado")}</div>
+        ${p.empresa && p.empresa !== "N/E" ? `<div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Empresa</span>${esc(p.empresa)}</div>` : ""}
+        ${p.ocupacion ? `<div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Ocupación</span>${esc(p.ocupacion)}</div>` : ""}
+      </div>
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">DIAGNÓSTICO</h3>
+      <div style="font-size:12px;line-height:1.6;margin-bottom:16px">
+        ${datos.cie10 ? `<p><strong>CIE-10:</strong> <code>${esc(datos.cie10)}</code></p>` : ""}
+        <p><strong>Diagnóstico:</strong> ${esc(cor(datos.diagnostico || ""))}</p>
+      </div>
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">PERÍODO DE INCAPACIDAD</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;background:#f0f7ff;border:1px solid #d0e4f7;font-weight:700;width:40%">Fecha de inicio</td>
+            <td style="padding:8px 12px;border:1px solid #d0e4f7">${esc(formatearFechaConstancia(datos.fecha_inicio))}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#f0f7ff;border:1px solid #d0e4f7;font-weight:700">Fecha de finalización</td>
+            <td style="padding:8px 12px;border:1px solid #d0e4f7">${esc(formatearFechaConstancia(datos.fecha_fin))}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#f0f7ff;border:1px solid #d0e4f7;font-weight:700">Total de días</td>
+            <td style="padding:8px 12px;border:1px solid #d0e4f7;font-weight:800;color:#1a3a5c">${dias} día(s)</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#f0f7ff;border:1px solid #d0e4f7;font-weight:700">Tipo</td>
+            <td style="padding:8px 12px;border:1px solid #d0e4f7">${esc((datos.tipo || "enfermedad_comun").replace(/_/g, " "))}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      ${datos.observaciones ? `
+        <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">OBSERVACIONES</h3>
+        <div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:6px;padding:10px 12px;font-size:11px;line-height:1.6;color:#333">
+          ${esc(cor(datos.observaciones))}
+        </div>
+      ` : ""}
+
+      <div style="background:#fff9e6;border-left:4px solid #ff9500;padding:10px 14px;border-radius:0 6px 6px 0;margin-top:16px;font-size:10px;color:#5a4a00;line-height:1.5">
+        <strong>Aviso legal:</strong> Esta constancia es válida únicamente en su período indicado.
+        Debe presentarse ante el empleador o institución correspondiente. La falsificación o
+        alteración de este documento constituye delito según el Código Penal vigente.
+      </div>
+
+      <div style="margin-bottom:16px">
+        ${renderBloqueFirma({
+          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+          csspm: firma.csspm || "JVPM 16054",
+          especialidad: firma.especialidad || "Medico Validador",
+          medico_id: "EDUARDO_MAZZINI"
+        }, new Date().toLocaleDateString("es-ES"))}
+      </div>
+
+      <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace;word-break:break-all">
+        <div style="max-width:70%">SHA-256: ${esc(firma.hash || "pendiente")}</div>
+        <div>Constancia: ${esc(constanciaId)}</div>
+      </div>
+
+    </div>
+  </div>`);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SPRINT 2 — CONSTANCIA DE ACOMPAÑAMIENTO
+   ═══════════════════════════════════════════════════════════ */
+
+function renderConstanciaAcompanamientoHTML(s, firma, datos) {
+  const cor = corregirOrtografia;
+  const esc = escapeHtml;
+  const p = s.paciente;
+  if (!datos) return null;
+
+  const constanciaId = (s.caseId || "CONS") + "-ACOMP";
+
+  let dias = datos.dias;
+  if (!dias && datos.fecha_inicio && datos.fecha_fin) {
+    const ini = new Date(datos.fecha_inicio);
+    const fin = new Date(datos.fecha_fin);
+    dias = Math.max(1, Math.round((fin - ini) / (1000 * 60 * 60 * 24)) + 1);
+  }
+
+  return limpiarTextoPDF(`<div class="report-receta-separada" id="report-constancia-acompanamiento" style="background:#fff;color:#1d1d1f;width:100%;max-width:800px;margin:0 auto;border:2px solid #1a3a5c;border-radius:12px;overflow:hidden">
+
+    <div style="background:#1a3a5c;color:#fff;text-align:center;padding:16px">
+      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85">Ecosistema de Salud EcoRadAi</div>
+      <h2 style="font-size:18px;font-weight:700;letter-spacing:1.5px;margin:6px 0">CONSTANCIA DE ACOMPAÑAMIENTO</h2>
+      <div style="font-size:10px;opacity:0.85">Documento médico-legal</div>
+    </div>
+
+    <div style="padding:22px 26px">
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:0 0 10px">DATOS DEL PACIENTE</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;background:#f8f9fa;border-left:4px solid #0071e3;border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:18px;font-size:11px">
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Paciente</span>${esc(p.nombre)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">ID</span>${esc(p.subject_id)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">Edad / Sexo</span>${esc(String(p.edad))} años · ${esc(p.sexo)}</div>
+        <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;letter-spacing:0.4px;display:block;text-transform:uppercase">DUI</span>${esc(p.dui || "No registrado")}</div>
+      </div>
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">DATOS DEL ACOMPAÑANTE</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;background:#f0f7ff;border:1px solid #d0e4f7;font-weight:700;width:40%">Nombre completo</td>
+            <td style="padding:8px 12px;border:1px solid #d0e4f7">${esc(datos.familiar_nombre || "")}</td>
+          </tr>
+          ${datos.familiar_dui ? `<tr>
+            <td style="padding:8px 12px;background:#f0f7ff;border:1px solid #d0e4f7;font-weight:700">DUI</td>
+            <td style="padding:8px 12px;border:1px solid #d0e4f7">${esc(datos.familiar_dui)}</td>
+          </tr>` : ""}
+          <tr>
+            <td style="padding:8px 12px;background:#f0f7ff;border:1px solid #d0e4f7;font-weight:700">Parentesco</td>
+            <td style="padding:8px 12px;border:1px solid #d0e4f7">${esc(datos.familiar_parentesco || "")}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">DIAGNÓSTICO DEL PACIENTE</h3>
+      <div style="font-size:12px;line-height:1.6;margin-bottom:16px">
+        ${datos.cie10 ? `<p><strong>CIE-10:</strong> <code>${esc(datos.cie10)}</code></p>` : ""}
+        <p><strong>Diagnóstico:</strong> ${esc(cor(datos.diagnostico || ""))}</p>
+      </div>
+
+      <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">PERÍODO DE ACOMPAÑAMIENTO</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;background:#f0f7ff;border:1px solid #d0e4f7;font-weight:700;width:40%">Fecha de inicio</td>
+            <td style="padding:8px 12px;border:1px solid #d0e4f7">${esc(formatearFechaConstancia(datos.fecha_inicio))}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#f0f7ff;border:1px solid #d0e4f7;font-weight:700">Fecha de finalización</td>
+            <td style="padding:8px 12px;border:1px solid #d0e4f7">${esc(formatearFechaConstancia(datos.fecha_fin))}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#f0f7ff;border:1px solid #d0e4f7;font-weight:700">Total de días</td>
+            <td style="padding:8px 12px;border:1px solid #d0e4f7;font-weight:800;color:#1a3a5c">${dias} día(s)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      ${datos.motivo ? `
+        <h3 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">MOTIVO DEL ACOMPAÑAMIENTO</h3>
+        <div style="background:#fafbfc;border:1px solid #e8e8ed;border-radius:6px;padding:10px 12px;font-size:11px;line-height:1.6;color:#333">
+          ${esc(cor(datos.motivo))}
+        </div>
+      ` : ""}
+
+      <div style="background:#fff9e6;border-left:4px solid #ff9500;padding:10px 14px;border-radius:0 6px 6px 0;margin-top:16px;font-size:10px;color:#5a4a00;line-height:1.5">
+        <strong>Aviso legal:</strong> Esta constancia certifica la necesidad de acompañamiento del
+        paciente durante el período indicado. Debe presentarse ante el empleador o institución
+        correspondiente.
+      </div>
+
+      <div style="margin-bottom:16px">
+        ${renderBloqueFirma({
+          nombre: firma.nombre || "Dr. Eduardo José Mazzini López",
+          csspm: firma.csspm || "JVPM 16054",
+          especialidad: firma.especialidad || "Medico Validador",
+          medico_id: "EDUARDO_MAZZINI"
+        }, new Date().toLocaleDateString("es-ES"))}
+      </div>
+
+      <div style="margin-top:20px;padding-top:10px;border-top:1px dashed #d0d8e0;display:flex;justify-content:space-between;font-size:8px;color:#999;font-family:monospace;word-break:break-all">
+        <div style="max-width:70%">SHA-256: ${esc(firma.hash || "pendiente")}</div>
+        <div>Constancia: ${esc(constanciaId)}</div>
+      </div>
+
+    </div>
+  </div>`);
+}
+
+/* Helper para formatear fechas en constancias */
+function formatearFechaConstancia(fechaISO) {
+  if (!fechaISO) return "—";
+  try {
+    const d = new Date(fechaISO + (fechaISO.length === 10 ? "T12:00:00" : ""));
+    return d.toLocaleDateString("es-ES", { year: "numeric", month: "long", day: "numeric" });
+  } catch (e) { return fechaISO; }
+}
+
 function renderRecetaHTML(s, firma) {
   const cor = corregirOrtografia;
   const esc = escapeHtml;
@@ -15139,7 +15375,9 @@ window.descargarDocumentoConsultaPDF = async function(key) {
     receta: "Receta",
     ordenesLab: "Ordenes_Laboratorio",
     ordenesImagen: "Ordenes_Imagen",
-    referencia: "Hoja_Referencia"
+    referencia: "Hoja_Referencia",
+    constanciaIncapacidad: "Constancia_Incapacidad",
+    constanciaAcompanamiento: "Constancia_Acompanamiento"
   };
   const etiqueta = etiquetas[key] || key;
   const caseId = window._consultaState?.caseId || "CONS";
@@ -15186,7 +15424,9 @@ window.descargarDocumentoSoloPDF = async function(key) {
     receta: "Receta",
     ordenesLab: "Ordenes_Laboratorio",
     ordenesImagen: "Ordenes_Imagen",
-    referencia: "Hoja_Referencia"
+    referencia: "Hoja_Referencia",
+    constanciaIncapacidad: "Constancia_Incapacidad",
+    constanciaAcompanamiento: "Constancia_Acompanamiento"
   };
   const etiqueta = etiquetas[key] || key;
   const caseId = window._consultaState?.caseId || "CONS";
@@ -15238,6 +15478,277 @@ window.descargarTodosPDFsConsulta = async function() {
     window.showStatus(`✓ ${ok} PDFs descargados`, "success");
   } else {
     window.showStatus(`⚠️ ${ok} descargados, ${fail} con error`, "warning");
+  }
+};
+/* ═══════════════════════════════════════════════════════════
+   SPRINT 2 — GESTIÓN DE CONSTANCIAS
+   ═══════════════════════════════════════════════════════════ */
+
+window.abrirModalConstancia = function(tipo) {
+  const s = window._consultaState;
+  if (!s.paciente) { showStatus("Falta paciente", "error"); return; }
+
+  const esIncapacidad = tipo === "incapacidad";
+  const titulo = esIncapacidad ? "📝 Nueva constancia de incapacidad" : "👨‍👩‍👧 Nueva constancia de acompañamiento";
+
+  const dxPrincipal = s.diagnosticos?.find(d => d.tipo === "principal") || s.diagnosticos?.[0] || {};
+  const dxDefault = dxPrincipal.descripcion || "";
+  const cie10Default = dxPrincipal.cie10 || "";
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  const enTresDias = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const overlay = document.createElement("div");
+  overlay.id = "modal-constancia";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:99998;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:40px";
+
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:var(--radius-lg);max-width:600px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">${titulo}</h3>
+        <button onclick="document.getElementById('modal-constancia').remove()"
+                style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+      </div>
+
+      <div style="background:#f0f7ff;border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 6px 6px 0;margin-bottom:14px;font-size:11px;color:var(--accent-dark)">
+        <strong>Paciente:</strong> ${escapeHtml(s.paciente.nombre)}
+      </div>
+
+      ${esIncapacidad ? `
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">CIE-10</label>
+          <input type="text" id="const-cie10" value="${escapeHtml(cie10Default)}" placeholder="Ej: J11.1" style="font-size:12px">
+        </div>
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Diagnóstico *</label>
+          <textarea id="const-diagnostico" placeholder="Ej: Influenza con manifestaciones respiratorias" style="font-size:12px;min-height:50px">${escapeHtml(dxDefault)}</textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label style="font-size:11px;font-weight:600">Fecha inicio *</label>
+            <input type="date" id="const-fecha-inicio" value="${hoy}" style="font-size:12px">
+          </div>
+          <div class="form-group">
+            <label style="font-size:11px;font-weight:600">Fecha fin *</label>
+            <input type="date" id="const-fecha-fin" value="${enTresDias}" style="font-size:12px">
+          </div>
+        </div>
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Tipo de incapacidad</label>
+          <select id="const-tipo" style="font-size:12px">
+            <option value="enfermedad_comun">Enfermedad común</option>
+            <option value="accidente_laboral">Accidente laboral</option>
+            <option value="enfermedad_laboral">Enfermedad laboral</option>
+            <option value="licencia_maternidad">Licencia por maternidad</option>
+            <option value="licencia_paternidad">Licencia por paternidad</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Observaciones (opcional)</label>
+          <textarea id="const-observaciones" placeholder="Indicaciones adicionales, reposo, cuidados..." style="font-size:12px;min-height:60px"></textarea>
+        </div>
+      ` : `
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Nombre del familiar/acompañante *</label>
+          <input type="text" id="const-familiar-nombre" placeholder="Nombre completo" style="font-size:12px">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label style="font-size:11px;font-weight:600">DUI del familiar</label>
+            <input type="text" id="const-familiar-dui" placeholder="00000000-0" style="font-size:12px">
+          </div>
+          <div class="form-group">
+            <label style="font-size:11px;font-weight:600">Parentesco *</label>
+            <select id="const-familiar-parentesco" style="font-size:12px">
+              <option value="">—</option>
+              <option value="padre">Padre</option>
+              <option value="madre">Madre</option>
+              <option value="conyuge">Cónyuge</option>
+              <option value="hijo">Hijo/a</option>
+              <option value="hermano">Hermano/a</option>
+              <option value="tutor">Tutor legal</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label style="font-size:11px;font-weight:600">Fecha inicio *</label>
+            <input type="date" id="const-fecha-inicio" value="${hoy}" style="font-size:12px">
+          </div>
+          <div class="form-group">
+            <label style="font-size:11px;font-weight:600">Fecha fin *</label>
+            <input type="date" id="const-fecha-fin" value="${enTresDias}" style="font-size:12px">
+          </div>
+        </div>
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">CIE-10 del paciente</label>
+          <input type="text" id="const-cie10" value="${escapeHtml(cie10Default)}" placeholder="Ej: J11.1" style="font-size:12px">
+        </div>
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Diagnóstico del paciente *</label>
+          <textarea id="const-diagnostico" placeholder="Diagnóstico que motiva el acompañamiento" style="font-size:12px;min-height:50px">${escapeHtml(dxDefault)}</textarea>
+        </div>
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Motivo del acompañamiento *</label>
+          <textarea id="const-motivo" placeholder="Ej: Paciente requiere cuidado por familiar durante postoperatorio..." style="font-size:12px;min-height:60px"></textarea>
+        </div>
+      `}
+
+      <div id="const-error" style="display:none;margin-top:10px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-constancia').remove()" style="flex:1;font-size:12px">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarConstancia('${tipo}')" style="flex:1;font-size:12px">✅ Guardar constancia</button>
+      </div>
+    </div>
+  `;
+
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+};
+
+window.guardarConstancia = function(tipo) {
+  const s = window._consultaState;
+  const errEl = document.getElementById("const-error");
+  const setErr = (msg) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  };
+  if (errEl) errEl.style.display = "none";
+
+  const val = (id) => document.getElementById(id)?.value?.trim() || "";
+  const fechaInicio = val("const-fecha-inicio");
+  const fechaFin = val("const-fecha-fin");
+  const diagnostico = val("const-diagnostico");
+
+  if (!fechaInicio || !fechaFin) { setErr("Las fechas son obligatorias"); return; }
+  if (new Date(fechaFin) < new Date(fechaInicio)) { setErr("La fecha fin no puede ser anterior a la fecha inicio"); return; }
+  if (!diagnostico) { setErr("El diagnóstico es obligatorio"); return; }
+
+  const dias = Math.max(1, Math.round((new Date(fechaFin) - new Date(fechaInicio)) / (1000 * 60 * 60 * 24)) + 1);
+
+  if (!s.constanciasEmitidas) s.constanciasEmitidas = {};
+
+  if (tipo === "incapacidad") {
+    s.constanciasEmitidas.incapacidad = {
+      fecha_inicio: fechaInicio,
+      fecha_fin: fechaFin,
+      dias: dias,
+      tipo: val("const-tipo") || "enfermedad_comun",
+      cie10: val("const-cie10") || null,
+      diagnostico: diagnostico,
+      observaciones: val("const-observaciones") || null,
+      emitida_at: new Date().toISOString()
+    };
+  } else {
+    const familiarNombre = val("const-familiar-nombre");
+    const parentesco = val("const-familiar-parentesco");
+    const motivo = val("const-motivo");
+
+    if (!familiarNombre) { setErr("El nombre del familiar es obligatorio"); return; }
+    if (!parentesco) { setErr("El parentesco es obligatorio"); return; }
+    if (!motivo) { setErr("El motivo del acompañamiento es obligatorio"); return; }
+
+    s.constanciasEmitidas.acompanamiento = {
+      fecha_inicio: fechaInicio,
+      fecha_fin: fechaFin,
+      dias: dias,
+      familiar_nombre: familiarNombre,
+      familiar_dui: val("const-familiar-dui") || null,
+      familiar_parentesco: parentesco,
+      cie10: val("const-cie10") || null,
+      diagnostico: diagnostico,
+      motivo: motivo,
+      emitida_at: new Date().toISOString()
+    };
+  }
+
+  document.getElementById("modal-constancia")?.remove();
+  renderConstanciasEmitidas();
+  showStatus("✓ Constancia agregada. Se incluirá al firmar.", "success");
+};
+
+window.renderConstanciasEmitidas = function() {
+  const s = window._consultaState;
+  const cont = document.getElementById("consulta-constancias-lista");
+  if (!cont) return;
+
+  const c = s.constanciasEmitidas || {};
+  const items = [];
+
+  if (c.incapacidad) {
+    items.push({
+      tipo: "incapacidad",
+      icono: "📝",
+      titulo: "Constancia de Incapacidad",
+      detalle: `${c.incapacidad.dias} día(s) · ${formatearFechaConstancia(c.incapacidad.fecha_inicio)} → ${formatearFechaConstancia(c.incapacidad.fecha_fin)}`,
+      diagnostico: c.incapacidad.diagnostico
+    });
+  }
+
+  if (c.acompanamiento) {
+    items.push({
+      tipo: "acompanamiento",
+      icono: "👨‍👩‍👧",
+      titulo: "Constancia de Acompañamiento",
+      detalle: `${c.acompanamiento.dias} día(s) · ${formatearFechaConstancia(c.acompanamiento.fecha_inicio)} → ${formatearFechaConstancia(c.acompanamiento.fecha_fin)}`,
+      diagnostico: `Acompañante: ${c.acompanamiento.familiar_nombre} (${c.acompanamiento.familiar_parentesco})`
+    });
+  }
+
+  if (items.length === 0) {
+    cont.innerHTML = '<div style="padding:14px;text-align:center;background:var(--bg-secondary);border-radius:var(--radius-md);font-size:11px;color:var(--text-tertiary)">Sin constancias emitidas</div>';
+    return;
+  }
+
+  cont.innerHTML = items.map(x => `
+    <div style="background:var(--bg-secondary);border-radius:8px;padding:10px 12px;margin-bottom:6px;border-left:3px solid var(--accent);display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:var(--corp)">${x.icono} ${x.titulo}</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${escapeHtml(x.detalle)}</div>
+        <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${escapeHtml(x.diagnostico || "")}</div>
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        <button class="btn btn-secondary btn-xs" onclick="editarConstancia('${x.tipo}')" style="font-size:10px">✏️</button>
+        <button class="btn btn-danger btn-xs" onclick="eliminarConstancia('${x.tipo}')" style="font-size:10px">🗑️</button>
+      </div>
+    </div>
+  `).join("");
+};
+
+window.editarConstancia = function(tipo) {
+  const s = window._consultaState;
+  const c = s.constanciasEmitidas?.[tipo];
+  if (!c) return;
+
+  abrirModalConstancia(tipo);
+
+  setTimeout(() => {
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    set("const-fecha-inicio", c.fecha_inicio);
+    set("const-fecha-fin", c.fecha_fin);
+    set("const-cie10", c.cie10);
+    set("const-diagnostico", c.diagnostico);
+    if (tipo === "incapacidad") {
+      set("const-tipo", c.tipo);
+      set("const-observaciones", c.observaciones);
+    } else {
+      set("const-familiar-nombre", c.familiar_nombre);
+      set("const-familiar-dui", c.familiar_dui);
+      set("const-familiar-parentesco", c.familiar_parentesco);
+      set("const-motivo", c.motivo);
+    }
+  }, 150);
+};
+
+window.eliminarConstancia = function(tipo) {
+  if (!confirm("¿Eliminar esta constancia?")) return;
+  const s = window._consultaState;
+  if (s.constanciasEmitidas?.[tipo]) {
+    delete s.constanciasEmitidas[tipo];
+    renderConstanciasEmitidas();
+    showStatus("Constancia eliminada", "success");
   }
 };
 
