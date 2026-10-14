@@ -16990,140 +16990,387 @@ window.solicitarAddon = async function(tipoServicio, precio) {
    PANEL ADMIN: Gestión de suscripciones
    ═══════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════
+   PANEL ADMIN v1.2 — Gestión manual completa
+   ═══════════════════════════════════════════════════════════ */
+
 window.renderAdminSuscripciones = async function() {
   const cont = document.getElementById("admin-suscripciones-lista");
   if (!cont || !window.supabaseClient) return;
   
-  cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+  cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando panel...</p></div>';
   
   try {
-    // Pendientes
-    const { data: pendientes } = await window.supabaseClient
-      .from("intenciones_suscripcion")
-      .select("*")
-      .eq("estado", "pendiente_pago")
-      .order("created_at", { ascending: false });
-    
-    // Activas
-    const { data: activas } = await window.supabaseClient
-      .from("suscripciones")
-      .select("*")
-      .in("estado", ["activa", "pausada"])
-      .order("created_at", { ascending: false });
+    // Cargar todo en paralelo
+    const [pendientes, activas, serviciosPendientes, pagosRecientes] = await Promise.all([
+      window.supabaseClient.from("intenciones_suscripcion")
+        .select("*").eq("estado", "pendiente_pago")
+        .order("created_at", { ascending: false })
+        .then(r => r.data || []),
+      
+      window.supabaseClient.from("suscripciones")
+        .select("*").in("estado", ["activa", "pausada"])
+        .order("created_at", { ascending: false })
+        .then(r => r.data || []),
+      
+      window.supabaseClient.from("servicios_extras")
+        .select("*").eq("estado", "pendiente_pago")
+        .order("solicitado_at", { ascending: false })
+        .then(r => r.data || []),
+      
+      window.supabaseClient.from("pagos_recibidos")
+        .select("*").order("created_at", { ascending: false }).limit(10)
+        .then(r => r.data || [])
+    ]);
     
     // Cargar nombres de pacientes
-    const subjectIds = [
-      ...(pendientes || []).map(p => p.subject_id),
-      ...(activas || []).map(a => a.subject_id)
-    ];
+    const subjectIds = [...new Set([
+      ...pendientes.map(p => p.subject_id),
+      ...activas.map(a => a.subject_id),
+      ...serviciosPendientes.map(s => s.subject_id),
+      ...pagosRecientes.map(p => p.subject_id)
+    ].filter(Boolean))];
     
     let pacientesMap = {};
     if (subjectIds.length > 0) {
       const { data: pacs } = await window.supabaseClient
         .from("patients")
-        .select("subject_id, nombre, email")
+        .select("subject_id, nombre, email, telefono")
         .in("subject_id", subjectIds);
-      
-      if (pacs) {
-        pacientesMap = Object.fromEntries(pacs.map(p => [p.subject_id, p]));
-      }
+      if (pacs) pacientesMap = Object.fromEntries(pacs.map(p => [p.subject_id, p]));
     }
+    
+    // Cargar créditos extras de los activos
+    let creditosMap = {};
+    if (activas.length > 0) {
+      const { data: creditos } = await window.supabaseClient
+        .from("creditos_extras")
+        .select("*")
+        .in("subject_id", activas.map(a => a.subject_id))
+        .gt("cantidad_disponible", 0);
+      
+      (creditos || []).forEach(c => {
+        const disponibles = c.cantidad_disponible - c.cantidad_usada;
+        if (disponibles > 0) {
+          if (!creditosMap[c.subject_id]) creditosMap[c.subject_id] = [];
+          creditosMap[c.subject_id].push({ tipo: c.tipo_servicio, disponibles });
+        }
+      });
+    }
+    
+    const mrr = activas.reduce((sum, s) => sum + (PLANES_SUSCRIPCION[s.plan]?.precio || 0), 0);
+    const ingresosMes = pagosRecientes
+      .filter(p => new Date(p.created_at).getMonth() === new Date().getMonth())
+      .reduce((sum, p) => sum + (p.monto || 0), 0);
     
     let html = "";
     
-    // Sección pendientes
-    if (pendientes && pendientes.length > 0) {
+    // ─── RESUMEN ───
+    html += `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">
+        <div style="background:linear-gradient(135deg,#f0fff4,#e8f9ec);border:2px solid var(--positive);border-radius:12px;padding:14px">
+          <div style="font-size:10px;font-weight:700;color:#1a4a2a;text-transform:uppercase;letter-spacing:0.5px">MRR Actual</div>
+          <div style="font-size:24px;font-weight:800;color:#1a4a2a;margin-top:4px">$${mrr.toFixed(2)}</div>
+          <div style="font-size:10px;color:#1a4a2a;margin-top:2px">${activas.length} suscripción(es)</div>
+        </div>
+        <div style="background:linear-gradient(135deg,#fff9e6,#fff3cc);border:2px solid #ff9500;border-radius:12px;padding:14px">
+          <div style="font-size:10px;font-weight:700;color:#8a6a00;text-transform:uppercase;letter-spacing:0.5px">Pendientes</div>
+          <div style="font-size:24px;font-weight:800;color:#8a6a00;margin-top:4px">${pendientes.length + serviciosPendientes.length}</div>
+          <div style="font-size:10px;color:#8a6a00;margin-top:2px">por verificar</div>
+        </div>
+        <div style="background:linear-gradient(135deg,#f0f7ff,#e8f4fd);border:2px solid var(--accent);border-radius:12px;padding:14px">
+          <div style="font-size:10px;font-weight:700;color:#0051a3;text-transform:uppercase;letter-spacing:0.5px">Este mes</div>
+          <div style="font-size:24px;font-weight:800;color:#0051a3;margin-top:4px">$${ingresosMes.toFixed(2)}</div>
+          <div style="font-size:10px;color:#0051a3;margin-top:2px">ingresos registrados</div>
+        </div>
+      </div>
+    `;
+    
+    // ─── ACCIONES RÁPIDAS ───
+    html += `
+      <div class="admin-card" style="margin-bottom:14px">
+        <div class="admin-card-header">
+          <div>
+            <div class="admin-card-title">⚡ Acciones rápidas</div>
+            <div class="admin-card-subtitle">Operaciones manuales frecuentes</div>
+          </div>
+        </div>
+        <div class="admin-card-body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">
+            <button class="btn btn-primary btn-sm" onclick="abrirModalActivarManual()" style="font-size:11px;padding:10px">
+              ➕ Activar nuevo plan
+            </button>
+            <button class="btn btn-success btn-sm" onclick="abrirModalRegistrarPago()" style="font-size:11px;padding:10px">
+              💵 Registrar pago
+            </button>
+            <button class="btn btn-warning btn-sm" onclick="abrirModalAddon()" style="font-size:11px;padding:10px">
+              🎁 Servicio extra
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="renovarCuotasMes()" style="font-size:11px;padding:10px">
+              🔁 Renovar TODAS las cuotas
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="exportarSuscripcionesCSV()" style="font-size:11px;padding:10px">
+              📥 Exportar CSV
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="renderAdminSuscripciones()" style="font-size:11px;padding:10px">
+              🔄 Recargar panel
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // ─── SECCIÓN 1: PENDIENTES ───
+    if (pendientes.length > 0 || serviciosPendientes.length > 0) {
       html += `
-        <div class="admin-card" style="border-left:4px solid var(--warning)">
+        <div class="admin-card" style="border-left:4px solid var(--warning);margin-bottom:14px">
           <div class="admin-card-header">
             <div>
-              <div class="admin-card-title">⏳ ${pendientes.length} pago(s) pendiente(s) de activar</div>
-              <div class="admin-card-subtitle">Verifica el pago en Stripe y activa manualmente</div>
+              <div class="admin-card-title">⏳ Pagos pendientes de verificar (${pendientes.length + serviciosPendientes.length})</div>
+              <div class="admin-card-subtitle">Confirma el pago y activa</div>
             </div>
           </div>
           <div class="admin-card-body">
-            ${pendientes.map(p => {
-              const pac = pacientesMap[p.subject_id] || {};
-              const planInfo = PLANES_SUSCRIPCION[p.plan_solicitado] || {};
-              return `
-                <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-                  <div style="flex:1;min-width:200px">
-                    <div style="font-size:12px;font-weight:700;color:var(--corp)">${escapeHtml(pac.nombre || "Sin nombre")}</div>
-                    <div style="font-size:10px;color:var(--text-secondary);font-family:monospace">${escapeHtml(p.subject_id)}</div>
-                    <div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:4px">
-                      Plan solicitado: ${planInfo.icono || ""} ${planInfo.nombre || p.plan_solicitado}
-                    </div>
-                    <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">
-                      Solicitado: ${new Date(p.created_at).toLocaleString("es-ES")}
-                    </div>
-                  </div>
-                  <div style="display:flex;flex-direction:column;gap:4px">
-                    <button class="btn btn-success btn-sm" onclick="activarSuscripcionManual('${p.subject_id}', '${p.plan_solicitado}', '${p.id}')" style="font-size:11px">✓ Activar</button>
-                    <button class="btn btn-danger btn-sm" onclick="rechazarIntencion('${p.id}')" style="font-size:10px">✗ Rechazar</button>
-                  </div>
+      `;
+      
+      pendientes.forEach(p => {
+        const pac = pacientesMap[p.subject_id] || {};
+        const planInfo = PLANES_SUSCRIPCION[p.plan_solicitado] || {};
+        html += `
+          <div style="background:#fff9e6;border-radius:8px;padding:12px;margin-bottom:8px;border:1px solid #ffcc00">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+              <div style="flex:1;min-width:200px">
+                <div style="font-size:12px;font-weight:700;color:var(--corp)">
+                  ${escapeHtml(pac.nombre || "Sin nombre")}
+                  <span style="background:#ff9500;color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px;text-transform:uppercase">Plan nuevo</span>
                 </div>
-              `;
-            }).join("")}
+                <div style="font-size:10px;color:var(--text-secondary);font-family:monospace">${escapeHtml(p.subject_id)}</div>
+                <div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:4px">
+                  ${planInfo.icono || ""} Plan ${planInfo.nombre || p.plan_solicitado} · $${(planInfo.precio || 0).toFixed(2)}/mes
+                </div>
+                <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">
+                  ${new Date(p.created_at).toLocaleString("es-ES")}
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <button class="btn btn-success btn-sm" onclick="activarSuscripcionManual('${p.subject_id}', '${p.plan_solicitado}', '${p.id}')" style="font-size:11px">
+                  ✓ Activar plan
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="rechazarIntencion('${p.id}')" style="font-size:10px">
+                  ✗ Rechazar
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      serviciosPendientes.forEach(s => {
+        const pac = pacientesMap[s.subject_id] || {};
+        const tipoLabel = {
+          consulta: "Consulta adicional",
+          tamizaje: "Tamizaje adicional",
+          interconsulta: "Interconsulta adicional",
+          constancia: "Constancia adicional"
+        }[s.tipo_servicio] || s.tipo_servicio;
+        
+        html += `
+          <div style="background:#f0f7ff;border-radius:8px;padding:12px;margin-bottom:8px;border:1px solid #0071e3">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+              <div style="flex:1;min-width:200px">
+                <div style="font-size:12px;font-weight:700;color:var(--corp)">
+                  ${escapeHtml(pac.nombre || "Sin nombre")}
+                  <span style="background:#0071e3;color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px;text-transform:uppercase">Add-on</span>
+                </div>
+                <div style="font-size:10px;color:var(--text-secondary);font-family:monospace">${escapeHtml(s.subject_id)}</div>
+                <div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:4px">
+                  ${tipoLabel} × ${s.cantidad} · $${(s.monto_total || 0).toFixed(2)}
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <button class="btn btn-success btn-sm" onclick="confirmarServicioExtra('${s.id}')" style="font-size:11px">
+                  ✓ Confirmar y aplicar
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="cancelarServicioExtra('${s.id}')" style="font-size:10px">
+                  ✗ Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      html += `</div></div>`;
+    }
+    
+    // ─── SECCIÓN 2: ACTIVAS ───
+    html += `
+      <div class="admin-card" style="margin-bottom:14px">
+        <div class="admin-card-header">
+          <div>
+            <div class="admin-card-title">✅ Suscripciones activas (${activas.length})</div>
+            <div class="admin-card-subtitle">Renovación, pagos y gestión individual</div>
+          </div>
+        </div>
+        <div class="admin-card-body">
+    `;
+    
+    if (activas.length === 0) {
+      html += '<p style="text-align:center;color:var(--text-tertiary);font-size:11px;padding:20px">Sin suscripciones activas</p>';
+    } else {
+      activas.forEach(s => {
+        const pac = pacientesMap[s.subject_id] || {};
+        const plan = PLANES_SUSCRIPCION[s.plan] || {};
+        const diasRestantes = Math.ceil((new Date(s.fecha_proximo_cobro) - new Date()) / (1000*60*60*24));
+        const vencida = diasRestantes <= 0;
+        const proxima = diasRestantes <= 5 && diasRestantes > 0;
+        
+        const colorBorde = vencida ? "#ff3b30" : proxima ? "#ff9500" : "#34c759";
+        const estadoLabel = vencida ? "VENCIDA" : proxima ? "PRÓXIMA" : "ACTIVA";
+        
+        const extras = creditosMap[s.subject_id] || [];
+        const extrasTexto = extras.length > 0
+          ? `<div style="font-size:10px;color:#1a4a2a;background:#f0fff4;padding:4px 8px;border-radius:4px;display:inline-block;margin-top:6px">
+              🎁 Extras: ${extras.map(e => `${e.disponibles} ${e.tipo}`).join(", ")}
+            </div>`
+          : "";
+        
+        html += `
+          <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;margin-bottom:8px;border-left:4px solid ${colorBorde}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+              
+              <!-- Información -->
+              <div style="flex:1;min-width:240px">
+                <div style="font-size:13px;font-weight:700;color:var(--corp)">
+                  ${escapeHtml(pac.nombre || "Sin nombre")}
+                  <span style="background:${colorBorde};color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px">${estadoLabel}</span>
+                  ${s.estado === "pausada" ? '<span style="background:#8a6a00;color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:4px">PAUSADA</span>' : ""}
+                </div>
+                <div style="font-size:10px;color:var(--text-secondary);font-family:monospace;margin-top:2px">
+                  ${escapeHtml(s.subject_id)} ${pac.telefono ? "· " + escapeHtml(pac.telefono) : ""}
+                </div>
+                <div style="font-size:11px;margin-top:4px">
+                  <span style="color:${plan.color};font-weight:700">${plan.icono || ""} ${plan.nombre || s.plan}</span>
+                  <span style="color:var(--text-tertiary);margin:0 6px">·</span>
+                  <span style="color:var(--text-secondary)">$${(plan.precio || 0).toFixed(2)}/mes</span>
+                </div>
+                <div style="font-size:10px;margin-top:4px;color:${colorBorde};font-weight:700">
+                  ${vencida 
+                    ? `⛔ Vencida hace ${Math.abs(diasRestantes)} días` 
+                    : `📅 Próximo cobro: ${formatearFechaSuscripcion(s.fecha_proximo_cobro)} (${diasRestantes} días)`}
+                </div>
+                <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
+                  <strong>Cuotas:</strong>
+                  ${s.cuota_consultas_usada}/${plan.cuotas?.consultas || 0} cons ·
+                  ${s.cuota_tamizajes_usada}/${plan.cuotas?.tamizajes || 0} tam ·
+                  ${s.cuota_interconsultas_usada}/${plan.cuotas?.interconsultas || 0} inter
+                </div>
+                ${extrasTexto}
+              </div>
+              
+              <!-- Botones de acción -->
+              <div style="display:flex;flex-direction:column;gap:5px;min-width:170px">
+                
+                <!-- NUEVO: Renovar individual destacado -->
+                <button class="btn ${vencida ? 'btn-danger' : proxima ? 'btn-warning' : 'btn-success'} btn-sm" 
+                        onclick="renovarCuotaIndividual('${s.subject_id}', '${escapeHtml(pac.nombre || "")}')" 
+                        style="font-size:10px;font-weight:700">
+                  ${vencida 
+                    ? `🔁 Renovar URGENTE` 
+                    : proxima 
+                      ? `🔁 Renovar pronto` 
+                      : `🔁 Renovar solo este`}
+                </button>
+                
+                <!-- NUEVO: Registrar pago unificado -->
+                <button class="btn btn-primary btn-sm" 
+                        onclick="abrirModalRegistrarPagoUnificado('${s.subject_id}')" 
+                        style="font-size:10px">
+                  💵 Registrar pago
+                </button>
+                
+                <!-- Add-on -->
+                <button class="btn btn-warning btn-sm" 
+                        onclick="abrirModalAddon('${s.subject_id}')" 
+                        style="font-size:10px">
+                  🎁 Servicio extra
+                </button>
+                
+                <!-- Pausar/Reactivar -->
+                ${s.estado === "activa" 
+                  ? `<button class="btn btn-secondary btn-sm" onclick="pausarSuscripcion('${s.id}')" style="font-size:10px">⏸️ Pausar</button>`
+                  : `<button class="btn btn-success btn-sm" onclick="reactivarSuscripcion('${s.id}')" style="font-size:10px">▶️ Reactivar</button>`
+                }
+                
+                <!-- Cancelar -->
+                <button class="btn btn-danger btn-sm" 
+                        onclick="cancelarSuscripcion('${s.id}')" 
+                        style="font-size:10px">
+                  ✗ Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+    
+    html += `</div></div>`;
+    
+    // ─── SECCIÓN 3: HISTORIAL RECIENTE ───
+    if (pagosRecientes.length > 0) {
+      html += `
+        <div class="admin-card" style="margin-bottom:14px">
+          <div class="admin-card-header">
+            <div>
+              <div class="admin-card-title">📜 Últimos pagos registrados</div>
+              <div class="admin-card-subtitle">Historial de los últimos 10 movimientos</div>
+            </div>
+          </div>
+          <div class="admin-card-body">
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:11px">
+                <thead>
+                  <tr style="background:var(--bg-secondary)">
+                    <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--text-secondary)">Fecha</th>
+                    <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--text-secondary)">Paciente</th>
+                    <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--text-secondary)">Concepto</th>
+                    <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase;color:var(--text-secondary)">Monto</th>
+                    <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--text-secondary)">Método</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${pagosRecientes.map(p => {
+                    const pac = pacientesMap[p.subject_id] || {};
+                    return `
+                      <tr style="border-bottom:1px solid var(--border)">
+                        <td style="padding:6px 8px;color:var(--text-secondary);font-size:10px">
+                          ${new Date(p.created_at).toLocaleDateString("es-ES")}
+                        </td>
+                        <td style="padding:6px 8px;font-weight:600;color:var(--corp)">
+                          ${escapeHtml(pac.nombre || p.subject_id)}
+                        </td>
+                        <td style="padding:6px 8px;color:var(--text-secondary)">
+                          ${escapeHtml(p.concepto || "-")}
+                        </td>
+                        <td style="padding:6px 8px;text-align:right;font-weight:700;color:var(--positive)">
+                          $${(p.monto || 0).toFixed(2)}
+                        </td>
+                        <td style="padding:6px 8px">
+                          <span style="background:var(--bg-tertiary);padding:2px 6px;border-radius:4px;font-size:10px">
+                            ${escapeHtml(p.metodo || "-")}
+                          </span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join("")}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       `;
     }
-    
-    // Sección activas
-    const mrr = (activas || []).reduce((sum, s) => sum + (PLANES_SUSCRIPCION[s.plan]?.precio || 0), 0);
-    
-    html += `
-      <div class="admin-card">
-        <div class="admin-card-header">
-          <div>
-            <div class="admin-card-title">✅ ${(activas || []).length} suscripción(es) activa(s)</div>
-            <div class="admin-card-subtitle">Ingreso mensual recurrente (MRR): $${mrr.toFixed(2)} USD</div>
-          </div>
-        </div>
-        <div class="admin-card-body">
-          ${(activas || []).map(s => {
-            const pac = pacientesMap[s.subject_id] || {};
-            const plan = PLANES_SUSCRIPCION[s.plan] || {};
-            const diasRestantes = Math.ceil((new Date(s.fecha_proximo_cobro) - new Date()) / (1000*60*60*24));
-            const alerta = diasRestantes <= 3 ? "color:var(--danger);font-weight:700" : "";
-            
-            return `
-              <div style="background:var(--bg-secondary);border-radius:8px;padding:10px;margin-bottom:6px">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
-                  <div style="flex:1;min-width:200px">
-                    <div style="font-size:12px;font-weight:700;color:var(--corp)">
-                      ${escapeHtml(pac.nombre || "Sin nombre")}
-                      <span style="font-size:10px;font-weight:400;color:var(--text-secondary);margin-left:6px">${escapeHtml(pac.email || "")}</span>
-                    </div>
-                    <div style="font-size:11px;margin-top:3px">
-                      <span style="color:${plan.color};font-weight:700">${plan.icono || ""} ${plan.nombre || s.plan}</span>
-                      <span style="color:var(--text-tertiary);margin:0 8px">·</span>
-                      <span style="color:var(--text-secondary)">$${(plan.precio || 0).toFixed(2)}/mes</span>
-                      ${s.estado === "pausada" ? '<span style="background:#fff9e6;color:#8a6a00;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:8px">PAUSADA</span>' : ""}
-                    </div>
-                    <div style="font-size:10px;margin-top:3px;${alerta}">
-                      Próximo cobro: ${formatearFechaSuscripcion(s.fecha_proximo_cobro)} (${diasRestantes} días)
-                    </div>
-                    <div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">
-                      Cuotas: ${s.cuota_consultas_usada}/${plan.cuotas?.consultas || 0} cons · 
-                      ${s.cuota_tamizajes_usada}/${plan.cuotas?.tamizajes || 0} tam
-                    </div>
-                  </div>
-                  <div style="display:flex;flex-direction:column;gap:4px">
-                    <button class="btn btn-secondary btn-sm" onclick="registrarPagoManual('${s.subject_id}', ${plan.precio || 0})" style="font-size:10px">💵 Registrar pago</button>
-                    ${s.estado === "activa" 
-                      ? `<button class="btn btn-warning btn-sm" onclick="pausarSuscripcion('${s.id}')" style="font-size:10px">⏸️ Pausar</button>`
-                      : `<button class="btn btn-success btn-sm" onclick="reactivarSuscripcion('${s.id}')" style="font-size:10px">▶️ Reactivar</button>`
-                    }
-                    <button class="btn btn-danger btn-sm" onclick="cancelarSuscripcion('${s.id}')" style="font-size:10px">✗ Cancelar</button>
-                  </div>
-                </div>
-              </div>
-            `;
-          }).join("") || '<p style="text-align:center;color:var(--text-tertiary);font-size:11px;padding:12px">Sin suscripciones activas</p>'}
-        </div>
-      </div>
-    `;
     
     cont.innerHTML = html;
     
@@ -17132,6 +17379,1177 @@ window.renderAdminSuscripciones = async function() {
     cont.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Error: ' + escapeHtml(e.message) + '</p></div>';
   }
 };
+/* ═══════════════════════════════════════════════════════════
+   MÓDULO v1.2 — Renovación individual + Pagos unificados
+   ═══════════════════════════════════════════════════════════ */
+
+/* ───────────────────────────────────────────────────────────
+   FUNCIÓN 1: Renovar cuota individual
+   ─────────────────────────────────────────────────────────── */
+window.renovarCuotaIndividual = async function(subjectId, nombrePaciente) {
+  if (!subjectId || !window.supabaseClient) {
+    if (typeof showStatus === "function") showStatus("Datos incompletos", "error");
+    return;
+  }
+  
+  // Cargar suscripción
+  const { data: sus, error } = await window.supabaseClient
+    .from("suscripciones")
+    .select("*")
+    .eq("subject_id", subjectId)
+    .maybeSingle();
+  
+  if (error || !sus) {
+    if (typeof showStatus === "function") showStatus("Suscripción no encontrada", "error");
+    return;
+  }
+  
+  const plan = PLANES_SUSCRIPCION[sus.plan] || {};
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-renovar-individual";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:540px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4);max-height:90vh;overflow-y:auto">
+      
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">
+          🔁 Renovar cuota individual
+        </h3>
+        <button onclick="document.getElementById('modal-renovar-individual').remove()"
+                style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+      </div>
+      
+      <div style="background:var(--accent-light);border-radius:10px;padding:12px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--accent-dark)">
+          ${escapeHtml(nombrePaciente || "Paciente")}
+        </div>
+        <div style="font-size:11px;color:var(--accent-dark);font-family:monospace;margin-top:2px">
+          ${escapeHtml(subjectId)}
+        </div>
+        <div style="font-size:11px;color:var(--accent-dark);margin-top:6px">
+          ${plan.icono || ""} Plan ${plan.nombre || sus.plan} · $${(plan.precio || 0).toFixed(2)}/mes
+        </div>
+      </div>
+      
+      <div style="background:var(--bg-secondary);border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">
+          Estado actual
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+          <div>
+            <div style="color:var(--text-secondary);font-size:10px">Consultas</div>
+            <div style="font-weight:700;color:var(--corp)">${sus.cuota_consultas_usada} / ${plan.cuotas?.consultas || 0}</div>
+          </div>
+          <div>
+            <div style="color:var(--text-secondary);font-size:10px">Tamizajes</div>
+            <div style="font-weight:700;color:var(--corp)">${sus.cuota_tamizajes_usada} / ${plan.cuotas?.tamizajes || 0}</div>
+          </div>
+          <div>
+            <div style="color:var(--text-secondary);font-size:10px">Interconsultas</div>
+            <div style="font-weight:700;color:var(--corp)">${sus.cuota_interconsultas_usada} / ${plan.cuotas?.interconsultas || 0}</div>
+          </div>
+          <div>
+            <div style="color:var(--text-secondary);font-size:10px">Constancias</div>
+            <div style="font-weight:700;color:var(--corp)">${sus.cuota_constancias_usada} / ${plan.cuotas?.constancias || 0}</div>
+          </div>
+        </div>
+      </div>
+      
+      <div style="background:#fff9e6;border:2px solid #ff9500;border-radius:10px;padding:12px;margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;color:#8a6a00;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
+          Tipo de renovación
+        </div>
+        
+        <label style="display:flex;align-items:flex-start;gap:10px;font-size:12px;cursor:pointer;padding:8px;background:white;border-radius:6px;margin-bottom:6px">
+          <input type="radio" name="tipo-renovacion" value="solo_cuotas" checked style="width:auto;margin-top:3px">
+          <div style="flex:1">
+            <div style="font-weight:700;color:#8a6a00">Solo resetear cuotas</div>
+            <div style="font-size:11px;color:#5a4a00;margin-top:2px">Resetear los contadores del mes. NO extiende la fecha de próximo cobro.</div>
+          </div>
+        </label>
+        
+        <label style="display:flex;align-items:flex-start;gap:10px;font-size:12px;cursor:pointer;padding:8px;background:white;border-radius:6px">
+          <input type="radio" name="tipo-renovacion" value="mes_completo" style="width:auto;margin-top:3px">
+          <div style="flex:1">
+            <div style="font-weight:700;color:#8a6a00">Renovar mes completo</div>
+            <div style="font-size:11px;color:#5a4a00;margin-top:2px">Resetear cuotas + extender fecha de próximo cobro en 1 mes.</div>
+          </div>
+        </label>
+      </div>
+      
+      <div id="renovar-individual-error" style="display:none;margin-bottom:12px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+      
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-renovar-individual').remove()" style="flex:1;font-size:12px">
+          Cancelar
+        </button>
+        <button class="btn btn-success" onclick="confirmarRenovacionIndividual('${subjectId}')" style="flex:1;font-size:12px">
+          🔁 Renovar
+        </button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+};
+
+window.confirmarRenovacionIndividual = async function(subjectId) {
+  const errEl = document.getElementById("renovar-individual-error");
+  const setErr = (msg) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  };
+  if (errEl) errEl.style.display = "none";
+  
+  const opcion = document.querySelector('input[name="tipo-renovacion"]:checked')?.value || "solo_cuotas";
+  
+  const btn = event?.target;
+  const original = btn ? btn.textContent : "🔁 Renovar";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Renovando...';
+  }
+  
+  try {
+    const { data: sus, error: errLoad } = await window.supabaseClient
+      .from("suscripciones")
+      .select("*")
+      .eq("subject_id", subjectId)
+      .maybeSingle();
+    
+    if (errLoad || !sus) throw new Error("Suscripción no encontrada");
+    
+    const updateData = {
+      cuota_consultas_usada: 0,
+      cuota_tamizajes_usada: 0,
+      cuota_interconsultas_usada: 0,
+      cuota_constancias_usada: 0,
+      updated_at: new Date().toISOString()
+    };
+    
+    const plan = PLANES_SUSCRIPCION[sus.plan] || {};
+    const tamizajesTotales = (plan.cuotas?.tamizajes || 0) + (sus.cuota_tamizajes_rollover || 0);
+    const tamizajesSinUsar = Math.max(0, tamizajesTotales - sus.cuota_tamizajes_usada);
+    
+    if (tamizajesSinUsar > 0) {
+      updateData.cuota_tamizajes_rollover = Math.min(1, (sus.cuota_tamizajes_rollover || 0) + tamizajesSinUsar);
+    }
+    
+    if (opcion === "mes_completo") {
+      const fechaActual = new Date(sus.fecha_proximo_cobro);
+      const hoy = new Date();
+      const base = fechaActual > hoy ? fechaActual : hoy;
+      base.setMonth(base.getMonth() + 1);
+      updateData.fecha_proximo_cobro = base.toISOString().slice(0, 10);
+      updateData.estado = "activa";
+    }
+    
+    const { error: errUpd } = await window.supabaseClient
+      .from("suscripciones")
+      .update(updateData)
+      .eq("subject_id", subjectId);
+    
+    if (errUpd) throw errUpd;
+    
+    // Historial
+    try {
+      const historial = sus.historial_cambios || [];
+      historial.push({
+        tipo: "renovacion_individual",
+        fecha: new Date().toISOString(),
+        opcion: opcion,
+        por: window.usuarioActual?.email || "admin",
+        cuotas_antes: {
+          consultas: sus.cuota_consultas_usada,
+          tamizajes: sus.cuota_tamizajes_usada,
+          interconsultas: sus.cuota_interconsultas_usada,
+          constancias: sus.cuota_constancias_usada
+        }
+      });
+      await window.supabaseClient
+        .from("suscripciones")
+        .update({ historial_cambios: historial })
+        .eq("subject_id", subjectId);
+    } catch (e) {}
+    
+    document.getElementById("modal-renovar-individual")?.remove();
+    
+    const mensaje = opcion === "mes_completo" 
+      ? "✓ Cuotas reseteadas + mes extendido"
+      : "✓ Cuotas reseteadas";
+    
+    if (typeof showStatus === "function") showStatus(mensaje, "success");
+    renderAdminSuscripciones();
+    
+  } catch (e) {
+    console.error("[confirmarRenovacionIndividual]", e);
+    setErr("Error: " + e.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+};
+
+/* ───────────────────────────────────────────────────────────
+   FUNCIÓN 2: Modal unificado de registro de pago
+   Registra pago + opcionalmente renueva el mes
+   ─────────────────────────────────────────────────────────── */
+window.abrirModalRegistrarPagoUnificado = async function(subjectId) {
+  if (!subjectId || !window.supabaseClient) return;
+  
+  const { data: sus } = await window.supabaseClient
+    .from("suscripciones")
+    .select("*")
+    .eq("subject_id", subjectId)
+    .maybeSingle();
+  
+  if (!sus) {
+    if (typeof showStatus === "function") showStatus("Suscripción no encontrada", "error");
+    return;
+  }
+  
+  const { data: pac } = await window.supabaseClient
+    .from("patients")
+    .select("nombre, email, telefono")
+    .eq("subject_id", subjectId)
+    .maybeSingle();
+  
+  const plan = PLANES_SUSCRIPCION[sus.plan] || {};
+  const hoy = new Date().toISOString().slice(0, 10);
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-registrar-pago-unificado";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:540px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4);max-height:90vh;overflow-y:auto">
+      
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">
+          💵 Registrar pago
+        </h3>
+        <button onclick="document.getElementById('modal-registrar-pago-unificado').remove()"
+                style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+      </div>
+      
+      <div style="background:var(--accent-light);border-radius:10px;padding:12px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--accent-dark)">${escapeHtml(pac?.nombre || "Paciente")}</div>
+        <div style="font-size:11px;color:var(--accent-dark);font-family:monospace;margin-top:2px">${escapeHtml(subjectId)}</div>
+        <div style="font-size:11px;color:var(--accent-dark);margin-top:6px">
+          ${plan.icono || ""} Plan ${plan.nombre || sus.plan} · $${(plan.precio || 0).toFixed(2)}/mes
+        </div>
+      </div>
+      
+      <!-- Monto -->
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Monto recibido (USD) *</label>
+        <input type="number" id="pago-monto" value="${(plan.precio || 0).toFixed(2)}" step="0.01" min="0.01"
+               style="font-size:14px;padding:10px;font-weight:700;text-align:center">
+      </div>
+      
+      <!-- Método de pago -->
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Método de pago *</label>
+        <select id="pago-metodo" style="font-size:13px;padding:10px">
+          <option value="transferencia">🏦 Transferencia bancaria</option>
+          <option value="efectivo">💵 Efectivo</option>
+          <option value="wompi">💳 Wompi / Tarjeta</option>
+          <option value="bitcoin">₿ Bitcoin</option>
+          <option value="otro">📝 Otro</option>
+        </select>
+      </div>
+      
+      <!-- Referencia -->
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Referencia / Comprobante (opcional)</label>
+        <input type="text" id="pago-referencia" placeholder="Ej: #1234, últimos 4 dígitos, etc."
+               style="font-size:12px;padding:8px 10px">
+      </div>
+      
+      <!-- Acción a realizar -->
+      <div style="background:#fff9e6;border:2px solid #ff9500;border-radius:10px;padding:12px;margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;color:#8a6a00;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
+          ¿Qué hacer con este pago?
+        </div>
+        
+        <label style="display:flex;align-items:flex-start;gap:10px;font-size:12px;cursor:pointer;padding:8px;background:white;border-radius:6px;margin-bottom:6px">
+          <input type="radio" name="accion-pago" value="renovar_mes" checked style="width:auto;margin-top:3px">
+          <div style="flex:1">
+            <div style="font-weight:700;color:#8a6a00">🔄 Renovar mes completo</div>
+            <div style="font-size:11px;color:#5a4a00;margin-top:2px">Resetear cuotas + extender fecha de cobro 1 mes</div>
+          </div>
+        </label>
+        
+        <label style="display:flex;align-items:flex-start;gap:10px;font-size:12px;cursor:pointer;padding:8px;background:white;border-radius:6px;margin-bottom:6px">
+          <input type="radio" name="accion-pago" value="solo_cuotas" style="width:auto;margin-top:3px">
+          <div style="flex:1">
+            <div style="font-weight:700;color:#8a6a00">📊 Solo registrar pago</div>
+            <div style="font-size:11px;color:#5a4a00;margin-top:2px">Registrar el pago sin tocar cuotas ni fechas</div>
+          </div>
+        </label>
+        
+        <label style="display:flex;align-items:flex-start;gap:10px;font-size:12px;cursor:pointer;padding:8px;background:white;border-radius:6px">
+          <input type="radio" name="accion-pago" value="reactivar" style="width:auto;margin-top:3px">
+          <div style="flex:1">
+            <div style="font-weight:700;color:#8a6a00">▶️ Reactivar y renovar</div>
+            <div style="font-size:11px;color:#5a4a00;margin-top:2px">Si estaba vencida o pausada: reactivar + renovar</div>
+          </div>
+        </label>
+      </div>
+      
+      <!-- Notas -->
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Notas (opcional)</label>
+        <textarea id="pago-notas" placeholder="Ej: Pago recibido en cuenta de Banco Agrícola..." 
+                  style="font-size:12px;min-height:60px"></textarea>
+      </div>
+      
+      <div id="pago-error" style="display:none;margin-bottom:12px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+      
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-registrar-pago-unificado').remove()" style="flex:1;font-size:12px">
+          Cancelar
+        </button>
+        <button class="btn btn-success" onclick="confirmarPagoUnificado('${subjectId}')" style="flex:1;font-size:12px">
+          ✓ Confirmar pago
+        </button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+};
+
+window.confirmarPagoUnificado = async function(subjectId) {
+  const errEl = document.getElementById("pago-error");
+  const setErr = (msg) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  };
+  if (errEl) errEl.style.display = "none";
+  
+  const monto = parseFloat(document.getElementById("pago-monto")?.value);
+  const metodo = document.getElementById("pago-metodo")?.value || "transferencia";
+  const referencia = document.getElementById("pago-referencia")?.value?.trim() || null;
+  const notas = document.getElementById("pago-notas")?.value?.trim() || null;
+  const accion = document.querySelector('input[name="accion-pago"]:checked')?.value || "renovar_mes";
+  
+  if (!monto || monto <= 0) { setErr("Monto inválido"); return; }
+  
+  const btn = event?.target;
+  const original = btn ? btn.textContent : "✓ Confirmar pago";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Procesando...';
+  }
+  
+  try {
+    // 1. Cargar suscripción actual
+    const { data: sus } = await window.supabaseClient
+      .from("suscripciones")
+      .select("*")
+      .eq("subject_id", subjectId)
+      .maybeSingle();
+    
+    if (!sus) throw new Error("Suscripción no encontrada");
+    
+    // 2. Registrar el pago
+    const { error: errPago } = await window.supabaseClient
+      .from("pagos_recibidos")
+      .insert({
+        subject_id: subjectId,
+        monto: monto,
+        concepto: accion === "renovar_mes" || accion === "reactivar"
+          ? "suscripcion_" + sus.plan
+          : "pago_registrado",
+        periodo: new Date().toISOString().slice(0, 7) + "-01",
+        metodo: metodo,
+        referencia_externa: referencia,
+        registrado_por: window.usuarioActual?.id
+      });
+    
+    if (errPago) throw errPago;
+    
+    // 3. Aplicar acción según selección
+    if (accion === "renovar_mes" || accion === "reactivar") {
+      const { data: sus2 } = await window.supabaseClient
+        .from("suscripciones")
+        .select("*")
+        .eq("subject_id", subjectId)
+        .maybeSingle();
+      
+      const fechaActual = new Date(sus2.fecha_proximo_cobro);
+      const hoy = new Date();
+      const base = fechaActual > hoy ? fechaActual : hoy;
+      base.setMonth(base.getMonth() + 1);
+      
+      const updateData = {
+        cuota_consultas_usada: 0,
+        cuota_tamizajes_usada: 0,
+        cuota_interconsultas_usada: 0,
+        cuota_constancias_usada: 0,
+        fecha_proximo_cobro: base.toISOString().slice(0, 10),
+        estado: "activa",
+        metodo_pago_principal: metodo,
+        updated_at: new Date().toISOString()
+      };
+      
+      // Historial
+      const historial = sus2.historial_cambios || [];
+      historial.push({
+        tipo: accion === "reactivar" ? "reactivacion_pago" : "renovacion_pago",
+        fecha: new Date().toISOString(),
+        monto: monto,
+        metodo: metodo,
+        referencia: referencia,
+        por: window.usuarioActual?.email || "admin"
+      });
+      updateData.historial_cambios = historial;
+      
+      const { error: errUpd } = await window.supabaseClient
+        .from("suscripciones")
+        .update(updateData)
+        .eq("subject_id", subjectId);
+      
+      if (errUpd) throw errUpd;
+    }
+    // Si es "solo_cuotas", no toca la suscripción
+    
+    document.getElementById("modal-registrar-pago-unificado")?.remove();
+    
+    const mensajes = {
+      renovar_mes: "✓ Pago registrado + mes renovado",
+      solo_cuotas: "✓ Pago registrado",
+      reactivar: "✓ Pago registrado + plan reactivado"
+    };
+    
+    if (typeof showStatus === "function") showStatus(mensajes[accion] || "✓ Pago registrado", "success");
+    renderAdminSuscripciones();
+    
+  } catch (e) {
+    console.error("[confirmarPagoUnificado]", e);
+    setErr("Error: " + e.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+};
+
+/* ───────────────────────────────────────────────────────────
+   FUNCIÓN 3: Modal de add-on (servicio extra)
+   ─────────────────────────────────────────────────────────── */
+window.abrirModalAddon = async function(subjectIdPredefinido) {
+  if (!window.supabaseClient) return;
+  
+  // Si no viene subject_id, mostrar selector
+  let subjectId = subjectIdPredefinido;
+  let pacientes = [];
+  
+  if (!subjectId) {
+    const { data } = await window.supabaseClient
+      .from("suscripciones")
+      .select("subject_id, plan")
+      .in("estado", ["activa", "pausada"])
+      .order("created_at", { ascending: false });
+    
+    if (!data || data.length === 0) {
+      if (typeof showStatus === "function") showStatus("No hay suscripciones activas", "warning");
+      return;
+    }
+    
+    // Cargar nombres
+    const { data: pacs } = await window.supabaseClient
+      .from("patients")
+      .select("subject_id, nombre")
+      .in("subject_id", data.map(d => d.subject_id));
+    
+    const nombresMap = Object.fromEntries((pacs || []).map(p => [p.subject_id, p.nombre]));
+    pacientes = data.map(d => ({
+      subject_id: d.subject_id,
+      plan: d.plan,
+      nombre: nombresMap[d.subject_id] || "Sin nombre"
+    }));
+  }
+  
+  const preciosAddon = {
+    consulta: 12.00,
+    tamizaje: 15.00,
+    interconsulta: 4.00,
+    constancia: 5.00
+  };
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-addon";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:520px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4);max-height:90vh;overflow-y:auto">
+      
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">
+          🎁 Agregar servicio extra (add-on)
+        </h3>
+        <button onclick="document.getElementById('modal-addon').remove()"
+                style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+      </div>
+      
+      ${!subjectId ? `
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Paciente *</label>
+          <select id="addon-subject" style="font-size:13px;padding:10px" onchange="cargarInfoAddon(this.value)">
+            <option value="">— Seleccionar —</option>
+            ${pacientes.map(p => `
+              <option value="${p.subject_id}">
+                ${escapeHtml(p.nombre)} (${p.subject_id}) — ${p.plan}
+              </option>
+            `).join("")}
+          </select>
+        </div>
+        <div id="addon-info-cliente"></div>
+      ` : `
+        <input type="hidden" id="addon-subject" value="${escapeHtml(subjectId)}">
+        <div id="addon-info-cliente"></div>
+      `}
+      
+      <div class="form-group" style="margin-top:14px">
+        <label style="font-size:11px;font-weight:600">Tipo de servicio *</label>
+        <select id="addon-tipo" style="font-size:13px;padding:10px" onchange="actualizarPrecioAddon()">
+          <option value="consulta">🩺 Consulta adicional — $12.00</option>
+          <option value="tamizaje">📊 Tamizaje adicional — $15.00</option>
+          <option value="interconsulta">🧠 Interconsulta IA adicional — $4.00</option>
+          <option value="constancia">📝 Constancia adicional — $5.00</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Cantidad *</label>
+        <input type="number" id="addon-cantidad" value="1" min="1" max="20"
+               style="font-size:13px;padding:10px" onchange="actualizarPrecioAddon()">
+      </div>
+      
+      <div style="background:#f0fff4;border:2px solid var(--positive);border-radius:10px;padding:12px;margin-bottom:16px;text-align:center">
+        <div style="font-size:11px;font-weight:700;color:#1a4a2a;text-transform:uppercase;letter-spacing:0.5px">Monto total</div>
+        <div id="addon-monto" style="font-size:28px;font-weight:800;color:#1a4a2a;margin-top:4px">$12.00</div>
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Método de pago</label>
+        <select id="addon-metodo" style="font-size:13px;padding:10px">
+          <option value="transferencia">🏦 Transferencia bancaria</option>
+          <option value="efectivo">💵 Efectivo</option>
+          <option value="wompi">💳 Wompi</option>
+          <option value="otro">📝 Otro</option>
+        </select>
+      </div>
+      
+      <div style="background:#f0f7ff;border-left:3px solid var(--accent);border-radius:0 6px 6px 0;padding:10px 12px;margin-bottom:16px;font-size:11px;color:var(--accent-dark);line-height:1.5">
+        <strong>ℹ️ Al confirmar:</strong> se aplicarán los créditos extras al paciente. 
+        Podrá usarlos cuando agote su cuota del plan.
+      </div>
+      
+      <div id="addon-error" style="display:none;margin-bottom:12px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+      
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-addon').remove()" style="flex:1;font-size:12px">
+          Cancelar
+        </button>
+        <button class="btn btn-success" onclick="confirmarAddon()" style="flex:1;font-size:12px">
+          ✓ Aplicar add-on
+        </button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  
+  // Si ya hay subject_id, cargar info
+  if (subjectId) {
+    cargarInfoAddon(subjectId);
+    actualizarPrecioAddon();
+  }
+};
+
+window.cargarInfoAddon = async function(subjectId) {
+  const cont = document.getElementById("addon-info-cliente");
+  if (!cont || !subjectId) { if (cont) cont.innerHTML = ""; return; }
+  
+  const { data: sus } = await window.supabaseClient
+    .from("suscripciones")
+    .select("*")
+    .eq("subject_id", subjectId)
+    .maybeSingle();
+  
+  const { data: pac } = await window.supabaseClient
+    .from("patients")
+    .select("nombre")
+    .eq("subject_id", subjectId)
+    .maybeSingle();
+  
+  if (!sus) {
+    cont.innerHTML = '<div style="background:#fff3f3;padding:10px;border-radius:6px;font-size:11px;color:#7a1a1a;margin-bottom:12px">Sin suscripción activa</div>';
+    return;
+  }
+  
+  const plan = PLANES_SUSCRIPCION[sus.plan] || {};
+  
+  cont.innerHTML = `
+    <div style="background:var(--accent-light);border-radius:8px;padding:10px;margin-bottom:12px;font-size:11px">
+      <div style="font-weight:700;color:var(--accent-dark)">${escapeHtml(pac?.nombre || "Paciente")}</div>
+      <div style="color:var(--accent-dark);font-family:monospace;font-size:10px;margin-top:2px">${escapeHtml(subjectId)}</div>
+      <div style="color:var(--accent-dark);margin-top:4px">
+        ${plan.icono || ""} Plan ${plan.nombre || sus.plan} · 
+        Cons: ${sus.cuota_consultas_usada}/${plan.cuotas?.consultas || 0} · 
+        Tam: ${sus.cuota_tamizajes_usada}/${plan.cuotas?.tamizajes || 0}
+      </div>
+    </div>
+  `;
+};
+
+window.actualizarPrecioAddon = function() {
+  const tipo = document.getElementById("addon-tipo")?.value || "consulta";
+  const cantidad = parseInt(document.getElementById("addon-cantidad")?.value) || 1;
+  
+  const precios = {
+    consulta: 12.00,
+    tamizaje: 15.00,
+    interconsulta: 4.00,
+    constancia: 5.00
+  };
+  
+  const total = (precios[tipo] || 0) * cantidad;
+  const el = document.getElementById("addon-monto");
+  if (el) el.textContent = "$" + total.toFixed(2);
+};
+
+window.confirmarAddon = async function() {
+  const errEl = document.getElementById("addon-error");
+  const setErr = (msg) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  };
+  if (errEl) errEl.style.display = "none";
+  
+  const subjectId = document.getElementById("addon-subject")?.value;
+  const tipo = document.getElementById("addon-tipo")?.value;
+  const cantidad = parseInt(document.getElementById("addon-cantidad")?.value) || 1;
+  const metodo = document.getElementById("addon-metodo")?.value || "transferencia";
+  
+  if (!subjectId) { setErr("Selecciona un paciente"); return; }
+  if (!tipo) { setErr("Selecciona un tipo"); return; }
+  if (cantidad < 1) { setErr("Cantidad inválida"); return; }
+  
+  const precios = {
+    consulta: 12.00,
+    tamizaje: 15.00,
+    interconsulta: 4.00,
+    constancia: 5.00
+  };
+  const montoTotal = (precios[tipo] || 0) * cantidad;
+  
+  const btn = event?.target;
+  const original = btn ? btn.textContent : "✓ Aplicar add-on";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Aplicando...';
+  }
+  
+  try {
+    // 1. Registrar servicio extra (pagado)
+    const { data: servicio, error: errServ } = await window.supabaseClient
+      .from("servicios_extras")
+      .insert({
+        subject_id: subjectId,
+        tipo_servicio: tipo,
+        cantidad: cantidad,
+        monto_total: montoTotal,
+        estado: "aplicado",
+        metodo_pago: metodo,
+        pagado_at: new Date().toISOString(),
+        aplicado_at: new Date().toISOString(),
+        created_by: window.usuarioActual?.id
+      })
+      .select("id")
+      .single();
+    
+    if (errServ) throw errServ;
+    
+    // 2. Aplicar crédito extra
+    const { error: errCred } = await window.supabaseClient.rpc("aplicar_credito_extra", {
+      p_subject_id: subjectId,
+      p_tipo_servicio: tipo,
+      p_cantidad: cantidad,
+      p_referencia_id: servicio.id
+    });
+    
+    if (errCred) throw errCred;
+    
+    // 3. Registrar el pago
+    await window.supabaseClient.from("pagos_recibidos").insert({
+      subject_id: subjectId,
+      monto: montoTotal,
+      concepto: "addon_" + tipo,
+      periodo: new Date().toISOString().slice(0, 7) + "-01",
+      metodo: metodo,
+      registrado_por: window.usuarioActual?.id
+    });
+    
+    document.getElementById("modal-addon")?.remove();
+    
+    if (typeof showStatus === "function") {
+      showStatus(`✓ Add-on aplicado: ${cantidad} ${tipo}(s) por $${montoTotal.toFixed(2)}`, "success");
+    }
+    renderAdminSuscripciones();
+    
+  } catch (e) {
+    console.error("[confirmarAddon]", e);
+    setErr("Error: " + e.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+};
+
+/* ───────────────────────────────────────────────────────────
+   FUNCIÓN 4: Confirmar servicio extra pendiente
+   ─────────────────────────────────────────────────────────── */
+window.confirmarServicioExtra = async function(servicioId) {
+  if (!confirm("¿Confirmar este servicio extra y aplicar los créditos al paciente?")) return;
+  
+  try {
+    const { data: servicio } = await window.supabaseClient
+      .from("servicios_extras")
+      .select("*")
+      .eq("id", servicioId)
+      .single();
+    
+    if (!servicio) throw new Error("Servicio no encontrado");
+    
+    // Marcar como aplicado
+    await window.supabaseClient
+      .from("servicios_extras")
+      .update({
+        estado: "aplicado",
+        pagado_at: new Date().toISOString(),
+        aplicado_at: new Date().toISOString()
+      })
+      .eq("id", servicioId);
+    
+    // Aplicar crédito
+    await window.supabaseClient.rpc("aplicar_credito_extra", {
+      p_subject_id: servicio.subject_id,
+      p_tipo_servicio: servicio.tipo_servicio,
+      p_cantidad: servicio.cantidad,
+      p_referencia_id: servicio.id
+    });
+    
+    if (typeof showStatus === "function") showStatus("✓ Servicio extra aplicado", "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[confirmarServicioExtra]", e);
+    if (typeof showStatus === "function") showStatus("Error: " + e.message, "error");
+  }
+};
+
+window.cancelarServicioExtra = async function(servicioId) {
+  if (!confirm("¿Cancelar este servicio extra?")) return;
+  try {
+    await window.supabaseClient
+      .from("servicios_extras")
+      .update({ estado: "cancelado" })
+      .eq("id", servicioId);
+    if (typeof showStatus === "function") showStatus("Servicio cancelado", "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[cancelarServicioExtra]", e);
+  }
+};
+
+/* ───────────────────────────────────────────────────────────
+   FUNCIÓN 5: Renovar TODAS las cuotas (global)
+   ─────────────────────────────────────────────────────────── */
+window.renovarCuotasMes = async function() {
+  if (!confirm("¿Renovar las cuotas del mes para TODAS las suscripciones activas?\n\nEsta acción:\n• Resetea los contadores\n• NO extiende fechas de cobro")) return;
+  
+  try {
+    const { data, error } = await window.supabaseClient.rpc("renovar_cuotas_mensuales");
+    if (error) throw error;
+    
+    if (typeof showStatus === "function") {
+      showStatus(`✓ ${data.renovadas} suscripciones renovadas`, "success");
+    }
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[renovarCuotasMes]", e);
+    if (typeof showStatus === "function") showStatus("Error: " + e.message, "error");
+  }
+};
+
+/* ───────────────────────────────────────────────────────────
+   FUNCIÓN 6: Activar suscripción manual (flujo nuevo)
+   ─────────────────────────────────────────────────────────── */
+window.abrirModalActivarManual = async function() {
+  if (!window.supabaseClient) return;
+  
+  // Cargar pacientes sin suscripción
+  const { data: pacientesSinSub } = await window.supabaseClient
+    .from("patients")
+    .select("subject_id, nombre, email")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  
+  const { data: subsExistentes } = await window.supabaseClient
+    .from("suscripciones")
+    .select("subject_id")
+    .in("estado", ["activa", "pausada"]);
+  
+  const subsSet = new Set((subsExistentes || []).map(s => s.subject_id));
+  const disponibles = (pacientesSinSub || []).filter(p => !subsSet.has(p.subject_id));
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-activar-manual";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:520px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4);max-height:90vh;overflow-y:auto">
+      
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">
+          ➕ Activar plan manualmente
+        </h3>
+        <button onclick="document.getElementById('modal-activar-manual').remove()"
+                style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+      </div>
+      
+      <div style="background:#fff9e6;border-left:3px solid #ff9500;border-radius:0 6px 6px 0;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#8a6a00;line-height:1.5">
+        <strong>⚠️ Verifica el pago ANTES de activar</strong><br>
+        Confirma que el monto aparezca en tu cuenta bancaria, Wompi o caja.
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Paciente *</label>
+        <select id="activar-subject" style="font-size:12px;padding:10px">
+          <option value="">— Seleccionar paciente —</option>
+          ${disponibles.map(p => `
+            <option value="${p.subject_id}">
+              ${escapeHtml(p.nombre)} (${p.subject_id})
+            </option>
+          `).join("")}
+        </select>
+        ${disponibles.length === 0 ? '<p style="font-size:10px;color:var(--warning);margin-top:4px">No hay pacientes sin suscripción activa</p>' : ''}
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Plan *</label>
+        <select id="activar-plan" style="font-size:13px;padding:10px">
+          <option value="basico">🥉 Básico — $9.90/mes</option>
+          <option value="plus" selected>🥈 Plus — $15.00/mes</option>
+          <option value="premium">🥇 Premium — $20.00/mes</option>
+        </select>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Meses de vigencia *</label>
+          <input type="number" id="activar-meses" value="1" min="1" max="12" 
+                 style="font-size:13px;padding:10px">
+        </div>
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Método de pago *</label>
+          <select id="activar-metodo" style="font-size:13px;padding:10px">
+            <option value="transferencia">🏦 Transferencia</option>
+            <option value="efectivo">💵 Efectivo</option>
+            <option value="wompi">💳 Wompi</option>
+            <option value="bitcoin">₿ Bitcoin</option>
+            <option value="otro">📝 Otro</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Referencia / Comprobante (opcional)</label>
+        <input type="text" id="activar-referencia" placeholder="Ej: #transferencia 123456"
+               style="font-size:12px;padding:8px 10px">
+      </div>
+      
+      <div id="activar-error" style="display:none;margin-bottom:12px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+      
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-activar-manual').remove()" style="flex:1;font-size:12px">
+          Cancelar
+        </button>
+        <button class="btn btn-success" onclick="confirmarActivacionManual()" style="flex:1;font-size:12px">
+          ✓ Activar plan
+        </button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+};
+
+window.confirmarActivacionManual = async function() {
+  const errEl = document.getElementById("activar-error");
+  const setErr = (msg) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  };
+  if (errEl) errEl.style.display = "none";
+  
+  const subjectId = document.getElementById("activar-subject")?.value;
+  const planId = document.getElementById("activar-plan")?.value;
+  const meses = parseInt(document.getElementById("activar-meses")?.value) || 1;
+  const metodo = document.getElementById("activar-metodo")?.value || "transferencia";
+  const referencia = document.getElementById("activar-referencia")?.value?.trim() || null;
+  
+  if (!subjectId) { setErr("Selecciona un paciente"); return; }
+  if (!planId) { setErr("Selecciona un plan"); return; }
+  
+  const plan = PLANES_SUSCRIPCION[planId];
+  if (!plan) { setErr("Plan inválido"); return; }
+  
+  const btn = event?.target;
+  const original = btn ? btn.textContent : "✓ Activar plan";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Activando...';
+  }
+  
+  try {
+    const hoy = new Date().toISOString().slice(0, 10);
+    const proximoCobro = new Date();
+    proximoCobro.setMonth(proximoCobro.getMonth() + meses);
+    const proximoCobroStr = proximoCobro.toISOString().slice(0, 10);
+    
+    // 1. Crear/actualizar suscripción
+    const { error: errSub } = await window.supabaseClient
+      .from("suscripciones")
+      .upsert({
+        subject_id: subjectId,
+        plan: planId,
+        estado: "activa",
+        fecha_inicio: hoy,
+        fecha_proximo_cobro: proximoCobroStr,
+        cuota_consultas_usada: 0,
+        cuota_tamizajes_usada: 0,
+        cuota_interconsultas_usada: 0,
+        cuota_constancias_usada: 0,
+        metodo_pago_principal: metodo,
+        activado_por: window.usuarioActual?.id,
+        activado_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, { onConflict: "subject_id" });
+    
+    if (errSub) throw errSub;
+    
+    // 2. Registrar pago(s)
+    const montoTotal = plan.precio * meses;
+    await window.supabaseClient.from("pagos_recibidos").insert({
+      subject_id: subjectId,
+      monto: montoTotal,
+      concepto: "suscripcion_" + planId + (meses > 1 ? `_${meses}meses` : ""),
+      periodo: new Date().toISOString().slice(0, 7) + "-01",
+      metodo: metodo,
+      referencia_externa: referencia,
+      registrado_por: window.usuarioActual?.id
+    });
+    
+    // 3. Marcar intención si existía
+    await window.supabaseClient
+      .from("intenciones_suscripcion")
+      .update({ estado: "activada", activada_at: new Date().toISOString() })
+      .eq("subject_id", subjectId)
+      .eq("estado", "pendiente_pago");
+    
+    document.getElementById("modal-activar-manual")?.remove();
+    
+    if (typeof showStatus === "function") {
+      showStatus(`✓ Plan ${plan.nombre} activado por ${meses} mes(es)`, "success");
+    }
+    renderAdminSuscripciones();
+    
+  } catch (e) {
+    console.error("[confirmarActivacionManual]", e);
+    setErr("Error: " + e.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+};
+
+/* ───────────────────────────────────────────────────────────
+   FUNCIÓN 7: Registrar pago general (sin suscripción específica)
+   ─────────────────────────────────────────────────────────── */
+window.abrirModalRegistrarPago = function() {
+  window.abrirModalRegistrarPagoUnificado._sinSubject = true;
+  
+  // Redirigir al modal unificado con selector
+  const overlay = document.createElement("div");
+  overlay.id = "modal-registrar-pago-general";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px";
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:400px;padding:24px;text-align:center">
+      <div style="font-size:32px;margin-bottom:12px">💵</div>
+      <h3 style="font-size:15px;font-weight:700;color:var(--corp);margin-bottom:8px">Registrar pago general</h3>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:16px">
+        Selecciona la suscripción específica en el panel y usa el botón "💵 Registrar pago" de esa tarjeta.
+      </p>
+      <button onclick="document.getElementById('modal-registrar-pago-general').remove()" 
+              class="btn btn-primary" style="width:100%">Entendido</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+};
+
+window.rechazarIntencion = async function(intencionId) {
+  if (!confirm("¿Rechazar esta solicitud?")) return;
+  try {
+    await window.supabaseClient
+      .from("intenciones_suscripcion")
+      .update({ estado: "rechazada" })
+      .eq("id", intencionId);
+    if (typeof showStatus === "function") showStatus("Solicitud rechazada", "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[rechazarIntencion]", e);
+  }
+};
+
+window.activarSuscripcionManual = async function(subjectId, planId, intencionId) {
+  const plan = PLANES_SUSCRIPCION[planId];
+  if (!plan) return;
+  
+  const confirmado = confirm(
+    `¿Confirmas la activación del Plan ${plan.nombre}?\n\n` +
+    `Paciente: ${subjectId}\n` +
+    `Precio: $${plan.precio.toFixed(2)}/mes\n\n` +
+    `⚠️ Verifica el pago ANTES de continuar.`
+  );
+  if (!confirmado) return;
+  
+  const fechaProximoCobro = new Date();
+  fechaProximoCobro.setMonth(fechaProximoCobro.getMonth() + 1);
+  
+  try {
+    const { error: errSub } = await window.supabaseClient
+      .from("suscripciones")
+      .upsert({
+        subject_id: subjectId,
+        plan: planId,
+        estado: "activa",
+        fecha_inicio: new Date().toISOString().slice(0, 10),
+        fecha_proximo_cobro: fechaProximoCobro.toISOString().slice(0, 10),
+        cuota_consultas_usada: 0,
+        cuota_tamizajes_usada: 0,
+        cuota_interconsultas_usada: 0,
+        cuota_constancias_usada: 0,
+        activado_por: window.usuarioActual?.id,
+        activado_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, { onConflict: "subject_id" });
+    
+    if (errSub) throw errSub;
+    
+    await window.supabaseClient.from("pagos_recibidos").insert({
+      subject_id: subjectId,
+      monto: plan.precio,
+      concepto: "suscripcion_" + planId,
+      periodo: new Date().toISOString().slice(0, 7) + "-01",
+      metodo: "transferencia",
+      registrado_por: window.usuarioActual?.id
+    });
+    
+    if (intencionId) {
+      await window.supabaseClient
+        .from("intenciones_suscripcion")
+        .update({ estado: "activada", activada_at: new Date().toISOString() })
+        .eq("id", intencionId);
+    }
+    
+    if (typeof showStatus === "function") showStatus(`✓ Plan ${plan.nombre} activado`, "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[activarSuscripcionManual]", e);
+    if (typeof showStatus === "function") showStatus("Error: " + e.message, "error");
+  }
+};
+
+window.pausarSuscripcion = async function(suscripcionId) {
+  if (!confirm("¿Pausar esta suscripción? No se cobrará el próximo mes.")) return;
+  try {
+    await window.supabaseClient
+      .from("suscripciones")
+      .update({ estado: "pausada", updated_at: new Date().toISOString() })
+      .eq("id", suscripcionId);
+    if (typeof showStatus === "function") showStatus("Suscripción pausada", "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[pausarSuscripcion]", e);
+  }
+};
+
+window.reactivarSuscripcion = async function(suscripcionId) {
+  try {
+    await window.supabaseClient
+      .from("suscripciones")
+      .update({ estado: "activa", updated_at: new Date().toISOString() })
+      .eq("id", suscripcionId);
+    if (typeof showStatus === "function") showStatus("Suscripción reactivada", "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[reactivarSuscripcion]", e);
+  }
+};
+
+window.cancelarSuscripcion = async function(suscripcionId) {
+  if (!confirm("⚠️ ¿Cancelar definitivamente esta suscripción?\n\nEl paciente perderá acceso al plan.")) return;
+  try {
+    await window.supabaseClient
+      .from("suscripciones")
+      .update({ estado: "cancelada", updated_at: new Date().toISOString() })
+      .eq("id", suscripcionId);
+    if (typeof showStatus === "function") showStatus("Suscripción cancelada", "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[cancelarSuscripcion]", e);
+  }
+};
+
+window.exportarSuscripcionesCSV = async function() {
+  try {
+    const { data } = await window.supabaseClient
+      .from("suscripciones")
+      .select("subject_id, plan, estado, fecha_inicio, fecha_proximo_cobro, cuota_consultas_usada, cuota_tamizajes_usada");
+    
+    if (!data || data.length === 0) { alert("Sin datos"); return; }
+    
+    const headers = ["subject_id", "plan", "estado", "fecha_inicio", "fecha_proximo_cobro", "consultas_usadas", "tamizajes_usados"];
+    const rows = data.map(s => [
+      s.subject_id, s.plan, s.estado, s.fecha_inicio, s.fecha_proximo_cobro,
+      s.cuota_consultas_usada, s.cuota_tamizajes_usada
+    ]);
+    
+    const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "suscripciones_" + new Date().toISOString().slice(0, 10) + ".csv";
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    if (typeof showStatus === "function") showStatus("CSV exportado", "success");
+  } catch (e) {
+    console.error("[exportarSuscripcionesCSV]", e);
+  }
+};
+
+console.log("[Suscripciones v1.2] ✓ Funciones completas cargadas");
 
 window.activarSuscripcionManual = async function(subjectId, planId, intencionId) {
   const plan = PLANES_SUSCRIPCION[planId];
