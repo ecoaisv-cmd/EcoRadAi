@@ -2010,6 +2010,7 @@ input[type="checkbox"]{width:auto}
       <div class="admin-subtab" data-subtab="empresas" onclick="cambiarSubtabAdmin('empresas')">🏢 Empresas</div>
       <div class="admin-subtab" data-subtab="medicos" onclick="cambiarSubtabAdmin('medicos')">👨‍⚕️ Médicos</div>
       <div class="admin-subtab" data-subtab="sistema" onclick="cambiarSubtabAdmin('sistema')">⚙️ Sistema</div>
+      <div class="admin-subtab" data-subtab="suscripciones" onclick="cambiarSubtabAdmin('suscripciones')">💳 Suscripciones</div>
       <div class="admin-subtab" data-subtab="datos" onclick="cambiarSubtabAdmin('datos')">💾 Datos</div>
     </div>
 
@@ -2103,6 +2104,22 @@ input[type="checkbox"]{width:auto}
         <div class="admin-card-body" id="admin-stats-catalogo"><p style="font-size:11px">Cargando…</p></div>
       </div>
     </div>
+    
+    <div class="admin-section" id="admin-sec-suscripciones">
+  <div class="admin-alert">
+    <strong>💳 Suscripciones</strong> — Gestiona los planes de pago recurrente.
+    En esta fase, activa manualmente las suscripciones tras confirmar el pago en Stripe.
+  </div>
+  <div class="btn-row" style="margin-bottom:14px">
+    <button class="btn btn-secondary btn-sm" onclick="renderAdminSuscripciones()">🔄 Recargar</button>
+    <button class="btn btn-warning btn-sm" onclick="renovarCuotasMes()">🔁 Renovar cuotas del mes</button>
+    <button class="btn btn-primary btn-sm" onclick="exportarSuscripcionesCSV()">📥 Exportar CSV</button>
+  </div>
+  <div id="admin-suscripciones-lista">
+    <div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>
+  </div>
+</div>
+
 
     <div class="admin-section" id="admin-sec-datos">
       <div class="admin-alert"><strong>💾 Exportar / Importar</strong> — Respalda tu configuración como JSON.</div>
@@ -2132,6 +2149,83 @@ input[type="checkbox"]{width:auto}
 <!-- ═══════════════════════════════════════════════════════════
      PORTAL DEL PACIENTE
      ═══════════════════════════════════════════════════════════ -->
+
+<!-- ═══════════════════════════════════════════════════════════
+     BANNER DE SUSCRIPCIÓN
+     ═══════════════════════════════════════════════════════════ -->
+<div id="portal-suscripcion" style="margin-bottom:16px">
+  
+  <!-- Estado 1: Sin suscripción -->
+  <div id="portal-sin-suscripcion" style="display:none;background:linear-gradient(135deg,#1a3a5c,#0071e3);border-radius:16px;padding:24px;color:#fff;text-align:center">
+    <div style="font-size:40px;margin-bottom:8px">✨</div>
+    <h2 style="font-size:20px;font-weight:800;margin-bottom:6px">Activa tu plan EcoRadAi</h2>
+    <p style="font-size:12px;opacity:0.9;margin-bottom:16px;line-height:1.5">
+      Accede a consultas médicas, tamizajes con IA y seguimiento personalizado desde $9.90/mes
+    </p>
+    <button onclick="abrirModalPlanes()" style="background:#d4a017;color:#fff;border:none;padding:12px 24px;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer">
+      Ver planes disponibles
+    </button>
+  </div>
+
+  <!-- Estado 2: Con suscripción activa -->
+  <div id="portal-con-suscripcion" style="display:none">
+    <div style="background:linear-gradient(135deg,#1a3a5c,#0071e3);border-radius:16px;padding:20px;color:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85">Mi suscripción</div>
+          <div style="font-size:24px;font-weight:800;margin:6px 0 2px" id="portal-plan-nombre">Plan</div>
+          <div style="font-size:11px;opacity:0.9">Próximo cobro: <strong id="portal-proximo-cobro">—</strong></div>
+          <div style="font-size:10px;opacity:0.75;margin-top:4px" id="portal-plan-precio">—</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:10px;opacity:0.85;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Cuotas del mes</div>
+          <div style="display:flex;gap:14px">
+            <div>
+              <div style="font-size:22px;font-weight:800" id="portal-cuota-consultas">0/0</div>
+              <div style="font-size:9px;opacity:0.8">Consultas</div>
+            </div>
+            <div>
+              <div style="font-size:22px;font-weight:800" id="portal-cuota-tamizajes">0/0</div>
+              <div style="font-size:9px;opacity:0.8">Tamizajes</div>
+            </div>
+            <div>
+              <div style="font-size:22px;font-weight:800" id="portal-cuota-interconsultas">0/0</div>
+              <div style="font-size:9px;opacity:0.8">Interconsultas</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+        <button onclick="abrirGestionSuscripcion()" style="background:rgba(255,255,255,0.2);color:#fff;border:none;padding:10px 16px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;flex:1">
+          ⚙️ Gestionar
+        </button>
+        <button onclick="abrirModalPlanes()" style="background:#d4a017;color:#fff;border:none;padding:10px 16px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;flex:1">
+          ⬆️ Mejorar plan
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DE PLANES -->
+<div id="modal-planes" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99999;overflow-y:auto;padding:20px">
+  <div style="max-width:900px;margin:40px auto">
+    <div style="background:var(--bg);border-radius:var(--border-radius-lg,16px);padding:24px">
+      <div style="text-align:center;margin-bottom:24px">
+        <h2 style="font-size:22px;font-weight:800;color:var(--corp);margin-bottom:6px">Elige tu plan EcoRadAi</h2>
+        <p style="font-size:12px;color:var(--text-secondary);line-height:1.5">
+          Cancela en cualquier momento · Sin cargos ocultos · 7 días de garantía
+        </p>
+      </div>
+      <div id="planes-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px"></div>
+      <div style="text-align:center;margin-top:20px">
+        <button onclick="cerrarModalPlanes()" style="background:var(--bg-tertiary);color:var(--text-primary);border:none;padding:10px 20px;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>     
 <div class="section" id="sec-paciente-portal">
   <div class="card" style="background:linear-gradient(135deg,var(--accent-light),#d0e8fc);border:2px solid var(--accent)">
     <div style="text-align:center;padding:8px 0">
@@ -7990,6 +8084,25 @@ async function generarInformeBase() {
     }
     return;
   }
+    // ═══════════════════════════════════════════════════════════
+  // VERIFICACIÓN DE CUOTA DE TAMIZAJE (Módulo Suscripciones)
+  // ═══════════════════════════════════════════════════════════
+  if (typeof verificarCuotaClinica === "function" && _pacienteActual?.subject_id) {
+    try {
+      const checkCuota = await verificarCuotaClinica(_pacienteActual.subject_id, "tamizaje");
+      if (checkCuota.tiene_suscripcion && !checkCuota.disponible) {
+        const plan = PLANES_SUSCRIPCION[checkCuota.plan];
+        if (typeof mostrarModalCuotaAgotada === "function") {
+          mostrarModalCuotaAgotada("tamizaje", plan?.nombre || checkCuota.plan);
+        } else {
+          showStatus("Cuota de tamizajes agotada este mes", "warning");
+        }
+        return;
+      }
+    } catch (e) {
+      console.warn("[Cuota tamizaje]", e);
+    }
+  }
 
   if (!aiResponseText || aiResponseText.trim() === "") {
     showStatus("No hay respuesta de la IA.", "error");
@@ -8000,7 +8113,7 @@ async function generarInformeBase() {
     showStatus("Tamizaje no válido.", "error");
     return;
   }
-
+ 
   showStatus("Construyendo caso canónico...", "info");
 
   const g = id => document.getElementById(id) ? document.getElementById(id).value : "N/E";
@@ -8117,6 +8230,19 @@ async function generarInformeBase() {
     try { recalcularTodasLasEscalas(); } catch (e) {}
 
     await guardarCasoDB(casoActual);
+
+    // ═══════════════════════════════════════════════════════════
+    // CONSUMIR CUOTA DE TAMIZAJE (Módulo Suscripciones)
+    // ═══════════════════════════════════════════════════════════
+    if (typeof consumirCuotaClinica === "function" && _pacienteActual?.subject_id) {
+      try {
+        await consumirCuotaClinica(_pacienteActual.subject_id, "tamizaje", casoActual.case_id);
+        console.log("[Cuota] ✓ Tamizaje consumido del plan");
+      } catch (e) {
+        console.warn("[Cuota tamizaje consumo]", e);
+      }
+    }
+
     renderInterconsultasSugeridas();
     cargarEditorTratamiento();
 
@@ -16394,12 +16520,889 @@ Adapta el análisis al contexto obstétrico:
     reinit: inicializar
   };
 
+
+  
   console.log("[Consulta Especialidad] ✓ Módulo cargado (esperando DOM)");
 })();
+
 console.log("[PDF Consulta] ✓ Módulo de descarga v24.0 cargado");
 console.log("[Consulta] C.1 + C.2 + C.3 cargados correctamente");
 console.log("[Consulta] Cierre, firma y persistencia cargados");
 console.log("%c Módulo Consulta Médica v23.5 listo ", "background:#1a3a5c;color:white;padding:6px 12px;border-radius:4px;font-weight:bold;font-size:12px");
+</script>
+<!-- ═══════════════════════════════════════════════════════════
+     MÓDULO DE SUSCRIPCIONES Y FACTURACIÓN v1.0
+     Preparado para 50 usuarios. Migrar cuando escales.
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+/* ═══════════════════════════════════════════════════════════
+   CONFIGURACIÓN DE PLANES
+   ⚠️ REEMPLAZA los links_pago con tus links reales de Stripe
+   ═══════════════════════════════════════════════════════════ */
+
+const PLANES_SUSCRIPCION = {
+  basico: {
+    id: "basico",
+    nombre: "Básico",
+    precio: 9.90,
+    icono: "🥉",
+    color: "#86868b",
+    descripcion: "Monitoreo preventivo personal",
+    cuotas: {
+      consultas: 1,
+      tamizajes: 1,
+      interconsultas: 0,
+      constancias: 1
+    },
+    beneficios: [
+      "1 consulta médica al mes",
+      "1 tamizaje IA al mes",
+      "Portal del paciente 24/7",
+      "Historial de 6 meses",
+      "Receta electrónica",
+      "1 constancia al mes"
+    ],
+    link_pago: "https://buy.stripe.com/test_REEMPLAZA_basico"
+  },
+  
+  plus: {
+    id: "plus",
+    nombre: "Plus",
+    precio: 15.00,
+    icono: "🥈",
+    color: "#0071e3",
+    descripcion: "Seguimiento de condiciones crónicas",
+    cuotas: {
+      consultas: 3,
+      tamizajes: 1,
+      interconsultas: 2,
+      constancias: 3
+    },
+    beneficios: [
+      "3 consultas médicas al mes",
+      "1 tamizaje IA al mes",
+      "2 interconsultas con IA al mes",
+      "Historial de 24 meses",
+      "Alertas proactivas",
+      "Timeline unificado",
+      "3 constancias al mes"
+    ],
+    link_pago: "https://buy.stripe.com/test_REEMPLAZA_plus",
+    recomendado: true
+  },
+  
+  premium: {
+    id: "premium",
+    nombre: "Premium",
+    precio: 20.00,
+    icono: "🥇",
+    color: "#d4a017",
+    descripcion: "Cobertura familiar y máximo acompañamiento",
+    cuotas: {
+      consultas: 5,
+      tamizajes: 2,
+      interconsultas: 5,
+      constancias: 99
+    },
+    beneficios: [
+      "5 consultas médicas al mes",
+      "2 tamizajes IA al mes",
+      "5 interconsultas con IA al mes",
+      "Historial ilimitado",
+      "Alertas proactivas + Timeline",
+      "Videoconsulta (próximamente)",
+      "Constancias ilimitadas",
+      "1 familiar adicional incluido",
+      "Soporte prioritario 24/7"
+    ],
+    link_pago: "https://buy.stripe.com/test_REEMPLAZA_premium"
+  }
+};
+
+console.log("[Suscripciones] Módulo v1.0 cargado");
+
+/* ═══════════════════════════════════════════════════════════
+   PORTAL DEL PACIENTE: Cargar estado de suscripción
+   ═══════════════════════════════════════════════════════════ */
+
+window.cargarEstadoSuscripcion = async function() {
+  const subjectId = window.usuarioActual?.paciente_id;
+  if (!subjectId || !window.supabaseClient) return;
+  
+  console.log("[Suscripciones] Cargando estado para:", subjectId);
+  
+  try {
+    const { data, error } = await window.supabaseClient
+      .from("suscripciones")
+      .select("*")
+      .eq("subject_id", subjectId)
+      .maybeSingle();
+    
+    const sinSub = document.getElementById("portal-sin-suscripcion");
+    const conSub = document.getElementById("portal-con-suscripcion");
+    
+    if (error) {
+      console.warn("[Suscripciones] Error:", error);
+    }
+    
+    // Sin suscripción (o cancelada/vencida)
+    if (!data || data.estado === "cancelada" || data.estado === "vencida") {
+      if (sinSub) sinSub.style.display = "block";
+      if (conSub) conSub.style.display = "none";
+      return;
+    }
+    
+    // Con suscripción activa
+    if (sinSub) sinSub.style.display = "none";
+    if (conSub) conSub.style.display = "block";
+    
+    const plan = PLANES_SUSCRIPCION[data.plan];
+    if (!plan) return;
+    
+    document.getElementById("portal-plan-nombre").textContent = plan.icono + " Plan " + plan.nombre;
+    document.getElementById("portal-proximo-cobro").textContent = formatearFechaSuscripcion(data.fecha_proximo_cobro);
+    document.getElementById("portal-plan-precio").textContent = "$" + plan.precio.toFixed(2) + " USD/mes";
+    
+    // Cuotas
+    const cCons = document.getElementById("portal-cuota-consultas");
+    const cTam = document.getElementById("portal-cuota-tamizajes");
+    const cInter = document.getElementById("portal-cuota-interconsultas");
+    
+    if (cCons) cCons.textContent = `${data.cuota_consultas_usada}/${plan.cuotas.consultas}`;
+    if (cTam) cTam.textContent = `${data.cuota_tamizajes_usada}/${plan.cuotas.tamizajes}`;
+    if (cInter) cInter.textContent = `${data.cuota_interconsultas_usada}/${plan.cuotas.interconsultas}`;
+    
+    // Colores según uso
+    actualizarColoresCuota(cCons, data.cuota_consultas_usada, plan.cuotas.consultas);
+    actualizarColoresCuota(cTam, data.cuota_tamizajes_usada, plan.cuotas.tamizajes);
+    actualizarColoresCuota(cInter, data.cuota_interconsultas_usada, plan.cuotas.interconsultas);
+    
+    console.log("[Suscripciones] ✓ Plan activo:", data.plan);
+    
+  } catch (e) {
+    console.error("[cargarEstadoSuscripcion]", e);
+  }
+};
+
+function actualizarColoresCuota(el, usada, total) {
+  if (!el || total === 0) return;
+  if (usada >= total) {
+    el.style.color = "#ff6b6b";
+  } else if (usada === total - 1) {
+    el.style.color = "#ffb366";
+  } else {
+    el.style.color = "#fff";
+  }
+}
+
+function formatearFechaSuscripcion(fechaISO) {
+  if (!fechaISO) return "—";
+  try {
+    const d = new Date(fechaISO + "T12:00:00");
+    return d.toLocaleDateString("es-ES", { year: "numeric", month: "short", day: "numeric" });
+  } catch (e) { return fechaISO; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MODAL DE PLANES
+   ═══════════════════════════════════════════════════════════ */
+
+window.abrirModalPlanes = function() {
+  const grid = document.getElementById("planes-grid");
+  const modal = document.getElementById("modal-planes");
+  if (!grid || !modal) return;
+  
+  grid.innerHTML = Object.values(PLANES_SUSCRIPCION).map(plan => `
+    <div style="
+      background: ${plan.recomendado ? "linear-gradient(135deg,#f0f7ff,#e8f4fd)" : "var(--bg-secondary)"};
+      border: 2px solid ${plan.recomendado ? plan.color : "var(--border)"};
+      border-radius: 16px;
+      padding: 20px;
+      position: relative;
+    ">
+      ${plan.recomendado ? `
+        <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:${plan.color};color:white;font-size:10px;font-weight:700;padding:4px 12px;border-radius:100px;letter-spacing:0.5px;text-transform:uppercase">Recomendado</div>
+      ` : ""}
+      
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:32px;margin-bottom:6px">${plan.icono}</div>
+        <div style="font-size:18px;font-weight:800;color:var(--corp);margin-bottom:4px">Plan ${plan.nombre}</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px">${plan.descripcion}</div>
+        <div style="font-size:32px;font-weight:800;color:${plan.color}">
+          $${plan.precio.toFixed(2)}
+          <span style="font-size:12px;font-weight:500;color:var(--text-tertiary)">/mes</span>
+        </div>
+      </div>
+      
+      <ul style="list-style:none;padding:0;margin:0 0 20px 0">
+        ${plan.beneficios.map(b => `
+          <li style="font-size:11.5px;line-height:1.6;padding:6px 0;display:flex;align-items:flex-start;gap:8px;border-bottom:1px solid ${plan.recomendado ? "rgba(0,113,227,0.1)" : "var(--border)"}">
+            <span style="color:${plan.color};font-weight:700;flex-shrink:0">✓</span>
+            <span>${b}</span>
+          </li>
+        `).join("")}
+      </ul>
+      
+      <button onclick="iniciarSuscripcion('${plan.id}')" style="width:100%;padding:12px;background:${plan.recomendado ? plan.color : "var(--bg-tertiary)"};color:${plan.recomendado ? "white" : "var(--text-primary)"};border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">
+        ${plan.icono} Suscribirme
+      </button>
+      
+      <p style="font-size:9px;color:var(--text-tertiary);text-align:center;margin-top:8px;line-height:1.4">
+        Pago seguro vía Stripe<br>
+        Cancela cuando quieras
+      </p>
+    </div>
+  `).join("");
+  
+  modal.style.display = "block";
+};
+
+window.cerrarModalPlanes = function() {
+  document.getElementById("modal-planes").style.display = "none";
+};
+
+/* ═══════════════════════════════════════════════════════════
+   INICIAR SUSCRIPCIÓN
+   ═══════════════════════════════════════════════════════════ */
+
+window.iniciarSuscripcion = async function(planId) {
+  const plan = PLANES_SUSCRIPCION[planId];
+  if (!plan) return;
+  
+  if (!window.usuarioActual || !window.supabaseClient) {
+    if (typeof showStatus === "function") showStatus("Debes iniciar sesión", "error");
+    return;
+  }
+  
+  // ⚠️ Verifica que hayas reemplazado el link
+  if (plan.link_pago.includes("REEMPLAZA")) {
+    if (typeof showStatus === "function") {
+      showStatus("Configura primero los links de Stripe", "error");
+    }
+    alert("El link de pago aún no está configurado.\n\nEdita PLANES_SUSCRIPCION en el HTML y reemplaza los links de Stripe.");
+    return;
+  }
+  
+  try {
+    // Registrar intención
+    const { error } = await window.supabaseClient
+      .from("intenciones_suscripcion")
+      .insert({
+        subject_id: window.usuarioActual.paciente_id,
+        plan_solicitado: planId,
+        estado: "pendiente_pago"
+      });
+    
+    if (error) console.warn("[Intención]", error);
+    
+    // Abrir link de pago
+    const url = plan.link_pago + "?client_reference_id=" + window.usuarioActual.paciente_id;
+    window.open(url, "_blank");
+    
+    // Mostrar modal de espera
+    mostrarModalEsperaPago(plan);
+    
+  } catch (e) {
+    console.error("[iniciarSuscripcion]", e);
+    if (typeof showStatus === "function") showStatus("Error: " + e.message, "error");
+  }
+};
+
+function mostrarModalEsperaPago(plan) {
+  const overlay = document.createElement("div");
+  overlay.id = "modal-espera-pago";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:440px;width:100%;padding:32px;text-align:center">
+      <div style="font-size:48px;margin-bottom:12px">💳</div>
+      <h3 style="font-size:18px;font-weight:800;color:var(--corp);margin-bottom:8px">Completando tu suscripción</h3>
+      <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:20px">
+        Se abrió una ventana para que completes el pago del <strong>Plan ${plan.nombre}</strong> ($${plan.precio}/mes).
+      </p>
+      <div style="background:var(--accent-light);border-radius:12px;padding:14px;margin-bottom:20px;text-align:left">
+        <div style="font-size:11px;font-weight:700;color:var(--accent-dark);margin-bottom:6px">📧 ¿Qué sigue?</div>
+        <ol style="font-size:11px;color:var(--text-primary);line-height:1.7;margin-left:18px">
+          <li>Completa el pago en la ventana abierta</li>
+          <li>Recibirás un email de confirmación de Stripe</li>
+          <li>El equipo activará tu plan en menos de 24h</li>
+          <li>Recibirás otro email cuando esté activo</li>
+        </ol>
+      </div>
+      <button onclick="document.getElementById('modal-espera-pago').remove()" style="width:100%;padding:12px;background:var(--accent);color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">
+        Entendido
+      </button>
+      <p style="font-size:10px;color:var(--text-tertiary);margin-top:12px">
+        ¿Problemas? Escríbenos a soporte@ecoradai.com
+      </p>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+}
+
+window.abrirGestionSuscripcion = function() {
+  if (typeof showStatus === "function") {
+    showStatus("Contacta a soporte@ecoradai.com para gestionar tu plan", "info");
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   VERIFICACIÓN DE CUOTAS EN EL FLUJO CLÍNICO
+   ═══════════════════════════════════════════════════════════ */
+
+window.verificarCuotaClinica = async function(subjectId, tipoServicio) {
+  if (!subjectId || !window.supabaseClient) return { ok: true, sin_suscripcion: true };
+  
+  try {
+    const { data, error } = await window.supabaseClient.rpc("verificar_cuota", {
+      p_subject_id: subjectId,
+      p_tipo_servicio: tipoServicio
+    });
+    
+    if (error) {
+      console.warn("[verificarCuotaClinica]", error);
+      return { ok: true, sin_suscripcion: true };
+    }
+    
+    return data;
+  } catch (e) {
+    console.error("[verificarCuotaClinica]", e);
+    return { ok: true, sin_suscripcion: true };
+  }
+};
+
+window.consumirCuotaClinica = async function(subjectId, tipoServicio, referenciaId) {
+  if (!subjectId || !window.supabaseClient) return { ok: true, sin_suscripcion: true };
+  
+  try {
+    const { data, error } = await window.supabaseClient.rpc("consumir_cuota", {
+      p_subject_id: subjectId,
+      p_tipo_servicio: tipoServicio,
+      p_referencia_id: referenciaId
+    });
+    
+    if (error) {
+      console.warn("[consumirCuotaClinica]", error);
+      return { ok: true, sin_suscripcion: true };
+    }
+    
+    return data;
+  } catch (e) {
+    console.error("[consumirCuotaClinica]", e);
+    return { ok: true, sin_suscripcion: true };
+  }
+};
+
+window.mostrarModalCuotaAgotada = function(tipoServicio, plan) {
+  const overlay = document.createElement("div");
+  overlay.id = "modal-cuota-agotada";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px";
+  
+  const preciosAddon = {
+    consulta: { precio: 12, texto: "Consulta adicional" },
+    tamizaje: { precio: 15, texto: "Tamizaje adicional" },
+    interconsulta: { precio: 4, texto: "Interconsulta adicional" },
+    constancia: { precio: 5, texto: "Constancia adicional" }
+  };
+  
+  const info = preciosAddon[tipoServicio] || { precio: 0, texto: "Servicio adicional" };
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:440px;width:100%;padding:28px;text-align:center">
+      <div style="font-size:48px;margin-bottom:12px">⚠️</div>
+      <h3 style="font-size:18px;font-weight:800;color:var(--corp);margin-bottom:8px">Cuota mensual agotada</h3>
+      <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:16px">
+        Has usado todas las ${tipoServicio}s incluidas en tu <strong>Plan ${plan}</strong> de este mes.
+      </p>
+      <div style="background:#fff9e6;border:2px solid #ff9500;border-radius:12px;padding:16px;margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;color:#8a6a00;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
+          Opción 1: Agregar como add-on
+        </div>
+        <div style="font-size:24px;font-weight:800;color:#8a6a00;margin-bottom:4px">
+          $${info.precio}.00
+        </div>
+        <div style="font-size:11px;color:#5a4a00;margin-bottom:10px">
+          ${info.texto} · Se cobra una sola vez
+        </div>
+        <button onclick="solicitarAddon('${tipoServicio}', ${info.precio})" style="width:100%;padding:10px;background:#ff9500;color:white;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">
+          Solicitar add-on
+        </button>
+      </div>
+      <div style="background:#f0f7ff;border:2px solid #0071e3;border-radius:12px;padding:16px;margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;color:#0051a3;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
+          Opción 2: Mejorar de plan
+        </div>
+        <div style="font-size:11px;color:#0051a3;margin-bottom:10px;line-height:1.5">
+          Sube a un plan superior y obtén más cuotas mensuales
+        </div>
+        <button onclick="document.getElementById('modal-cuota-agotada').remove();abrirModalPlanes()" style="width:100%;padding:10px;background:#0071e3;color:white;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">
+          Ver planes
+        </button>
+      </div>
+      <button onclick="document.getElementById('modal-cuota-agotada').remove()" style="width:100%;padding:10px;background:var(--bg-tertiary);color:var(--text-primary);border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+        Cancelar
+      </button>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+};
+
+window.solicitarAddon = async function(tipoServicio, precio) {
+  const subjectId = window.usuarioActual?.paciente_id;
+  if (!subjectId) return;
+  
+  const conceptos = {
+    consulta: "addon_consulta",
+    tamizaje: "addon_tamizaje",
+    interconsulta: "addon_interconsulta",
+    constancia: "addon_constancia"
+  };
+  
+  try {
+    // Registrar intención de add-on
+    await window.supabaseClient.from("pagos_recibidos").insert({
+      subject_id: subjectId,
+      monto: precio,
+      concepto: conceptos[tipoServicio] || "addon_generico",
+      periodo: new Date().toISOString().slice(0, 7) + "-01",
+      metodo: "pendiente_pago",
+      referencia_externa: "solicitado_desde_app"
+    });
+    
+    document.getElementById("modal-cuota-agotada")?.remove();
+    
+    if (typeof showStatus === "function") {
+      showStatus("Solicitud enviada. Recibirás un email con el link de pago.", "success");
+    }
+  } catch (e) {
+    console.error("[solicitarAddon]", e);
+    if (typeof showStatus === "function") {
+      showStatus("Error: " + e.message, "error");
+    }
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   PANEL ADMIN: Gestión de suscripciones
+   ═══════════════════════════════════════════════════════════ */
+
+window.renderAdminSuscripciones = async function() {
+  const cont = document.getElementById("admin-suscripciones-lista");
+  if (!cont || !window.supabaseClient) return;
+  
+  cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+  
+  try {
+    // Pendientes
+    const { data: pendientes } = await window.supabaseClient
+      .from("intenciones_suscripcion")
+      .select("*")
+      .eq("estado", "pendiente_pago")
+      .order("created_at", { ascending: false });
+    
+    // Activas
+    const { data: activas } = await window.supabaseClient
+      .from("suscripciones")
+      .select("*")
+      .in("estado", ["activa", "pausada"])
+      .order("created_at", { ascending: false });
+    
+    // Cargar nombres de pacientes
+    const subjectIds = [
+      ...(pendientes || []).map(p => p.subject_id),
+      ...(activas || []).map(a => a.subject_id)
+    ];
+    
+    let pacientesMap = {};
+    if (subjectIds.length > 0) {
+      const { data: pacs } = await window.supabaseClient
+        .from("patients")
+        .select("subject_id, nombre, email")
+        .in("subject_id", subjectIds);
+      
+      if (pacs) {
+        pacientesMap = Object.fromEntries(pacs.map(p => [p.subject_id, p]));
+      }
+    }
+    
+    let html = "";
+    
+    // Sección pendientes
+    if (pendientes && pendientes.length > 0) {
+      html += `
+        <div class="admin-card" style="border-left:4px solid var(--warning)">
+          <div class="admin-card-header">
+            <div>
+              <div class="admin-card-title">⏳ ${pendientes.length} pago(s) pendiente(s) de activar</div>
+              <div class="admin-card-subtitle">Verifica el pago en Stripe y activa manualmente</div>
+            </div>
+          </div>
+          <div class="admin-card-body">
+            ${pendientes.map(p => {
+              const pac = pacientesMap[p.subject_id] || {};
+              const planInfo = PLANES_SUSCRIPCION[p.plan_solicitado] || {};
+              return `
+                <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+                  <div style="flex:1;min-width:200px">
+                    <div style="font-size:12px;font-weight:700;color:var(--corp)">${escapeHtml(pac.nombre || "Sin nombre")}</div>
+                    <div style="font-size:10px;color:var(--text-secondary);font-family:monospace">${escapeHtml(p.subject_id)}</div>
+                    <div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:4px">
+                      Plan solicitado: ${planInfo.icono || ""} ${planInfo.nombre || p.plan_solicitado}
+                    </div>
+                    <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">
+                      Solicitado: ${new Date(p.created_at).toLocaleString("es-ES")}
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <button class="btn btn-success btn-sm" onclick="activarSuscripcionManual('${p.subject_id}', '${p.plan_solicitado}', '${p.id}')" style="font-size:11px">✓ Activar</button>
+                    <button class="btn btn-danger btn-sm" onclick="rechazarIntencion('${p.id}')" style="font-size:10px">✗ Rechazar</button>
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      `;
+    }
+    
+    // Sección activas
+    const mrr = (activas || []).reduce((sum, s) => sum + (PLANES_SUSCRIPCION[s.plan]?.precio || 0), 0);
+    
+    html += `
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <div>
+            <div class="admin-card-title">✅ ${(activas || []).length} suscripción(es) activa(s)</div>
+            <div class="admin-card-subtitle">Ingreso mensual recurrente (MRR): $${mrr.toFixed(2)} USD</div>
+          </div>
+        </div>
+        <div class="admin-card-body">
+          ${(activas || []).map(s => {
+            const pac = pacientesMap[s.subject_id] || {};
+            const plan = PLANES_SUSCRIPCION[s.plan] || {};
+            const diasRestantes = Math.ceil((new Date(s.fecha_proximo_cobro) - new Date()) / (1000*60*60*24));
+            const alerta = diasRestantes <= 3 ? "color:var(--danger);font-weight:700" : "";
+            
+            return `
+              <div style="background:var(--bg-secondary);border-radius:8px;padding:10px;margin-bottom:6px">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+                  <div style="flex:1;min-width:200px">
+                    <div style="font-size:12px;font-weight:700;color:var(--corp)">
+                      ${escapeHtml(pac.nombre || "Sin nombre")}
+                      <span style="font-size:10px;font-weight:400;color:var(--text-secondary);margin-left:6px">${escapeHtml(pac.email || "")}</span>
+                    </div>
+                    <div style="font-size:11px;margin-top:3px">
+                      <span style="color:${plan.color};font-weight:700">${plan.icono || ""} ${plan.nombre || s.plan}</span>
+                      <span style="color:var(--text-tertiary);margin:0 8px">·</span>
+                      <span style="color:var(--text-secondary)">$${(plan.precio || 0).toFixed(2)}/mes</span>
+                      ${s.estado === "pausada" ? '<span style="background:#fff9e6;color:#8a6a00;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:8px">PAUSADA</span>' : ""}
+                    </div>
+                    <div style="font-size:10px;margin-top:3px;${alerta}">
+                      Próximo cobro: ${formatearFechaSuscripcion(s.fecha_proximo_cobro)} (${diasRestantes} días)
+                    </div>
+                    <div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">
+                      Cuotas: ${s.cuota_consultas_usada}/${plan.cuotas?.consultas || 0} cons · 
+                      ${s.cuota_tamizajes_usada}/${plan.cuotas?.tamizajes || 0} tam
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <button class="btn btn-secondary btn-sm" onclick="registrarPagoManual('${s.subject_id}', ${plan.precio || 0})" style="font-size:10px">💵 Registrar pago</button>
+                    ${s.estado === "activa" 
+                      ? `<button class="btn btn-warning btn-sm" onclick="pausarSuscripcion('${s.id}')" style="font-size:10px">⏸️ Pausar</button>`
+                      : `<button class="btn btn-success btn-sm" onclick="reactivarSuscripcion('${s.id}')" style="font-size:10px">▶️ Reactivar</button>`
+                    }
+                    <button class="btn btn-danger btn-sm" onclick="cancelarSuscripcion('${s.id}')" style="font-size:10px">✗ Cancelar</button>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join("") || '<p style="text-align:center;color:var(--text-tertiary);font-size:11px;padding:12px">Sin suscripciones activas</p>'}
+        </div>
+      </div>
+    `;
+    
+    cont.innerHTML = html;
+    
+  } catch (e) {
+    console.error("[renderAdminSuscripciones]", e);
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Error: ' + escapeHtml(e.message) + '</p></div>';
+  }
+};
+
+window.activarSuscripcionManual = async function(subjectId, planId, intencionId) {
+  const plan = PLANES_SUSCRIPCION[planId];
+  if (!plan) return;
+  
+  const confirmado = confirm(
+    `¿Confirmas la activación del Plan ${plan.nombre}?\n\n` +
+    `Paciente: ${subjectId}\n` +
+    `Precio: $${plan.precio.toFixed(2)}/mes\n\n` +
+    `⚠️ Verifica el pago en Stripe ANTES de continuar.`
+  );
+  if (!confirmado) return;
+  
+  const fechaProximoCobro = new Date();
+  fechaProximoCobro.setMonth(fechaProximoCobro.getMonth() + 1);
+  
+  try {
+    // Upsert suscripción
+    const { error: errSub } = await window.supabaseClient
+      .from("suscripciones")
+      .upsert({
+        subject_id: subjectId,
+        plan: planId,
+        estado: "activa",
+        fecha_inicio: new Date().toISOString().slice(0, 10),
+        fecha_proximo_cobro: fechaProximoCobro.toISOString().slice(0, 10),
+        cuota_consultas_usada: 0,
+        cuota_tamizajes_usada: 0,
+        cuota_interconsultas_usada: 0,
+        cuota_constancias_usada: 0,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "subject_id" });
+    
+    if (errSub) throw errSub;
+    
+    // Registrar pago
+    await window.supabaseClient.from("pagos_recibidos").insert({
+      subject_id: subjectId,
+      monto: plan.precio,
+      concepto: "suscripcion_" + planId,
+      periodo: new Date().toISOString().slice(0, 7) + "-01",
+      metodo: "stripe",
+      registrado_por: window.usuarioActual?.id
+    });
+    
+    // Marcar intención
+    if (intencionId) {
+      await window.supabaseClient
+        .from("intenciones_suscripcion")
+        .update({ estado: "activada", activada_at: new Date().toISOString() })
+        .eq("id", intencionId);
+    }
+    
+    if (typeof showStatus === "function") showStatus(`✓ Plan ${plan.nombre} activado`, "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[activarSuscripcionManual]", e);
+    if (typeof showStatus === "function") showStatus("Error: " + e.message, "error");
+  }
+};
+
+window.rechazarIntencion = async function(intencionId) {
+  if (!confirm("¿Rechazar esta solicitud?")) return;
+  try {
+    await window.supabaseClient
+      .from("intenciones_suscripcion")
+      .update({ estado: "rechazada" })
+      .eq("id", intencionId);
+    if (typeof showStatus === "function") showStatus("Solicitud rechazada", "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[rechazarIntencion]", e);
+  }
+};
+
+window.registrarPagoManual = async function(subjectId, monto) {
+  const montoStr = prompt(`Registrar pago de $${monto.toFixed(2)} para ${subjectId}\n\nMonto recibido:`, monto.toFixed(2));
+  if (!montoStr) return;
+  const montoNum = parseFloat(montoStr);
+  if (isNaN(montoNum) || montoNum <= 0) { alert("Monto inválido"); return; }
+  
+  const metodo = prompt("Método de pago (stripe/efectivo/transferencia):", "stripe");
+  if (!metodo) return;
+  
+  try {
+    const sus = await window.supabaseClient
+      .from("suscripciones")
+      .select("plan, fecha_proximo_cobro")
+      .eq("subject_id", subjectId)
+      .maybeSingle();
+    
+    const plan = sus.data?.plan || "basico";
+    
+    await window.supabaseClient.from("pagos_recibidos").insert({
+      subject_id: subjectId,
+      monto: montoNum,
+      concepto: "suscripcion_" + plan,
+      periodo: new Date().toISOString().slice(0, 7) + "-01",
+      metodo: metodo,
+      registrado_por: window.usuarioActual?.id
+    });
+    
+    // Extender próximo cobro
+    const fechaActual = sus.data?.fecha_proximo_cobro 
+      ? new Date(sus.data.fecha_proximo_cobro) 
+      : new Date();
+    fechaActual.setMonth(fechaActual.getMonth() + 1);
+    
+    await window.supabaseClient
+      .from("suscripciones")
+      .update({ 
+        fecha_proximo_cobro: fechaActual.toISOString().slice(0, 10),
+        estado: "activa",
+        updated_at: new Date().toISOString()
+      })
+      .eq("subject_id", subjectId);
+    
+    if (typeof showStatus === "function") showStatus(`✓ Pago registrado: $${montoNum.toFixed(2)}`, "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[registrarPagoManual]", e);
+    if (typeof showStatus === "function") showStatus("Error: " + e.message, "error");
+  }
+};
+
+window.pausarSuscripcion = async function(suscripcionId) {
+  if (!confirm("¿Pausar esta suscripción? No se cobrará el próximo mes.")) return;
+  try {
+    await window.supabaseClient
+      .from("suscripciones")
+      .update({ estado: "pausada", updated_at: new Date().toISOString() })
+      .eq("id", suscripcionId);
+    if (typeof showStatus === "function") showStatus("Suscripción pausada", "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[pausarSuscripcion]", e);
+  }
+};
+
+window.reactivarSuscripcion = async function(suscripcionId) {
+  try {
+    await window.supabaseClient
+      .from("suscripciones")
+      .update({ estado: "activa", updated_at: new Date().toISOString() })
+      .eq("id", suscripcionId);
+    if (typeof showStatus === "function") showStatus("Suscripción reactivada", "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[reactivarSuscripcion]", e);
+  }
+};
+
+window.cancelarSuscripcion = async function(suscripcionId) {
+  if (!confirm("⚠️ ¿Cancelar definitivamente esta suscripción?\n\nEl paciente perderá acceso al plan.")) return;
+  try {
+    await window.supabaseClient
+      .from("suscripciones")
+      .update({ estado: "cancelada", updated_at: new Date().toISOString() })
+      .eq("id", suscripcionId);
+    if (typeof showStatus === "function") showStatus("Suscripción cancelada", "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[cancelarSuscripcion]", e);
+  }
+};
+
+window.renovarCuotasMes = async function() {
+  if (!confirm("¿Renovar las cuotas del mes para TODAS las suscripciones activas?")) return;
+  try {
+    const { data, error } = await window.supabaseClient.rpc("renovar_cuotas_mensuales");
+    if (error) throw error;
+    if (typeof showStatus === "function") showStatus(`✓ ${data.renovadas} suscripciones renovadas`, "success");
+    renderAdminSuscripciones();
+  } catch (e) {
+    console.error("[renovarCuotasMes]", e);
+    if (typeof showStatus === "function") showStatus("Error: " + e.message, "error");
+  }
+};
+
+window.exportarSuscripcionesCSV = async function() {
+  try {
+    const { data } = await window.supabaseClient
+      .from("suscripciones")
+      .select("subject_id, plan, estado, fecha_inicio, fecha_proximo_cobro, cuota_consultas_usada, cuota_tamizajes_usada")
+      .order("created_at", { ascending: false });
+    
+    if (!data || data.length === 0) { alert("Sin datos"); return; }
+    
+    const headers = ["subject_id", "plan", "estado", "fecha_inicio", "fecha_proximo_cobro", "consultas_usadas", "tamizajes_usados"];
+    const rows = data.map(s => [
+      s.subject_id, s.plan, s.estado, s.fecha_inicio, s.fecha_proximo_cobro,
+      s.cuota_consultas_usada, s.cuota_tamizajes_usada
+    ]);
+    
+    const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "suscripciones_" + new Date().toISOString().slice(0, 10) + ".csv";
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    if (typeof showStatus === "function") showStatus("CSV exportado", "success");
+  } catch (e) {
+    console.error("[exportarSuscripcionesCSV]", e);
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   HOOKS: Interceptar flujo clínico
+   ═══════════════════════════════════════════════════════════ */
+
+// Hook 1: Al cargar el portal del paciente
+const _cargarPortalPacienteOrig = window.cargarPortalPaciente;
+if (typeof _cargarPortalPacienteOrig === "function") {
+  window.cargarPortalPaciente = async function() {
+    await _cargarPortalPacienteOrig.apply(this, arguments);
+    if (typeof cargarEstadoSuscripcion === "function") {
+      setTimeout(cargarEstadoSuscripcion, 300);
+    }
+  };
+}
+
+// Hook 2: Antes de firmar una consulta
+const _firmarYGenerarConsultaOrig = window.firmarYGenerarConsulta;
+if (typeof _firmarYGenerarConsultaOrig === "function") {
+  window.firmarYGenerarConsulta = async function() {
+    const s = window._consultaState;
+    if (s && s.paciente) {
+      const check = await verificarCuotaClinica(s.paciente.subject_id, "consulta");
+      
+      if (check.tiene_suscripcion && !check.disponible) {
+        const plan = PLANES_SUSCRIPCION[check.plan];
+        mostrarModalCuotaAgotada("consulta", plan?.nombre || check.plan);
+        return;
+      }
+    }
+    
+    return _firmarYGenerarConsultaOrig.apply(this, arguments);
+  };
+}
+
+// Hook 3: Al firmar, consumir cuota (después del éxito)
+const _firmarYGenerarConsultaConConsumo = window.firmarYGenerarConsulta;
+window.firmarYGenerarConsulta = async function() {
+  const s = window._consultaState;
+  const result = await _firmarYGenerarConsultaConConsumo.apply(this, arguments);
+  
+  // Consumir cuota si se firmó correctamente
+  if (s && s.paciente && s.consultaId) {
+    await consumirCuotaClinica(s.paciente.subject_id, "consulta", s.caseId);
+  }
+  
+  return result;
+};
+
+// Hook 4: Al cambiar subtab Admin
+const _cambiarSubtabAdminOrig = window.cambiarSubtabAdmin;
+if (typeof _cambiarSubtabAdminOrig === "function") {
+  window.cambiarSubtabAdmin = function(subtab) {
+    _cambiarSubtabAdminOrig.apply(this, arguments);
+    if (subtab === "suscripciones") {
+      setTimeout(renderAdminSuscripciones, 100);
+    }
+  };
+}
+
+console.log("[Suscripciones] ✓ Hooks instalados");
+console.log("[Suscripciones] ✓ Módulo v1.0 listo");
+
 </script>
 </body>
 </html>
