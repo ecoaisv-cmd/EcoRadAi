@@ -18821,6 +18821,457 @@ if (typeof _cambiarSubtabAdminOrig === "function") {
 console.log("[Suscripciones] ✓ Hooks instalados");
 console.log("[Suscripciones] ✓ Módulo v1.0 listo");
 
+/* ═══════════════════════════════════════════════════════════
+   MÓDULO UPGRADE — Notificación de mejora de plan
+   v1.3 — WhatsApp + Email (opcional)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ───────────────────────────────────────────────────────────
+   CONFIGURACIÓN — ⚠️ CAMBIA ESTOS DATOS
+   ─────────────────────────────────────────────────────────── */
+const SOPORTE_CONFIG = {
+  // WhatsApp del equipo de soporte (formato internacional sin +)
+  whatsapp: "50378311074",  // ← CAMBIA por tu número real
+  
+  // Email del equipo de soporte
+  email: "ecoaisv@gmail.com",  // ← CAMBIA por tu email real
+  
+  // Nombre de tu negocio (para el mensaje)
+  nombre_negocio: "EcoRadAi"
+};
+
+/* ───────────────────────────────────────────────────────────
+   MODAL DE UPGRADE — Paciente elige el plan nuevo
+   ─────────────────────────────────────────────────────────── */
+window.abrirModalUpgrade = async function() {
+  const subjectId = window.usuarioActual?.paciente_id;
+  if (!subjectId || !window.supabaseClient) {
+    if (typeof showStatus === "function") showStatus("Debes iniciar sesión", "error");
+    return;
+  }
+  
+  // Cargar plan actual del paciente
+  const { data: susActual } = await window.supabaseClient
+    .from("suscripciones")
+    .select("*")
+    .eq("subject_id", subjectId)
+    .maybeSingle();
+  
+  const planActual = susActual?.plan || null;
+  const planActualInfo = planActual ? PLANES_SUSCRIPCION[planActual] : null;
+  
+  // Planes disponibles para upgrade (excluir el actual)
+  const planesDisponibles = Object.values(PLANES_SUSCRIPCION).filter(p => p.id !== planActual);
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-upgrade";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99999;overflow-y:auto;padding:20px";
+  
+  overlay.innerHTML = `
+    <div style="max-width:600px;margin:40px auto">
+      <div style="background:var(--bg);border-radius:16px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+        
+        <div style="text-align:center;margin-bottom:20px">
+          <div style="font-size:36px;margin-bottom:8px">⬆️</div>
+          <h2 style="font-size:20px;font-weight:800;color:var(--corp);margin-bottom:6px">
+            Mejorar mi plan
+          </h2>
+          <p style="font-size:12px;color:var(--text-secondary);line-height:1.5">
+            Selecciona el plan al que deseas cambiar. Te contactaremos para coordinar el pago.
+          </p>
+        </div>
+        
+        ${planActualInfo ? `
+          <div style="background:var(--accent-light);border-radius:10px;padding:12px;margin-bottom:16px;text-align:center">
+            <div style="font-size:10px;font-weight:700;color:var(--accent-dark);text-transform:uppercase;letter-spacing:0.5px">
+              Plan actual
+            </div>
+            <div style="font-size:16px;font-weight:800;color:var(--accent-dark);margin-top:4px">
+              ${planActualInfo.icono} ${planActualInfo.nombre} · $${planActualInfo.precio.toFixed(2)}/mes
+            </div>
+          </div>
+        ` : ""}
+        
+        <div style="display:grid;gap:10px;margin-bottom:20px">
+          ${planesDisponibles.map(plan => `
+            <div class="upgrade-plan-option" 
+                 data-plan="${plan.id}"
+                 onclick="seleccionarPlanUpgrade('${plan.id}')"
+                 style="
+                   background:${plan.recomendado ? "linear-gradient(135deg,#f0f7ff,#e8f4fd)" : "var(--bg-secondary)"};
+                   border:2px solid ${plan.recomendado ? plan.color : "var(--border)"};
+                   border-radius:12px;
+                   padding:14px 16px;
+                   cursor:pointer;
+                   transition:all 0.2s;
+                   display:flex;
+                   justify-content:space-between;
+                   align-items:center;
+                   gap:12px;
+                 ">
+              <div style="display:flex;align-items:center;gap:12px;flex:1">
+                <div style="font-size:28px">${plan.icono}</div>
+                <div style="flex:1">
+                  <div style="font-size:14px;font-weight:800;color:var(--corp)">
+                    Plan ${plan.nombre}
+                    ${plan.recomendado ? '<span style="background:' + plan.color + ';color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px;text-transform:uppercase">Recomendado</span>' : ""}
+                  </div>
+                  <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">
+                    ${plan.descripcion}
+                  </div>
+                  <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px;line-height:1.4">
+                    ${plan.cuotas.consultas} consultas · ${plan.cuotas.tamizajes} tamizajes · 
+                    ${plan.cuotas.interconsultas > 0 ? plan.cuotas.interconsultas + " interconsultas" : "sin interconsultas"}
+                  </div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-size:20px;font-weight:800;color:${plan.color}">
+                    $${plan.precio.toFixed(2)}
+                  </div>
+                  <div style="font-size:10px;color:var(--text-tertiary)">por mes</div>
+                </div>
+              </div>
+              <div class="check-icon" style="width:24px;height:24px;border-radius:50%;border:2px solid var(--border);flex-shrink:0"></div>
+            </div>
+          `).join("")}
+        </div>
+        
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Método de pago preferido</label>
+          <select id="upgrade-metodo" style="font-size:12px;padding:10px">
+            <option value="transferencia">🏦 Transferencia bancaria</option>
+            <option value="efectivo">💵 Efectivo (Agentes Banco Agrícola)</option>
+            <option value="wompi">💳 Tarjeta / Wompi</option>
+            <option value="bitcoin">₿ Bitcoin</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Mensaje adicional (opcional)</label>
+          <textarea id="upgrade-nota" 
+                    placeholder="Ej: Quiero cambiar este mes, ¿cuándo puedo pagar?" 
+                    style="font-size:12px;min-height:60px"></textarea>
+        </div>
+        
+        <div style="background:#fff9e6;border-left:3px solid #ff9500;border-radius:0 6px 6px 0;padding:10px 12px;margin-bottom:16px;font-size:11px;color:#8a6a00;line-height:1.5">
+          <strong>📋 ¿Qué sigue?</strong><br>
+          Al enviar la solicitud, recibirás un mensaje de WhatsApp/email con los datos para pagar.
+          Una vez confirmado el pago, activaremos tu nuevo plan en menos de 24h.
+        </div>
+        
+        <div id="upgrade-error" style="display:none;margin-bottom:12px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+        
+        <div style="display:flex;gap:8px">
+          <button onclick="document.getElementById('modal-upgrade').remove()" 
+                  style="flex:1;padding:12px;background:var(--bg-tertiary);color:var(--text-primary);border:none;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
+            Cancelar
+          </button>
+          <button onclick="enviarSolicitudUpgrade()" 
+                  style="flex:1;padding:12px;background:linear-gradient(135deg,#d4a017,#ff9500);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">
+            📤 Solicitar upgrade
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  overlay.addEventListener("click", e => {
+    if (e.target === overlay) overlay.remove();
+  });
+  
+  document.body.appendChild(overlay);
+};
+
+/* ───────────────────────────────────────────────────────────
+   Selección visual de plan
+   ─────────────────────────────────────────────────────────── */
+window.seleccionarPlanUpgrade = function(planId) {
+  document.querySelectorAll(".upgrade-plan-option").forEach(el => {
+    const esActivo = el.dataset.plan === planId;
+    el.style.borderColor = esActivo ? "#d4a017" : "var(--border)";
+    el.style.borderWidth = "2px";
+    el.style.transform = esActivo ? "scale(1.01)" : "scale(1)";
+    el.style.boxShadow = esActivo ? "0 4px 16px rgba(212,160,23,0.2)" : "none";
+    
+    const check = el.querySelector(".check-icon");
+    if (check) {
+      if (esActivo) {
+        check.style.background = "#d4a017";
+        check.style.borderColor = "#d4a017";
+        check.innerHTML = '<span style="color:white;font-size:14px;line-height:24px;text-align:center;display:block;font-weight:700">✓</span>';
+      } else {
+        check.style.background = "transparent";
+        check.style.borderColor = "var(--border)";
+        check.innerHTML = "";
+      }
+    }
+  });
+  
+  window._planUpgradeSeleccionado = planId;
+};
+
+/* ───────────────────────────────────────────────────────────
+   Envío de solicitud de upgrade
+   ─────────────────────────────────────────────────────────── */
+window.enviarSolicitudUpgrade = async function() {
+  const errEl = document.getElementById("upgrade-error");
+  const setErr = (msg) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  };
+  if (errEl) errEl.style.display = "none";
+  
+  const planNuevoId = window._planUpgradeSeleccionado;
+  const metodo = document.getElementById("upgrade-metodo")?.value || "transferencia";
+  const nota = document.getElementById("upgrade-nota")?.value?.trim() || "";
+  
+  if (!planNuevoId) {
+    setErr("Selecciona el plan al que deseas cambiar");
+    return;
+  }
+  
+  const planNuevo = PLANES_SUSCRIPCION[planNuevoId];
+  if (!planNuevo) {
+    setErr("Plan no válido");
+    return;
+  }
+  
+  const subjectId = window.usuarioActual?.paciente_id;
+  const nombrePaciente = window.usuarioActual?.nombre || "Paciente";
+  const emailPaciente = window.usuarioActual?.email || "";
+  
+  // Cargar datos del paciente y plan actual
+  const { data: susActual } = await window.supabaseClient
+    .from("suscripciones")
+    .select("plan")
+    .eq("subject_id", subjectId)
+    .maybeSingle();
+  
+  const planActualId = susActual?.plan || "sin_suscripcion";
+  const planActual = PLANES_SUSCRIPCION[planActualId];
+  
+  // Cargar datos de contacto del paciente
+  const { data: pacienteData } = await window.supabaseClient
+    .from("patients")
+    .select("nombre, telefono, dui")
+    .eq("subject_id", subjectId)
+    .maybeSingle();
+  
+  const telefono = pacienteData?.telefono || "";
+  const dui = pacienteData?.dui || "";
+  
+  // ═══════════════════════════════════════════════════════════
+  // 1. REGISTRAR LA SOLICITUD EN SUPABASE (auditoría)
+  // ═══════════════════════════════════════════════════════════
+  try {
+    await window.supabaseClient
+      .from("intenciones_suscripcion")
+      .insert({
+        subject_id: subjectId,
+        plan_solicitado: planNuevoId,
+        estado: "pendiente_pago",
+        metodo_pago: metodo,
+        notas: nota,
+        origen: "portal_paciente_upgrade"
+      });
+    console.log("[Upgrade] ✓ Solicitud registrada en BD");
+  } catch (e) {
+    console.warn("[Upgrade] Error al registrar en BD:", e);
+    // Continuamos aunque falle (para no bloquear al paciente)
+  }
+  
+  // ═══════════════════════════════════════════════════════════
+  // 2. CONSTRUIR MENSAJE DE WHATSAPP
+  // ═══════════════════════════════════════════════════════════
+  const mensajeWhatsApp = construirMensajeUpgrade({
+    nombrePaciente,
+    telefono,
+    emailPaciente,
+    subjectId,
+    dui,
+    planActual: planActual ? planActual.nombre : "Sin suscripción",
+    planNuevo: planNuevo.nombre,
+    precioActual: planActual ? planActual.precio : 0,
+    precioNuevo: planNuevo.precio,
+    metodo,
+    nota
+  });
+  
+  // ═══════════════════════════════════════════════════════════
+  // 3. ABRIR WHATSAPP
+  // ═══════════════════════════════════════════════════════════
+  const urlWhatsApp = "https://wa.me/" + SOPORTE_CONFIG.whatsapp + "?text=" + encodeURIComponent(mensajeWhatsApp);
+  
+  // Detectar si es móvil o desktop
+  const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  
+  if (esMovil) {
+    // En móvil, abrir la app de WhatsApp
+    window.location.href = urlWhatsApp;
+  } else {
+    // En desktop, abrir WhatsApp Web en nueva pestaña
+    window.open(urlWhatsApp, "_blank");
+  }
+  
+  // ═══════════════════════════════════════════════════════════
+  // 4. MOSTRAR CONFIRMACIÓN AL PACIENTE
+  // ═══════════════════════════════════════════════════════════
+  document.getElementById("modal-upgrade")?.remove();
+  
+  mostrarConfirmacionUpgrade(planNuevo);
+};
+
+/* ───────────────────────────────────────────────────────────
+   Construir mensaje estructurado para WhatsApp
+   ─────────────────────────────────────────────────────────── */
+function construirMensajeUpgrade(datos) {
+  return `🩺 *SOLICITUD DE UPGRADE — ${SOPORTE_CONFIG.nombre_negocio}*
+
+Hola equipo de soporte, quiero mejorar mi plan.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+👤 *DATOS DEL PACIENTE*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+*Nombre:* ${datos.nombrePaciente}
+*ID:* ${datos.subjectId}
+${datos.dui ? "*DUI:* " + datos.dui : ""}
+${datos.telefono ? "*Teléfono:* " + datos.telefono : ""}
+${datos.emailPaciente ? "*Email:* " + datos.emailPaciente : ""}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 *CAMBIO DE PLAN*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+*Plan actual:* ${datos.planActual}${datos.precioActual > 0 ? " ($" + datos.precioActual.toFixed(2) + "/mes)" : ""}
+*Plan nuevo:* ${datos.planNuevo} ($${datos.precioNuevo.toFixed(2)}/mes)
+*Diferencia:* $${(datos.precioNuevo - datos.precioActual).toFixed(2)}/mes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+💳 *MÉTODO DE PAGO*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+${datos.metodo === "transferencia" ? "🏦 Transferencia bancaria" : ""}${datos.metodo === "efectivo" ? "💵 Efectivo (Agentes Banco Agrícola)" : ""}${datos.metodo === "wompi" ? "💳 Tarjeta / Wompi" : ""}${datos.metodo === "bitcoin" ? "₿ Bitcoin" : ""}
+${datos.nota ? "\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📝 *NOTA ADICIONAL*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n" + datos.nota : ""}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+✉️ *ACCIÓN REQUERIDA*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Por favor, envíenme los datos para realizar el pago del nuevo plan. Confirmo que quiero activar el Plan ${datos.planNuevo}.
+
+¡Gracias!`;
+}
+
+/* ───────────────────────────────────────────────────────────
+   Confirmación visual al paciente
+   ─────────────────────────────────────────────────────────── */
+function mostrarConfirmacionUpgrade(planNuevo) {
+  const overlay = document.createElement("div");
+  overlay.id = "modal-upgrade-confirmacion";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:440px;width:100%;padding:32px;text-align:center">
+      <div style="font-size:56px;margin-bottom:12px">✅</div>
+      <h3 style="font-size:20px;font-weight:800;color:#1a4a2a;margin-bottom:10px">
+        ¡Solicitud enviada!
+      </h3>
+      <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:20px">
+        Tu solicitud para cambiar al <strong>Plan ${planNuevo.nombre}</strong> 
+        ($${planNuevo.precio.toFixed(2)}/mes) ha sido enviada al equipo de soporte.
+      </p>
+      
+      <div style="background:#f0f7ff;border-left:3px solid #0071e3;border-radius:0 6px 6px 0;padding:14px 16px;margin-bottom:16px;text-align:left">
+        <div style="font-size:11px;font-weight:700;color:#0051a3;margin-bottom:6px">
+          📱 ¿Qué sigue?
+        </div>
+        <ol style="font-size:11.5px;color:#0051a3;line-height:1.7;margin-left:18px">
+          <li>Recibirás un mensaje de WhatsApp en los próximos minutos con los datos de pago</li>
+          <li>Realiza el pago por el método que prefieras</li>
+          <li>Envíanos el comprobante por WhatsApp</li>
+          <li>Activa tu nuevo plan en menos de 24 horas</li>
+        </ol>
+      </div>
+      
+      <div style="background:#fff9e6;border-left:3px solid #ff9500;border-radius:0 6px 6px 0;padding:10px 12px;margin-bottom:16px;font-size:11px;color:#8a6a00;line-height:1.5;text-align:left">
+        <strong>💡 Mientras tanto:</strong> puedes seguir usando tu plan actual 
+        (${planNuevo.nombre === "Básico" ? "tus cuotas del mes permanecen activas" : "tu plan actual sigue vigente"}) 
+        sin ninguna interrupción.
+      </div>
+      
+      <div style="background:var(--bg-secondary);border-radius:8px;padding:10px;margin-bottom:16px;font-size:11px;color:var(--text-secondary);line-height:1.5;text-align:center">
+        ¿No se abrió WhatsApp?<br>
+        <a href="${generarURLWhatsAppUltimo()}" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:underline">
+          Toca aquí para abrir WhatsApp manualmente
+        </a>
+      </div>
+      
+      <button onclick="document.getElementById('modal-upgrade-confirmacion').remove()" 
+              style="width:100%;padding:12px;background:var(--accent);color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">
+        Entendido
+      </button>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+}
+
+/* ───────────────────────────────────────────────────────────
+   Helper: generar URL de WhatsApp para reintento manual
+   ─────────────────────────────────────────────────────────── */
+function generarURLWhatsAppUltimo() {
+  const mensajeGuardado = sessionStorage.getItem("ecoradai_ultimo_mensaje_wa");
+  if (!mensajeGuardado) {
+    return "https://wa.me/" + SOPORTE_CONFIG.whatsapp;
+  }
+  return "https://wa.me/" + SOPORTE_CONFIG.whatsapp + "?text=" + encodeURIComponent(mensajeGuardado);
+}
+
+// Guardar el último mensaje al enviarlo (dentro de enviarSolicitudUpgrade)
+const _enviarUpgradeOrig = window.enviarSolicitudUpgrade;
+window.enviarSolicitudUpgrade = async function() {
+  try {
+    sessionStorage.setItem("ecoradai_ultimo_mensaje_wa", "");
+  } catch (e) {}
+  
+  // Guardar mensaje antes de enviar (para el fallback)
+  const planNuevoId = window._planUpgradeSeleccionado;
+  if (planNuevoId && PLANES_SUSCRIPCION[planNuevoId]) {
+    const datos = {
+      nombrePaciente: window.usuarioActual?.nombre || "Paciente",
+      telefono: "",
+      emailPaciente: window.usuarioActual?.email || "",
+      subjectId: window.usuarioActual?.paciente_id,
+      dui: "",
+      planActual: "Plan actual",
+      planNuevo: PLANES_SUSCRIPCION[planNuevoId].nombre,
+      precioActual: 0,
+      precioNuevo: PLANES_SUSCRIPCION[planNuevoId].precio,
+      metodo: document.getElementById("upgrade-metodo")?.value || "transferencia",
+      nota: document.getElementById("upgrade-nota")?.value?.trim() || ""
+    };
+    
+    try {
+      const { data: sus } = await window.supabaseClient
+        .from("suscripciones")
+        .select("plan")
+        .eq("subject_id", datos.subjectId)
+        .maybeSingle();
+      
+      if (sus?.plan && PLANES_SUSCRIPCION[sus.plan]) {
+        datos.planActual = PLANES_SUSCRIPCION[sus.plan].nombre;
+        datos.precioActual = PLANES_SUSCRIPCION[sus.plan].precio;
+      }
+    } catch (e) {}
+    
+    const mensaje = construirMensajeUpgrade(datos);
+    try {
+      sessionStorage.setItem("ecoradai_ultimo_mensaje_wa", mensaje);
+    } catch (e) {}
+  }
+  
+  return _enviarUpgradeOrig.apply(this, arguments);
+};
+
+console.log("[Upgrade] ✓ Módulo de notificación cargado");
+console.log("[Upgrade] WhatsApp configurado:", SOPORTE_CONFIG.whatsapp);
+
 </script>
 </body>
 </html>
