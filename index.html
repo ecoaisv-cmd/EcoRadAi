@@ -19271,7 +19271,1531 @@ window.enviarSolicitudUpgrade = async function() {
 
 console.log("[Upgrade] ✓ Módulo de notificación cargado");
 console.log("[Upgrade] WhatsApp configurado:", SOPORTE_CONFIG.whatsapp);
+</script>
+<!-- ═══════════════════════════════════════════════════════════
+     MÓDULO DE INTERCONSULTAS IA — INTEGRACIÓN EPISÓDICA v1.0
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
 
+/* ═══════════════════════════════════════════════════════════
+   CAPA 1 — DETECCIÓN DE CONTEXTO
+   ═══════════════════════════════════════════════════════════ */
+
+window.detectarContextoInterconsulta = function(opciones = {}) {
+  const s = window._consultaState || {};
+  const caso = window._casoActual || null;
+  
+  const contexto = {
+    origen: opciones.origen || null,   // 'ECO-...' | 'CONS-...'
+    tipo: opciones.tipo || null,       // 'tamizaje' | 'consulta' | 'entrega_resultados'
+    subject_id: opciones.subject_id || s.paciente?.subject_id || caso?.subject?.subject_id || null,
+    plan: null,
+    permite_ia: false,
+    cuotas_disponibles: 0,
+    tiene_episodio_abierto: false,
+    episodio_id: null
+  };
+  
+  // Inferir tipo si no viene
+  if (!contexto.tipo) {
+    if (contexto.origen?.startsWith("ECO-")) contexto.tipo = "tamizaje";
+    else if (contexto.origen?.startsWith("CONS-")) contexto.tipo = "consulta";
+    else if (opciones.tipo === "entrega_resultados") contexto.tipo = "entrega_resultados";
+  }
+  
+  // Plan actual
+  const planActual = window.planActual || "BASICO";
+  const planKey = planActual.toLowerCase();
+  contexto.plan = planKey;
+  contexto.permite_ia = ["plus", "premium"].includes(planKey);
+  contexto.cuotas_disponibles = window.PLANES?.[planActual]?.interconsultas_incluidas || 0;
+  
+  console.log("[Contexto Interconsulta]", contexto);
+  return contexto;
+};
+
+/* ═══════════════════════════════════════════════════════════
+   CAPA 3 — PERSISTENCIA EPISÓDICA
+   ═══════════════════════════════════════════════════════════ */
+
+window.crearEpisodioClinico = async function(datos) {
+  if (!window.supabaseClient) throw new Error("Sin conexión a Supabase");
+  
+  const { data: episodioId, error: errId } = await window.supabaseClient
+    .rpc("generar_episodio_id");
+  
+  if (errId) throw errId;
+  
+  const registro = {
+    episodio_id: episodioId,
+    subject_id: datos.subject_id,
+    tipo: datos.tipo || "consulta",
+    estado: datos.estado || "abierto",
+    caso_inicial_id: datos.caso_inicial_id || null,
+    casos_vinculados: datos.casos_vinculados || [],
+    ordenes_emitidas: datos.ordenes_emitidas || [],
+    interconsultas_sugeridas: datos.interconsultas_sugeridas || [],
+    metadata: datos.metadata || {},
+    created_by: window.usuarioActual?.id || null
+  };
+  
+  const { data, error } = await window.supabaseClient
+    .from("episodios_clinicos")
+    .insert(registro)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  
+  console.log("[Episodio] ✓ Creado:", episodioId);
+  return data;
+};
+
+window.obtenerEpisodioClinico = async function(episodioId) {
+  if (!window.supabaseClient) return null;
+  const { data, error } = await window.supabaseClient
+    .from("episodios_clinicos")
+    .select("*")
+    .eq("episodio_id", episodioId)
+    .maybeSingle();
+  if (error) { console.warn("[obtenerEpisodio]", error); return null; }
+  return data;
+};
+
+window.obtenerEpisodiosAbiertosPaciente = async function(subjectId) {
+  if (!window.supabaseClient || !subjectId) return [];
+  const { data, error } = await window.supabaseClient
+    .rpc("listar_episodios_abiertos", { p_subject_id: subjectId });
+  if (error) { console.warn("[episodios abiertos]", error); return []; }
+  return data || [];
+};
+
+window.actualizarEpisodio = async function(episodioId, patch) {
+  if (!window.supabaseClient) return false;
+  const { error } = await window.supabaseClient
+    .from("episodios_clinicos")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("episodio_id", episodioId);
+  if (error) { console.warn("[actualizarEpisodio]", error); return false; }
+  return true;
+};
+
+window.cerrarEpisodio = async function(episodioId, notaCierre) {
+  return window.actualizarEpisodio(episodioId, {
+    estado: "cerrado",
+    fecha_cierre: new Date().toISOString(),
+    notas_evolucion: [{ fecha: new Date().toISOString(), nota: notaCierre, tipo: "cierre" }]
+  });
+};
+
+/* ═══════════════════════════════════════════════════════════
+   ÓRDENES CLÍNICAS
+   ═══════════════════════════════════════════════════════════ */
+
+window.registrarOrdenClinica = async function(datos) {
+  if (!window.supabaseClient) throw new Error("Sin conexión");
+  
+  const { data: ordenId, error: errId } = await window.supabaseClient
+    .rpc("generar_orden_id");
+  
+  if (errId) throw errId;
+  
+  const registro = {
+    orden_id: ordenId,
+    episodio_id: datos.episodio_id,
+    subject_id: datos.subject_id,
+    tipo: datos.tipo,
+    detalle: datos.detalle,
+    estado: "pendiente"
+  };
+  
+  const { data, error } = await window.supabaseClient
+    .from("ordenes_clinicas")
+    .insert(registro)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  
+  // Anexar al episodio
+  const epi = await window.obtenerEpisodioClinico(datos.episodio_id);
+  if (epi) {
+    const emitidas = epi.ordenes_emitidas || [];
+    emitidas.push({
+      orden_id: ordenId,
+      tipo: datos.tipo,
+      detalle: datos.detalle,
+      emitida_at: new Date().toISOString()
+    });
+    await window.actualizarEpisodio(datos.episodio_id, { ordenes_emitidas: emitidas });
+  }
+  
+  console.log("[Orden] ✓ Creada:", ordenId);
+  return data;
+};
+
+window.registrarOrdenesEnBloque = async function(episodioId, subjectId, ordenes) {
+  const resultados = [];
+  for (const orden of ordenes) {
+    try {
+      const r = await window.registrarOrdenClinica({
+        episodio_id: episodioId,
+        subject_id: subjectId,
+        tipo: orden.tipo,
+        detalle: orden.detalle
+      });
+      resultados.push(r);
+    } catch (e) {
+      console.warn("[registrarOrdenesEnBloque] Error en una orden:", e);
+    }
+  }
+  return resultados;
+};
+
+/* ═══════════════════════════════════════════════════════════
+   RESULTADOS CLÍNICOS
+   ═══════════════════════════════════════════════════════════ */
+
+window.anexarResultadoAEpisodio = async function(datos) {
+  if (!window.supabaseClient) throw new Error("Sin conexión");
+  
+  const resultadoId = "RES-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+  
+  const { data, error } = await window.supabaseClient.rpc("anexar_resultado_a_episodio", {
+    p_episodio_id: datos.episodio_id,
+    p_resultado_id: resultadoId,
+    p_orden_id: datos.orden_id || null,
+    p_subject_id: datos.subject_id,
+    p_tipo: datos.tipo,
+    p_valores: datos.valores,
+    p_interpretacion: datos.interpretacion_ia || null,
+    p_flag_alterado: datos.flag_alterado || false,
+    p_severidad: datos.severidad || "normal"
+  });
+  
+  if (error) throw error;
+  console.log("[Resultado] ✓ Anexado:", resultadoId);
+  return data;
+};
+
+window.obtenerResultadosDeEpisodio = async function(episodioId) {
+  if (!window.supabaseClient) return [];
+  const { data, error } = await window.supabaseClient
+    .from("resultados_clinicos")
+    .select("*")
+    .eq("episodio_id", episodioId)
+    .order("recibido_at", { ascending: false });
+  if (error) { console.warn("[resultados]", error); return []; }
+  return data || [];
+};
+
+/* ═══════════════════════════════════════════════════════════
+   NOTIFICACIONES MÉDICAS
+   ═══════════════════════════════════════════════════════════ */
+
+window.crearNotificacionMedica = async function(datos) {
+  if (!window.supabaseClient) return null;
+  
+  const registro = {
+    medico_id: datos.medico_id || null,
+    episodio_id: datos.episodio_id,
+    tipo: datos.tipo,
+    prioridad: datos.prioridad || "media",
+    mensaje: datos.mensaje,
+    payload: datos.payload || {}
+  };
+  
+  const { data, error } = await window.supabaseClient
+    .from("notificaciones_medicas")
+    .insert(registro)
+    .select()
+    .single();
+  
+  if (error) { console.warn("[crearNotificacionMedica]", error); return null; }
+  return data;
+};
+
+window.notificarResultadoAlterado = async function(episodio, resultado) {
+  const mensaje = `Resultado alterado en ${episodio.tipo} de ${episodio.subject_id} — Severidad: ${resultado.severidad}`;
+  
+  // Notificar a TODOS los médicos
+  if (!window.supabaseClient) return;
+  const { data: medicos } = await window.supabaseClient
+    .from("profiles")
+    .select("id")
+    .eq("rol", "medico");
+  
+  for (const m of (medicos || [])) {
+    await window.crearNotificacionMedica({
+      medico_id: m.id,
+      episodio_id: episodio.episodio_id,
+      tipo: "resultado_alterado",
+      prioridad: resultado.severidad === "critico" ? "critica" : "alta",
+      mensaje,
+      payload: { resultado_id: resultado.resultado_id, valores: resultado.valores }
+    });
+  }
+  
+  console.log("[Notificación] ✓ Enviada a", medicos?.length || 0, "médicos");
+};
+
+console.log("[Interconsultas IA] ✓ Wrappers base cargados");
+
+/* ═══════════════════════════════════════════════════════════
+   MODAL DE ENTREGA DE RESULTADOS
+   ═══════════════════════════════════════════════════════════ */
+
+window.abrirModalEntregaResultados = async function(subjectId) {
+  if (!window.supabaseClient) {
+    if (typeof showStatus === "function") showStatus("Sin conexión", "error");
+    return;
+  }
+  
+  // Cargar episodios abiertos del paciente
+  const episodios = await window.obtenerEpisodiosAbiertosPaciente(subjectId);
+  
+  if (episodios.length === 0) {
+    if (typeof showStatus === "function") {
+      showStatus("No hay episodios abiertos para este paciente", "warning");
+    }
+    return;
+  }
+  
+  // Cargar nombre del paciente
+  const { data: pac } = await window.supabaseClient
+    .from("patients")
+    .select("nombre, edad, sexo")
+    .eq("subject_id", subjectId)
+    .maybeSingle();
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-entrega-resultados";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(6px);z-index:99999;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:40px";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:680px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+      
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">📥 Entrega de resultados</h3>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">
+            ${escapeHtml(pac?.nombre || "Paciente")} · ${pac?.edad || "—"} años · ${pac?.sexo || "—"}
+          </div>
+        </div>
+        <button onclick="document.getElementById('modal-entrega-resultados').remove()"
+                style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Episodio clínico *</label>
+        <select id="entrega-episodio" style="font-size:12px;padding:10px">
+          ${episodios.map(e => `
+            <option value="${e.episodio_id}">
+              ${e.episodio_id} — ${e.tipo} — ${new Date(e.fecha_apertura).toLocaleDateString("es-ES")}
+            </option>
+          `).join("")}
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Tipo de resultado *</label>
+        <select id="entrega-tipo" style="font-size:12px;padding:10px">
+          <option value="laboratorio">🔬 Laboratorio</option>
+          <option value="imagen">🖼️ Imagen</option>
+          <option value="otro">📄 Otro</option>
+        </select>
+      </div>
+      
+      <div class="config-box" style="background:#f0f7ff;border-color:var(--accent);margin-bottom:14px">
+        <h4 style="font-size:12px;color:var(--accent-dark);margin-bottom:6px">📋 Pegar reporte</h4>
+        <p style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">
+          Pega el texto del laboratorio. Kimi extraerá los valores automáticamente.
+        </p>
+        <textarea id="entrega-raw" placeholder="Pega aquí el reporte del laboratorio..." 
+                  style="min-height:100px;font-size:11px;font-family:monospace"></textarea>
+        <button class="btn btn-primary btn-sm" onclick="parsearResultadoConIA()" 
+                id="btn-parsear-resultado" style="margin-top:8px;font-size:11px">
+          🤖 Parsear con Kimi
+        </button>
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Fecha del resultado</label>
+        <input type="date" id="entrega-fecha" value="${new Date().toISOString().slice(0,10)}" 
+               style="font-size:12px;padding:8px 10px">
+      </div>
+      
+      <div id="entrega-valores-preview" style="display:none;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--corp);margin-bottom:6px">
+          📊 Valores extraídos:
+        </div>
+        <div id="entrega-valores-tabla"></div>
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Notas / Observaciones</label>
+        <textarea id="entrega-notas" placeholder="Observaciones adicionales..." 
+                  style="font-size:12px;min-height:60px"></textarea>
+      </div>
+      
+      <div id="entrega-error" style="display:none;margin-bottom:12px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+      
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-entrega-resultados').remove()" 
+                style="flex:1;font-size:12px">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarEntregaResultados('${subjectId}')" 
+                id="btn-guardar-entrega" style="flex:1;font-size:12px">
+          📤 Guardar y analizar
+        </button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  window._resultadoParseado = null;
+};
+
+/* ─── Parsear reporte con Kimi ─── */
+window.parsearResultadoConIA = async function() {
+  const raw = document.getElementById("entrega-raw")?.value.trim();
+  if (!raw) {
+    if (typeof showStatus === "function") showStatus("Pega primero el reporte", "error");
+    return;
+  }
+  
+  const btn = document.getElementById("btn-parsear-resultado");
+  const original = btn ? btn.textContent : "🤖 Parsear con Kimi";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Parseando...';
+  }
+  
+  try {
+    // Reutilizar el motor de parseo del módulo de consultas
+    const campos = (window.LABS_REGISTRY?._items || [])
+      .filter(l => l.tipo !== "calculada")
+      .map(l => l.id.replace(/^lab-/, "").replace(/-/g, "_"));
+    
+    const prompt = `Extrae los valores de laboratorio del siguiente reporte.
+Devuelve SOLO JSON válido con llaves (null si no está): ${campos.join(", ")}, fecha_toma, laboratorio_emisor.
+
+Reporte:
+${raw}`;
+    
+    const resp = await fetch(`${window.WORKER_URL}/proxy-kimi`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "kimi-k2-5",
+        messages: [
+          { role: "system", content: "Devuelves JSON válido. Sin markdown." },
+          { role: "user", content: prompt }
+        ],
+        max_tokens: 2048,
+        reasoning_effort: "low",
+        response_format: { type: "json_object" }
+      })
+    });
+    
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    
+    const data = await resp.json();
+    let content = data.choices?.[0]?.message?.content || "{}";
+    content = content.replace(/```json\s*/gi, "").replace(/```\s*$/g, "").trim();
+    
+    const parsed = JSON.parse(content);
+    window._resultadoParseado = parsed;
+    
+    // Detectar alteraciones
+    const deteccion = window.detectarAlteraciones(parsed);
+    
+    // Mostrar preview
+    const previewDiv = document.getElementById("entrega-valores-preview");
+    const tabla = document.getElementById("entrega-valores-tabla");
+    
+    if (previewDiv && tabla) {
+      tabla.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead>
+            <tr style="background:var(--bg-secondary)">
+              <th style="padding:6px;text-align:left;font-size:10px;text-transform:uppercase">Parámetro</th>
+              <th style="padding:6px;text-align:left;font-size:10px;text-transform:uppercase">Valor</th>
+              <th style="padding:6px;text-align:left;font-size:10px;text-transform:uppercase">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.entries(parsed).filter(([k, v]) => v !== null && v !== undefined && k !== "fecha_toma" && k !== "laboratorio_emisor").map(([k, v]) => {
+              const alter = deteccion.alteraciones.find(a => a.key === k);
+              const color = alter ? (alter.severidad === "critico" ? "#ff3b30" : "#ff9500") : "#34c759";
+              const label = alter ? alter.severidad.toUpperCase() : "NORMAL";
+              return `
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:6px">${escapeHtml(k.replace(/_/g, " "))}</td>
+                  <td style="padding:6px;font-weight:700">${escapeHtml(String(v))}</td>
+                  <td style="padding:6px">
+                    <span style="background:${color};color:white;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700">${label}</span>
+                  </td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      `;
+      previewDiv.style.display = "block";
+    }
+    
+    if (typeof showStatus === "function") {
+      const total = Object.keys(parsed).length;
+      const alter = deteccion.alteraciones.length;
+      showStatus(`✓ ${total} valores extraídos (${alter} alterados)`, "success");
+    }
+  } catch (e) {
+    console.error("[parsearResultadoConIA]", e);
+    if (typeof showStatus === "function") showStatus("Error: " + e.message, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+};
+
+/* ─── Guardar entrega completa ─── */
+window.guardarEntregaResultados = async function(subjectId) {
+  const errEl = document.getElementById("entrega-error");
+  const setErr = (msg) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  };
+  if (errEl) errEl.style.display = "none";
+  
+  const episodioId = document.getElementById("entrega-episodio")?.value;
+  const tipo = document.getElementById("entrega-tipo")?.value;
+  const fecha = document.getElementById("entrega-fecha")?.value;
+  const notas = document.getElementById("entrega-notas")?.value?.trim() || "";
+  const valores = window._resultadoParseado;
+  
+  if (!episodioId) { setErr("Selecciona un episodio"); return; }
+  if (!valores || Object.keys(valores).length === 0) {
+    setErr("Primero parsea el reporte con Kimi");
+    return;
+  }
+  
+  const btn = document.getElementById("btn-guardar-entrega");
+  const original = btn ? btn.textContent : "📤 Guardar y analizar";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Guardando...';
+  }
+  
+  try {
+    // 1. Detectar alteraciones
+    const deteccion = window.detectarAlteraciones(valores);
+    
+    // 2. Anexar resultado al episodio
+    await window.anexarResultadoAEpisodio({
+      episodio_id: episodioId,
+      subject_id: subjectId,
+      tipo: tipo,
+      valores: valores,
+      flag_alterado: deteccion.alteraciones.length > 0,
+      severidad: deteccion.severidad_global,
+      interpretacion_ia: {
+        alteraciones: deteccion.alteraciones,
+        fecha_analisis: new Date().toISOString()
+      }
+    });
+    
+    // 3. Obtener el episodio actualizado
+    const episodio = await window.obtenerEpisodioClinico(episodioId);
+    
+    // 4. Si hay alteraciones, sugerir interconsultas
+    if (deteccion.alteraciones.length > 0) {
+      // Notificar al médico
+      await window.notificarResultadoAlterado(episodio, {
+        resultado_id: "reciente",
+        severidad: deteccion.severidad_global,
+        valores
+      });
+      
+      // Cerrar modal y abrir el de interconsultas
+      document.getElementById("modal-entrega-resultados")?.remove();
+      
+      await window.abrirModalInterconsultasDesdeResultados(
+        episodioId, 
+        subjectId, 
+        deteccion,
+        notas
+      );
+      
+    } else {
+      // Sin alteraciones — cerrar y confirmar
+      await window.actualizarEpisodio(episodioId, {
+        notas_evolucion: [
+          ...((episodio?.notas_evolucion) || []),
+          { fecha: new Date().toISOString(), nota: `Resultado ${tipo} sin alteraciones. ${notas}`, tipo: "resultado_normal" }
+        ]
+      });
+      
+      document.getElementById("modal-entrega-resultados")?.remove();
+      if (typeof showStatus === "function") showStatus("✓ Resultados guardados sin alteraciones", "success");
+    }
+    
+  } catch (e) {
+    console.error("[guardarEntregaResultados]", e);
+    setErr("Error: " + e.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+};
+
+console.log("[Interconsultas IA] ✓ Modal de entrega de resultados cargado");
+/* ═══════════════════════════════════════════════════════════
+   EXTENSIÓN DEL MOTOR DE INTERCONSULTAS
+   ═══════════════════════════════════════════════════════════ */
+
+window.ejecutarInterconsultasConContexto = async function(opciones) {
+  const {
+    episodio_id,
+    origen,
+    contexto_tipo,  // 'tamizaje' | 'consulta' | 'entrega_resultados'
+    especialistas,
+    caso_base,
+    resultados_extra
+  } = opciones;
+  
+  if (!especialistas || especialistas.length === 0) {
+    throw new Error("Sin especialistas seleccionados");
+  }
+  
+  console.log(`[Motor IA] Ejecutando ${especialistas.length} interconsulta(s) desde ${contexto_tipo}`);
+  
+  const ejecutadas = [];
+  const errores = [];
+  
+  for (const key of especialistas) {
+    try {
+      // Construir el caso enriquecido con resultados extra si existen
+      let casoParaIA = caso_base ? { ...caso_base } : {};
+      
+      if (resultados_extra) {
+        casoParaIA.labs = {
+          ...(casoParaIA.labs || {}),
+          ...resultados_extra
+        };
+      }
+      
+      // Añadir metadata del episodio
+      casoParaIA._episodio = {
+        episodio_id,
+        origen,
+        contexto_tipo,
+        fecha: new Date().toISOString()
+      };
+      
+      // Llamar al motor existente
+      const resultado = await window.runInterconsulta(casoParaIA, key);
+      
+      // Enriquecer con metadata
+      resultado._episodio_id = episodio_id;
+      resultado._origen = origen;
+      resultado._contexto = contexto_tipo;
+      resultado._ejecutada_at = new Date().toISOString();
+      
+      ejecutadas.push(resultado);
+      console.log(`[Motor IA] ✓ ${key} completada`);
+      
+    } catch (e) {
+      console.error(`[Motor IA] ✗ ${key}:`, e);
+      errores.push({ especialista: key, error: e.message });
+      ejecutadas.push({
+        especialista: key,
+        nombre: window.ESPECIALISTAS?.[key]?.nombre || key,
+        rol: window.ESPECIALISTAS?.[key]?.rol || "",
+        error: e.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+  
+  // Persistir en el episodio
+  if (episodio_id) {
+    const episodio = await window.obtenerEpisodioClinico(episodio_id);
+    if (episodio) {
+      const yaEjecutadas = episodio.interconsultas_ejecutadas || [];
+      await window.actualizarEpisodio(episodio_id, {
+        interconsultas_ejecutadas: [...yaEjecutadas, ...ejecutadas],
+        estado: ejecutadas.some(e => !e.error) ? "listo_para_cierre" : episodio.estado
+      });
+    }
+  }
+  
+  return { ejecutadas, errores };
+};
+/* ═══════════════════════════════════════════════════════════
+   DETECCIÓN AUTOMÁTICA DE ALTERACIONES
+   ═══════════════════════════════════════════════════════════ */
+
+window.detectarAlteraciones = function(valores) {
+  if (!valores || typeof valores !== "object") {
+    return { alteraciones: [], severidad_global: "normal", total_alterados: 0 };
+  }
+  
+  const labs = window.LABS_REGISTRY?._items || [];
+  const alteraciones = [];
+  
+  Object.entries(valores).forEach(([key, valor]) => {
+    if (valor === null || valor === undefined || valor === "") return;
+    if (key === "fecha_toma" || key === "laboratorio_emisor") return;
+    
+    // Buscar el lab correspondiente
+    const lab = labs.find(l => 
+      l.id.replace(/^lab-/, "").replace(/-/g, "_") === key
+    );
+    
+    if (!lab) return;
+    
+    const numValor = parseFloat(valor);
+    if (isNaN(numValor)) return;
+    
+    // Evaluar contra rangos
+    let severidad = "normal";
+    let mensaje = "";
+    
+    if (lab.interpretacion && lab.interpretacion.length > 0) {
+      for (const rango of lab.interpretacion) {
+        if (window.matchRango && window.matchRango(numValor, rango.rango)) {
+          const color = rango.color || "verde";
+          if (color === "rojo") severidad = "critico";
+          else if (color === "naranja") severidad = "moderado";
+          else if (color === "amarillo") severidad = "leve";
+          mensaje = rango.nivel;
+          break;
+        }
+      }
+    }
+    
+    if (severidad !== "normal") {
+      alteraciones.push({
+        key,
+        label: lab.nombre || key,
+        valor: numValor,
+        unidad: lab.unidad || "",
+        severidad,
+        nivel: mensaje,
+        referencia: lab.referencia || "",
+        interpretacion: lab.interpretacion
+      });
+    }
+  });
+  
+  // Severidad global
+  let severidad_global = "normal";
+  if (alteraciones.some(a => a.severidad === "critico")) severidad_global = "critico";
+  else if (alteraciones.some(a => a.severidad === "moderado")) severidad_global = "moderado";
+  else if (alteraciones.some(a => a.severidad === "leve")) severidad_global = "leve";
+  
+  return {
+    alteraciones,
+    severidad_global,
+    total_alterados: alteraciones.length,
+    total_evaluados: Object.keys(valores).length
+  };
+};
+
+/* ═══════════════════════════════════════════════════════════
+   SUGERENCIA AUTOMÁTICA DE ESPECIALISTAS
+   ═══════════════════════════════════════════════════════════ */
+
+window.sugerirEspecialistasPorAlteraciones = function(alteraciones) {
+  const mapa = {
+    // Glucometabolismo
+    "glucosa": ["endocrinologo", "nutricionista"],
+    "hba1c": ["endocrinologo", "nutricionista"],
+    "insulina": ["endocrinologo"],
+    "homa": ["endocrinologo"],
+    
+    // Lipídico
+    "ct": ["cardiologo", "nutricionista"],
+    "ldl": ["cardiologo", "nutricionista"],
+    "hdl": ["cardiologo", "nutricionista"],
+    "tg": ["cardiologo", "nutricionista", "endocrinologo"],
+    
+    // Hepático
+    "alt": ["hepatologo", "internista"],
+    "ast": ["hepatologo", "internista"],
+    "ggt": ["hepatologo"],
+    "fa": ["hepatologo"],
+    
+    // Renal
+    "creatinina": ["nefrologo"],
+    "tfg": ["nefrologo"],
+    "albuminuria": ["nefrologo"],
+    "urico": ["reumatologo", "nefrologo"],
+    "proteinuria": ["nefrologo"],
+    
+    // Tiroides
+    "tsh": ["endocrinologo"],
+    "antitpo": ["endocrinologo"],
+    
+    // Otros
+    "pcr": ["internista", "cardiologo"],
+    "vitd": ["nutricionista", "internista"]
+  };
+  
+  const especialistas = new Set();
+  alteraciones.forEach(a => {
+    const keyBase = a.key.replace(/^lab-/, "").split("_")[0];
+    (mapa[keyBase] || []).forEach(e => especialistas.add(e));
+    (mapa[a.key] || []).forEach(e => especialistas.add(e));
+  });
+  
+  // Priorizar según severidad
+  const criticos = alteraciones.filter(a => a.severidad === "critico");
+  const prioritarios = new Set();
+  criticos.forEach(a => {
+    (mapa[a.key] || []).forEach(e => prioritarios.add(e));
+  });
+  
+  return Array.from(especialistas).map(key => ({
+    especialista: key,
+    nombre: window.ESPECIALISTAS?.[key]?.nombre || key,
+    rol: window.ESPECIALISTAS?.[key]?.rol || "",
+    prioridad: prioritarios.has(key) ? "alta" : "media",
+    justificacion: "Sugerida por alteraciones detectadas en resultados",
+    costo_estimado: window.ESPECIALISTAS?.[key]?.costo_estimado || 0.003,
+    tiempo_estimado_seg: window.ESPECIALISTAS?.[key]?.tiempo_estimado_seg || 15,
+    origen: "deteccion_automatica"
+  }));
+};
+
+console.log("[Interconsultas IA] ✓ Detección de alteraciones cargada");
+/* ═══════════════════════════════════════════════════════════
+   PANEL DE EPISODIOS ABIERTOS
+   ═══════════════════════════════════════════════════════════ */
+
+window.abrirPanelEpisodios = async function() {
+  if (!window.supabaseClient) return;
+  
+  const { data: episodios, error } = await window.supabaseClient
+    .rpc("panel_episodios_pendientes");
+  
+  if (error) {
+    console.error("[panel episodios]", error);
+    if (typeof showStatus === "function") showStatus("Error: " + error.message, "error");
+    return;
+  }
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-panel-episodios";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(6px);z-index:99999;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:40px";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:800px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+      
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">📂 Episodios pendientes</h3>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">
+            ${episodios?.length || 0} episodio(s) requieren atención
+          </div>
+        </div>
+        <button onclick="document.getElementById('modal-panel-episodios').remove()"
+                style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+      </div>
+      
+      ${!episodios || episodios.length === 0 
+        ? '<div style="padding:40px;text-align:center;color:var(--text-tertiary)"><div style="font-size:32px;margin-bottom:8px">✅</div><p>Todo al día — sin episodios pendientes</p></div>'
+        : episodios.map(e => {
+          const color = e.estado === "listo_para_cierre" ? "#34c759"
+                      : e.estado === "en_espera_resultados" ? "#ff9500"
+                      : "#0071e3";
+          const estadoLabel = {
+            "abierto": "ABIERTO",
+            "en_espera_resultados": "ESPERANDO RESULTADOS",
+            "listo_para_cierre": "LISTO PARA CIERRE"
+          }[e.estado] || e.estado;
+          
+          return `
+            <div style="background:var(--bg-secondary);border-left:4px solid ${color};border-radius:0 10px 10px 0;padding:14px;margin-bottom:10px;cursor:pointer"
+                 onclick="document.getElementById('modal-panel-episodios').remove();abrirPanelEpisodio('${e.episodio_id}')">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13px;font-weight:700;color:var(--corp);margin-bottom:4px">
+                    ${escapeHtml(e.paciente_nombre)}
+                  </div>
+                  <div style="font-size:10px;color:var(--text-secondary);font-family:monospace">
+                    ${escapeHtml(e.episodio_id)} · ${escapeHtml(e.subject_id)}
+                  </div>
+                  <div style="font-size:11px;color:var(--text-secondary);margin-top:6px">
+                    <span style="background:${color};color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:0.3px">${estadoLabel}</span>
+                    <span style="margin-left:8px">${escapeHtml(e.tipo)}</span>
+                    <span style="margin-left:8px;color:var(--text-tertiary)">${new Date(e.fecha_apertura).toLocaleDateString("es-ES")}</span>
+                  </div>
+                  ${e.resultados_alterados > 0 || e.interconsultas_pendientes > 0 
+                    ? `<div style="margin-top:8px;font-size:10px">
+                        ${e.resultados_alterados > 0 ? `<span style="background:#fff3f3;color:#7a1a1a;font-weight:700;padding:3px 8px;border-radius:6px;margin-right:6px">⚠️ ${e.resultados_alterados} alterado(s)</span>` : ""}
+                        ${e.interconsultas_pendientes > 0 ? `<span style="background:#f0f7ff;color:#0051a3;font-weight:700;padding:3px 8px;border-radius:6px">🩺 ${e.interconsultas_pendientes} sugerida(s)</span>` : ""}
+                      </div>` 
+                    : ""}
+                </div>
+                <div style="font-size:20px;color:var(--text-tertiary)">›</div>
+              </div>
+            </div>
+          `;
+        }).join("")}
+    </div>
+  `;
+  
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+};
+
+window.abrirPanelEpisodio = async function(episodioId) {
+  const epi = await window.obtenerEpisodioClinico(episodioId);
+  if (!epi) {
+    if (typeof showStatus === "function") showStatus("Episodio no encontrado", "error");
+    return;
+  }
+  
+  const resultados = await window.obtenerResultadosDeEpisodio(episodioId);
+  const alterados = resultados.filter(r => r.flag_alterado);
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-episodio-detalle";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(6px);z-index:99999;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:40px";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:760px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+      
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">📋 ${escapeHtml(epi.episodio_id)}</h3>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">
+            ${escapeHtml(epi.tipo)} · ${escapeHtml(epi.estado)}
+          </div>
+        </div>
+        <button onclick="document.getElementById('modal-episodio-detalle').remove()"
+                style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+      </div>
+      
+      <!-- Resultados -->
+      <div style="background:var(--bg-secondary);border-radius:10px;padding:14px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--corp);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">
+          📊 Resultados recibidos (${resultados.length})
+        </div>
+        ${resultados.length === 0 
+          ? '<p style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:14px">Sin resultados aún</p>'
+          : resultados.map(r => {
+            const color = r.flag_alterado 
+              ? (r.severidad === "critico" ? "#ff3b30" : "#ff9500")
+              : "#34c759";
+            return `
+              <div style="background:white;border-left:3px solid ${color};border-radius:0 8px 8px 0;padding:10px;margin-bottom:6px">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+                  <div style="flex:1">
+                    <div style="font-size:11px;font-weight:700;color:var(--corp)">
+                      ${escapeHtml(r.tipo)} ${r.flag_alterado ? `<span style="background:${color};color:white;padding:2px 6px;border-radius:4px;font-size:9px;margin-left:6px">${r.severidad.toUpperCase()}</span>` : ""}
+                    </div>
+                    <div style="font-size:10px;color:var(--text-secondary);margin-top:2px">
+                      ${new Date(r.recibido_at).toLocaleString("es-ES")}
+                    </div>
+                    ${r.interpretacion_ia?.alteraciones 
+                      ? `<div style="margin-top:6px;font-size:10px;color:${color};font-weight:600">
+                          ${r.interpretacion_ia.alteraciones.map(a => `${a.label}: ${a.valor} ${a.unidad} (${a.nivel})`).join(" · ")}
+                        </div>` 
+                      : ""}
+                  </div>
+                  <button class="btn btn-primary btn-xs" 
+                          onclick="abrirInterconsultasParaResultado('${epi.episodio_id}', '${r.resultado_id}')"
+                          style="font-size:10px">
+                    🩺 Interconsultas
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join("")}
+      </div>
+      
+      <!-- Interconsultas ejecutadas -->
+      ${(epi.interconsultas_ejecutadas || []).length > 0 ? `
+        <div style="background:#f0fff4;border-radius:10px;padding:14px;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:700;color:#1a4a2a;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">
+            🩺 Interconsultas IA ejecutadas (${(epi.interconsultas_ejecutadas || []).filter(i => !i.error).length})
+          </div>
+          ${(epi.interconsultas_ejecutadas || []).map(ic => `
+            <div style="background:white;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:11px">
+              <strong style="color:var(--corp)">${escapeHtml(ic.nombre || ic.especialista)}</strong>
+              ${ic.error 
+                ? `<span style="color:#ff3b30;margin-left:8px;font-size:10px">Error: ${escapeHtml(ic.error)}</span>`
+                : `<span style="color:var(--positive);margin-left:8px;font-size:10px">✓ Completada</span>`}
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+      
+      <!-- Notas de evolución -->
+      ${(epi.notas_evolucion || []).length > 0 ? `
+        <div style="background:var(--bg-secondary);border-radius:10px;padding:14px;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:700;color:var(--corp);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">
+            📝 Notas de evolución
+          </div>
+          ${(epi.notas_evolucion || []).map(n => `
+            <div style="background:white;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:11px">
+              <div style="color:var(--text-tertiary);font-size:9px;margin-bottom:3px">
+                ${new Date(n.fecha).toLocaleString("es-ES")} · ${escapeHtml(n.tipo || "")}
+              </div>
+              <div>${escapeHtml(n.nota || "")}</div>
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+      
+      <!-- Acciones -->
+      <div style="display:flex;gap:8px">
+        ${epi.estado !== "cerrado" 
+          ? `<button class="btn btn-success" onclick="abrirModalCerrarEpisodio('${epi.episodio_id}')" style="flex:1;font-size:12px">
+              ✓ Cerrar episodio
+            </button>`
+          : ""}
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-episodio-detalle').remove()" style="flex:1;font-size:12px">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  `;
+  
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+};
+
+window.abrirModalCerrarEpisodio = function(episodioId) {
+  const nota = prompt("Nota de cierre del episodio:");
+  if (!nota) return;
+  
+  window.cerrarEpisodio(episodioId, nota).then(() => {
+    document.getElementById("modal-episodio-detalle")?.remove();
+    if (typeof showStatus === "function") showStatus("✓ Episodio cerrado", "success");
+  });
+};
+
+window.abrirInterconsultasParaResultado = async function(episodioId, resultadoId) {
+  const resultados = await window.obtenerResultadosDeEpisodio(episodioId);
+  const resultado = resultados.find(r => r.resultado_id === resultadoId);
+  if (!resultado) return;
+  
+  const alteraciones = resultado.interpretacion_ia?.alteraciones || [];
+  await window.abrirModalInterconsultasDesdeResultados(
+    episodioId, 
+    resultado.subject_id, 
+    { alteraciones, severidad_global: resultado.severidad },
+    ""
+  );
+};
+
+console.log("[Interconsultas IA] ✓ Panel de episodios cargado");
+/* ═══════════════════════════════════════════════════════════
+   MODAL DE INTERCONSULTAS DESDE RESULTADOS
+   Cubre: tamizaje alterado + consulta + entrega de resultados
+   ═══════════════════════════════════════════════════════════ */
+
+window.abrirModalInterconsultasDesdeResultados = async function(episodioId, subjectId, deteccion, notas) {
+  if (!window.supabaseClient) return;
+  
+  // Verificar plan
+  const contexto = window.detectarContextoInterconsulta({ 
+    episodio_id: episodioId, 
+    subject_id: subjectId, 
+    tipo: "entrega_resultados" 
+  });
+  
+  if (!contexto.permite_ia) {
+    if (typeof showStatus === "function") {
+      showStatus("Interconsultas IA solo disponibles en planes PLUS o PREMIUM", "warning");
+    }
+    // Ofrecer igualmente derivar a especialista humano
+    return window.abrirModalDerivacionHumana(episodioId, subjectId, deteccion);
+  }
+  
+  // Sugerir especialistas
+  const sugeridos = window.sugerirEspecialistasPorAlteraciones(deteccion.alteraciones);
+  
+  if (sugeridos.length === 0) {
+    if (typeof showStatus === "function") {
+      showStatus("No se detectaron especialistas sugeridos", "info");
+    }
+    return;
+  }
+  
+  // Cargar paciente
+  const { data: pac } = await window.supabaseClient
+    .from("patients")
+    .select("nombre, edad, sexo")
+    .eq("subject_id", subjectId)
+    .maybeSingle();
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-interconsultas-resultados";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(6px);z-index:99999;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:40px";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:720px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+      
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">🩺 Interconsultas sugeridas</h3>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">
+            ${escapeHtml(pac?.nombre || "Paciente")} · ${pac?.edad || "—"} años
+          </div>
+        </div>
+        <button onclick="document.getElementById('modal-interconsultas-resultados').remove()"
+                style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+      </div>
+      
+      <!-- Alteraciones detectadas -->
+      <div style="background:${deteccion.severidad_global === "critico" ? "#fff3f3" : "#fff9e6"};border-left:4px solid ${deteccion.severidad_global === "critico" ? "#ff3b30" : "#ff9500"};border-radius:0 10px 10px 0;padding:12px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:${deteccion.severidad_global === "critico" ? "#7a1a1a" : "#8a6a00"};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
+          ⚠️ ${deteccion.alteraciones.length} alteración(es) detectada(s)
+        </div>
+        ${deteccion.alteraciones.map(a => `
+          <div style="font-size:11px;color:${deteccion.severidad_global === "critico" ? "#7a1a1a" : "#5a4a00"};margin-bottom:4px">
+            <strong>${escapeHtml(a.label)}:</strong> ${a.valor} ${escapeHtml(a.unidad)} — 
+            <span style="font-weight:700">${escapeHtml(a.nivel)}</span>
+          </div>
+        `).join("")}
+      </div>
+      
+      <!-- Especialistas sugeridos -->
+      <div style="font-size:11px;font-weight:700;color:var(--corp);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
+        🩺 Especialistas sugeridos por IA (${sugeridos.length})
+      </div>
+      
+      <div id="lista-interconsultas-sugeridas">
+        ${sugeridos.map(s => {
+          const color = s.prioridad === "alta" ? "#ff3b30" : s.prioridad === "media" ? "#ff9500" : "#0071e3";
+          return `
+            <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:var(--bg-secondary);border-radius:10px;margin-bottom:8px;cursor:pointer;border-left:3px solid ${color}">
+              <input type="checkbox" class="sugerido-check" value="${s.especialista}" checked style="width:auto;margin-top:3px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:700;color:var(--corp)">
+                  ${escapeHtml(s.nombre)} 
+                  <span style="background:${color};color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px;text-transform:uppercase">${s.prioridad}</span>
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${escapeHtml(s.rol)}</div>
+                <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px;line-height:1.5">${escapeHtml(s.justificacion)}</div>
+              </div>
+              <div style="text-align:right;font-size:10px;color:var(--text-tertiary);flex-shrink:0">
+                $${s.costo_estimado.toFixed(3)}<br>~${s.tiempo_estimado_seg}s
+              </div>
+            </label>
+          `;
+        }).join("")}
+      </div>
+      
+      <!-- Nota del médico -->
+      <div class="form-group" style="margin-top:14px">
+        <label style="font-size:11px;font-weight:600">Nota clínica (opcional)</label>
+        <textarea id="ic-nota" placeholder="Observaciones, contexto adicional..." 
+                  style="font-size:12px;min-height:60px">${escapeHtml(notas || "")}</textarea>
+      </div>
+      
+      <!-- Panel de progreso -->
+      <div id="ic-panel-progreso" style="display:none;background:var(--bg-secondary);border-radius:10px;padding:12px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--corp);margin-bottom:8px">
+          Ejecutando... <span id="ic-progreso">0/0</span>
+        </div>
+        <div id="ic-rows"></div>
+      </div>
+      
+      <div id="ic-error" style="display:none;margin-bottom:12px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+      
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-interconsultas-resultados').remove()" 
+                style="flex:1;font-size:12px">Cancelar</button>
+        <button class="btn btn-gold" onclick="ejecutarInterconsultasDesdeResultados('${episodioId}', '${subjectId}')" 
+                id="btn-ejecutar-ic-resultados" style="flex:1;font-size:12px">
+          🩺 Ejecutar interconsultas IA
+        </button>
+      </div>
+    </div>
+  `;
+  
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+  
+  // Guardar sugeridos para uso posterior
+  window._interconsultasSugeridasResultados = sugeridos;
+};
+
+/* ─── Ejecutar interconsultas desde el modal ─── */
+window.ejecutarInterconsultasDesdeResultados = async function(episodioId, subjectId) {
+  const errEl = document.getElementById("ic-error");
+  const setErr = (msg) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  };
+  if (errEl) errEl.style.display = "none";
+  
+  const checks = document.querySelectorAll(".sugerido-check:checked");
+  const especialistas = Array.from(checks).map(c => c.value);
+  
+  if (especialistas.length === 0) {
+    setErr("Selecciona al menos un especialista");
+    return;
+  }
+  
+  const nota = document.getElementById("ic-nota")?.value?.trim() || "";
+  
+  const btn = document.getElementById("btn-ejecutar-ic-resultados");
+  const original = btn ? btn.textContent : "🩺 Ejecutar interconsultas IA";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Ejecutando...';
+  }
+  
+  // Mostrar panel de progreso
+  const panelProgreso = document.getElementById("ic-panel-progreso");
+  const rowsCont = document.getElementById("ic-rows");
+  const progresoEl = document.getElementById("ic-progreso");
+  
+  if (panelProgreso) panelProgreso.style.display = "block";
+  if (rowsCont) {
+    rowsCont.innerHTML = especialistas.map(key => {
+      const esp = window.ESPECIALISTAS?.[key];
+      return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">
+        <span style="font-weight:600">${escapeHtml(esp?.nombre || key)}</span>
+        <span data-status="${key}" style="color:var(--text-tertiary);font-weight:600">Pendiente</span>
+      </div>`;
+    }).join("");
+  }
+  
+  try {
+    // Obtener el episodio actual para el contexto base
+    const episodio = await window.obtenerEpisodioClinico(episodioId);
+    const resultados = await window.obtenerResultadosDeEpisodio(episodioId);
+    
+    // Consolidar valores de todos los resultados en un solo objeto
+    const valoresConsolidados = {};
+    resultados.forEach(r => {
+      Object.assign(valoresConsolidados, r.valores || {});
+    });
+    
+    // Cargar paciente para el caso base
+    const { data: pac } = await window.supabaseClient
+      .from("patients")
+      .select("*")
+      .eq("subject_id", subjectId)
+      .maybeSingle();
+    
+    // Construir caso base
+    const casoBase = {
+      subject: pac || { subject_id: subjectId },
+      encounter: { estudio: episodio?.tipo || "consulta", fecha: new Date().toLocaleDateString("es-ES") },
+      labs: valoresConsolidados,
+      clinica: {},
+      findings: {},
+      metrics: [],
+      plan_base: {},
+      _episodio: {
+        episodio_id: episodioId,
+        tipo: episodio?.tipo,
+        notas: nota
+      }
+    };
+    
+    // Ejecutar
+    let completadas = 0;
+    const total = especialistas.length;
+    
+    const resultados_ic = await window.ejecutarInterconsultasConContexto({
+      episodio_id: episodioId,
+      origen: episodio?.caso_inicial_id || episodioId,
+      contexto_tipo: "entrega_resultados",
+      especialistas: especialistas,
+      caso_base: casoBase,
+      resultados_extra: valoresConsolidados
+    });
+    
+    // Actualizar UI
+    resultados_ic.ejecutadas.forEach(ic => {
+      const statusEl = document.querySelector(`[data-status="${ic.especialista}"]`);
+      if (statusEl) {
+        if (ic.error) {
+          statusEl.textContent = "Error";
+          statusEl.style.color = "#ff3b30";
+        } else {
+          statusEl.textContent = "✓ Completada";
+          statusEl.style.color = "#34c759";
+        }
+      }
+      completadas++;
+      if (progresoEl) progresoEl.textContent = `${completadas}/${total}`;
+    });
+    
+    // Mostrar resultados
+    setTimeout(() => {
+      document.getElementById("modal-interconsultas-resultados")?.remove();
+      
+      // Guardar nota de evolución
+      if (nota) {
+        window.actualizarEpisodio(episodioId, {
+          notas_evolucion: [
+            ...((episodio?.notas_evolucion) || []),
+            { 
+              fecha: new Date().toISOString(), 
+              nota: `Interconsultas ejecutadas: ${especialistas.join(", ")}. ${nota}`, 
+              tipo: "interconsultas_ia" 
+            }
+          ]
+        });
+      }
+      
+      // Mostrar panel del episodio
+      window.abrirPanelEpisodio(episodioId);
+      
+      if (typeof showStatus === "function") {
+        showStatus(`✓ ${resultados_ic.ejecutadas.filter(i => !i.error).length}/${total} interconsultas completadas`, "success");
+      }
+    }, 800);
+    
+  } catch (e) {
+    console.error("[ejecutarInterconsultasDesdeResultados]", e);
+    setErr("Error: " + e.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   DERIVACIÓN A ESPECIALISTA HUMANO (fallback sin IA)
+   ═══════════════════════════════════════════════════════════ */
+
+window.abrirModalDerivacionHumana = async function(episodioId, subjectId, deteccion) {
+  const sugeridos = window.sugerirEspecialistasPorAlteraciones(deteccion.alteraciones);
+  
+  const overlay = document.createElement("div");
+  overlay.id = "modal-derivacion-humana";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99999;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:40px";
+  
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:600px;width:100%;padding:24px">
+      <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0 0 14px">📤 Derivación a especialista</h3>
+      <p style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-bottom:14px">
+        El paciente no tiene plan PLUS/PREMIUM. Puedes generar una hoja de referencia para derivación presencial.
+      </p>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Especialidad destino *</label>
+        <select id="deriv-especialidad" style="font-size:12px;padding:10px">
+          ${sugeridos.map(s => `<option value="${s.especialista}">${escapeHtml(s.nombre)} — ${escapeHtml(s.rol)}</option>`).join("")}
+          <option value="otro">Otra</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Prioridad</label>
+        <select id="deriv-prioridad" style="font-size:12px;padding:10px">
+          <option value="baja">Baja</option>
+          <option value="media">Media</option>
+          <option value="alta">Alta</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label style="font-size:11px;font-weight:600">Motivo *</label>
+        <textarea id="deriv-motivo" placeholder="Motivo de la derivación..." 
+                  style="font-size:12px;min-height:80px"></textarea>
+      </div>
+      
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-derivacion-humana').remove()" 
+                style="flex:1;font-size:12px">Cancelar</button>
+        <button class="btn btn-primary" onclick="crearDerivacionHumana('${episodioId}', '${subjectId}')" 
+                style="flex:1;font-size:12px">📤 Crear derivación</button>
+      </div>
+    </div>
+  `;
+  
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+};
+
+window.crearDerivacionHumana = async function(episodioId, subjectId) {
+  const especialidad = document.getElementById("deriv-especialidad")?.value;
+  const prioridad = document.getElementById("deriv-prioridad")?.value || "media";
+  const motivo = document.getElementById("deriv-motivo")?.value?.trim();
+  
+  if (!motivo) {
+    if (typeof showStatus === "function") showStatus("El motivo es obligatorio", "error");
+    return;
+  }
+  
+  try {
+    await window.registrarOrdenClinica({
+      episodio_id: episodioId,
+      subject_id: subjectId,
+      tipo: "interconsulta_humana",
+      detalle: {
+        especialidad,
+        prioridad,
+        motivo,
+        creada_at: new Date().toISOString()
+      }
+    });
+    
+    document.getElementById("modal-derivacion-humana")?.remove();
+    if (typeof showStatus === "function") showStatus("✓ Derivación creada", "success");
+  } catch (e) {
+    console.error("[crearDerivacionHumana]", e);
+    if (typeof showStatus === "function") showStatus("Error: " + e.message, "error");
+  }
+};
+
+console.log("[Interconsultas IA] ✓ Modal de interconsultas desde resultados cargado");
+/* ═══════════════════════════════════════════════════════════
+   HOOKS FINALES DE INTEGRACIÓN
+   ═══════════════════════════════════════════════════════════ */
+
+// ─── Hook 1: Al firmar una consulta, crear episodio ───
+const _firmarYGenerarConsultaConEpisodio = window.firmarYGenerarConsulta;
+if (typeof _firmarYGenerarConsultaConEpisodio === "function") {
+  window.firmarYGenerarConsulta = async function() {
+    const s = window._consultaState;
+    const result = await _firmarYGenerarConsultaConEpisodio.apply(this, arguments);
+    
+    // Crear episodio si la firma fue exitosa
+    if (s?.paciente && s?.consultaId && !s.caseId?.startsWith("ECO-")) {
+      try {
+        const ordenesLab = (s.ordenesLab || []).map(o => ({ tipo: "laboratorio", detalle: o }));
+        const ordenesImg = (s.ordenesImagen || []).map(o => ({ tipo: "imagen", detalle: o }));
+        const ordenes = [...ordenesLab, ...ordenesImg];
+        
+        if (ordenes.length > 0) {
+          const episodio = await window.crearEpisodioClinico({
+            subject_id: s.paciente.subject_id,
+            tipo: "consulta",
+            estado: "en_espera_resultados",
+            caso_inicial_id: s.caseId,
+            casos_vinculados: [s.caseId],
+            metadata: { consulta_id: s.consultaId }
+          });
+          
+          // Registrar órdenes
+          await window.registrarOrdenesEnBloque(
+            episodio.episodio_id,
+            s.paciente.subject_id,
+            ordenes
+          );
+          
+          console.log("[Hook firma] ✓ Episodio creado:", episodio.episodio_id);
+        }
+      } catch (e) {
+        console.warn("[Hook firma] Error creando episodio:", e);
+      }
+    }
+    
+    return result;
+  };
+}
+
+// ─── Hook 2: Al firmar un tamizaje, crear episodio ───
+const _generarInformeFinalConEpisodio = window.generarInformeFinal;
+if (typeof _generarInformeFinalConEpisodio === "function") {
+  window.generarInformeFinal = async function() {
+    const result = await _generarInformeFinalConEpisodio.apply(this, arguments);
+    
+    const caso = window._casoActual;
+    if (caso?.subject?.subject_id && caso?.case_id) {
+      try {
+        const episodio = await window.crearEpisodioClinico({
+          subject_id: caso.subject.subject_id,
+          tipo: "tamizaje",
+          estado: (caso.interconsultas_ejecutadas || []).length > 0 
+            ? "listo_para_cierre" 
+            : "cerrado",
+          caso_inicial_id: caso.case_id,
+          casos_vinculados: [caso.case_id],
+          interconsultas_ejecutadas: caso.interconsultas_ejecutadas || [],
+          metadata: { estudio: caso.encounter?.estudio }
+        });
+        
+        window._episodioActualTamizaje = episodio.episodio_id;
+        console.log("[Hook tamizaje] ✓ Episodio creado:", episodio.episodio_id);
+      } catch (e) {
+        console.warn("[Hook tamizaje] Error creando episodio:", e);
+      }
+    }
+    
+    return result;
+  };
+}
+
+// ─── Hook 3: Al firmar, detectar alteraciones en labs del tamizaje ───
+const _ejecutarInterconsultasConNotif = window.ejecutarInterconsultasConContexto;
+window.ejecutarInterconsultasConContexto = async function(opciones) {
+  const result = await _ejecutarInterconsultasConNotif.apply(this, arguments);
+  
+  // Si hubo alteraciones, notificar al médico
+  if (opciones.resultados_extra && Object.keys(opciones.resultados_extra).length > 0) {
+    const deteccion = window.detectarAlteraciones(opciones.resultados_extra);
+    if (deteccion.alteraciones.length > 0) {
+      const epi = await window.obtenerEpisodioClinico(opciones.episodio_id);
+      if (epi) {
+        await window.notificarResultadoAlterado(epi, {
+          resultado_id: "auto_detectado",
+          severidad: deteccion.severidad_global,
+          valores: opciones.resultados_extra
+        });
+      }
+    }
+  }
+  
+  return result;
+};
+
+// ─── Hook 4: Añadir botón "Entrega de resultados" al módulo de consulta ───
+document.addEventListener("DOMContentLoaded", function() {
+  setTimeout(() => {
+    // Inicializar campana
+    window.inicializarCampanaNotificaciones();
+    
+    // Añadir botón de "Entrega de resultados" al módulo de consulta
+    const consultaTipoCard = document.getElementById("consulta-tipo-card");
+    if (consultaTipoCard && !document.getElementById("btn-entrega-resultados-acceso")) {
+      const div = document.createElement("div");
+      div.id = "btn-entrega-resultados-acceso";
+      div.style.cssText = "margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)";
+      div.innerHTML = `
+        <button class="btn btn-warning" style="width:100%;font-size:12px" 
+                onclick="abrirModalEntregaResultados(window._consultaState?.paciente?.subject_id)">
+          📥 Entrega de resultados (laboratorio / imagen)
+        </button>
+      `;
+      consultaTipoCard.appendChild(div);
+    }
+    
+    // Añadir botón de "Episodios pendientes" al header admin
+    const adminSubtabs = document.getElementById("admin-subtabs");
+    if (adminSubtabs && !document.getElementById("admin-subtab-episodios")) {
+      const tab = document.createElement("div");
+      tab.className = "admin-subtab";
+      tab.id = "admin-subtab-episodios";
+      tab.dataset.subtab = "episodios";
+      tab.textContent = "📂 Episodios";
+      tab.onclick = () => window.abrirPanelEpisodios();
+      adminSubtabs.appendChild(tab);
+    }
+  }, 1500);
+});
+
+console.log("[Interconsultas IA] ✓ Integración completa cargada");
+console.log("[Interconsultas IA] Usa abrirModalEntregaResultados(subject_id) para probar");
+console.log("[Interconsultas IA] Usa abrirPanelEpisodios() para ver pendientes");
 </script>
 </body>
 </html>
