@@ -20762,7 +20762,7 @@ window.ejecutarInterconsultasConContexto = async function(opciones) {
 document.addEventListener("DOMContentLoaded", function() {
   setTimeout(() => {
     // Inicializar campana
-    window.inicializarCampanaNotificaciones();
+    //window.inicializarCampanaNotificaciones();
     
     // Añadir botón de "Entrega de resultados" al módulo de consulta
     const consultaTipoCard = document.getElementById("consulta-tipo-card");
@@ -20796,6 +20796,193 @@ document.addEventListener("DOMContentLoaded", function() {
 console.log("[Interconsultas IA] ✓ Integración completa cargada");
 console.log("[Interconsultas IA] Usa abrirModalEntregaResultados(subject_id) para probar");
 console.log("[Interconsultas IA] Usa abrirPanelEpisodios() para ver pendientes");
+</script>
+<!-- ═══════════════════════════════════════════════════════════
+     PASO 7 — SISTEMA DE NOTIFICACIONES MÉDICAS
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+window.inicializarCampanaNotificaciones = function() {
+  const headerInner = document.querySelector(".header-inner");
+  if (!headerInner) { console.warn("[Campana] No hay .header-inner"); return; }
+  if (document.getElementById("campana-notif")) return;
+
+  const rol = window.usuarioActual?.rol;
+  if (rol !== "medico" && rol !== "admin") return;
+
+  const campana = document.createElement("button");
+  campana.id = "campana-notif";
+  campana.title = "Notificaciones médicas";
+  campana.style.cssText = "position:relative;background:var(--bg-tertiary);border:none;width:36px;height:36px;border-radius:50%;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:background 0.2s";
+  campana.onmouseover = () => { campana.style.background = "var(--accent-light)"; };
+  campana.onmouseout  = () => { campana.style.background = "var(--bg-tertiary)"; };
+  campana.innerHTML = `🔔<span id="notif-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:#ff3b30;color:white;font-size:9px;font-weight:700;min-width:16px;height:16px;border-radius:8px;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 2px 4px rgba(0,0,0,0.2)">0</span>`;
+  campana.onclick = () => window.abrirPanelNotificaciones();
+
+  headerInner.appendChild(campana);
+
+  window.actualizarBadgeNotificaciones();
+
+  if (window._notifPollingInterval) clearInterval(window._notifPollingInterval);
+  window._notifPollingInterval = setInterval(window.actualizarBadgeNotificaciones, 60000);
+
+  console.log("[Campana] ✓ Inicializada");
+};
+
+window.actualizarBadgeNotificaciones = async function() {
+  if (!window.supabaseClient || !window.usuarioActual) return;
+  const { data, error } = await window.supabaseClient
+    .from("notificaciones_medicas")
+    .select("notif_id")
+    .eq("medico_id", window.usuarioActual.id)
+    .eq("leida", false);
+  if (error) { console.warn("[Badge]", error.message); return; }
+  const count = data?.length || 0;
+  const badge = document.getElementById("notif-badge");
+  if (badge) {
+    if (count > 0) {
+      badge.textContent = count > 99 ? "99+" : String(count);
+      badge.style.display = "flex";
+    } else {
+      badge.style.display = "none";
+    }
+  }
+};
+
+window.abrirPanelNotificaciones = async function() {
+  if (!window.supabaseClient || !window.usuarioActual) {
+    if (typeof showStatus === "function") showStatus("Sin conexión", "error");
+    return;
+  }
+  const { data: notifs, error } = await window.supabaseClient
+    .from("notificaciones_medicas")
+    .select("*")
+    .eq("medico_id", window.usuarioActual.id)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) { console.warn("[Panel Notif]", error); }
+
+  document.getElementById("modal-notificaciones")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "modal-notificaciones";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:flex-start;justify-content:flex-end;padding:60px 20px 20px";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;max-width:400px;width:100%;max-height:70vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+      <div style="padding:16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--bg);z-index:1;border-radius:16px 16px 0 0">
+        <h3 style="font-size:14px;font-weight:700;color:var(--corp);margin:0">🔔 Notificaciones</h3>
+        <button onclick="document.getElementById('modal-notificaciones').remove()"
+                style="background:var(--bg-tertiary);border:none;width:28px;height:28px;border-radius:50%;font-size:14px;cursor:pointer">×</button>
+      </div>
+      <div style="padding:8px">
+        ${!notifs || notifs.length === 0
+          ? '<div style="padding:24px;text-align:center;color:var(--text-tertiary);font-size:12px"><div style="font-size:32px;margin-bottom:8px">📭</div>Sin notificaciones</div>'
+          : notifs.map(n => {
+            const color = n.prioridad === "critica" ? "#ff3b30"
+                        : n.prioridad === "alta" ? "#ff9500"
+                        : n.prioridad === "media" ? "#0071e3"
+                        : "#86868b";
+            return `
+              <div style="background:${n.leida ? "var(--bg-secondary)" : "var(--accent-light)"};border-left:3px solid ${color};border-radius:0 8px 8px 0;padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:transform 0.15s"
+                   onclick="abrirEpisodioDesdeNotificacion('${n.episodio_id || ""}', '${n.notif_id}')"
+                   onmouseover="this.style.transform='translateX(2px)'"
+                   onmouseout="this.style.transform='translateX(0)'">
+                <div style="font-size:11px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">
+                  ${escapeHtml((n.tipo || "").replace(/_/g, " "))}
+                </div>
+                <div style="font-size:11.5px;color:var(--text-primary);line-height:1.5">
+                  ${escapeHtml(n.mensaje || "")}
+                </div>
+                <div style="font-size:9px;color:var(--text-tertiary);margin-top:4px">
+                  ${new Date(n.created_at).toLocaleString("es-ES")}
+                </div>
+              </div>
+            `;
+          }).join("")}
+      </div>
+      ${notifs && notifs.length > 0 ? `
+        <div style="padding:12px;border-top:1px solid var(--border);text-align:center">
+          <button class="btn btn-secondary btn-sm" onclick="marcarTodasLeidas()" style="font-size:11px;width:100%">
+            ✓ Marcar todas como leídas
+          </button>
+        </div>
+      ` : ""}
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+};
+
+window.abrirEpisodioDesdeNotificacion = async function(episodioId, notifId) {
+  if (window.supabaseClient && notifId) {
+    try {
+      await window.supabaseClient
+        .from("notificaciones_medicas")
+        .update({ leida: true })
+        .eq("notif_id", notifId);
+      window.actualizarBadgeNotificaciones();
+    } catch (e) { console.warn("[Notif] Error marcando leída:", e); }
+  }
+
+  document.getElementById("modal-notificaciones")?.remove();
+
+  if (episodioId && typeof window.abrirPanelEpisodio === "function") {
+    await window.abrirPanelEpisodio(episodioId);
+  } else if (typeof showStatus === "function") {
+    showStatus("Episodio no disponible", "warning");
+  }
+};
+
+window.marcarTodasLeidas = async function() {
+  if (!window.supabaseClient || !window.usuarioActual) return;
+  try {
+    await window.supabaseClient
+      .from("notificaciones_medicas")
+      .update({ leida: true })
+      .eq("medico_id", window.usuarioActual.id)
+      .eq("leida", false);
+    window.actualizarBadgeNotificaciones();
+    document.getElementById("modal-notificaciones")?.remove();
+    if (typeof showStatus === "function") showStatus("✓ Todas marcadas como leídas", "success");
+  } catch (e) { console.warn("[marcarTodasLeidas]", e); }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   AUTO-INICIALIZACIÓN CON REINTENTOS
+   ═══════════════════════════════════════════════════════════ */
+
+let _intentosCampana = 0;
+const _MAX_INTENTOS_CAMPANA = 40;
+
+function _intentarInicializarCampana() {
+  _intentosCampana++;
+  const headerListo = !!document.querySelector(".header-inner");
+  const usuarioListo = !!window.usuarioActual;
+  const rolOk = ["medico", "admin"].includes(window.usuarioActual?.rol);
+
+  if (headerListo && usuarioListo && rolOk) {
+    window.inicializarCampanaNotificaciones();
+    console.log("[Campana] ✓ Init en intento", _intentosCampana);
+    return;
+  }
+  if (_intentosCampana < _MAX_INTENTOS_CAMPANA) {
+    setTimeout(_intentarInicializarCampana, 250);
+  } else {
+    console.warn("[Campana] Timeout. Estado:", { header: headerListo, usuario: usuarioListo, rol: window.usuarioActual?.rol });
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => setTimeout(_intentarInicializarCampana, 300));
+} else {
+  setTimeout(_intentarInicializarCampana, 300);
+}
+
+console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializando");
 </script>
 </body>
 </html>
