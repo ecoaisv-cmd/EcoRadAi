@@ -5698,7 +5698,16 @@ window.cargarPortalPaciente = cargarPortalPaciente;
    - Usa .limit(1) en lugar de .maybeSingle()
    - Acepta variantes de nombres de tipo
    ═══════════════════════════════════════════════════════════ */
-
+// Notificar al kernel
+  if (window.SAVIA) {
+    window.SAVIA.enviar({
+      de: "agente-portal",
+      tipo: "portal:cargado",
+      payload: { eventos: eventos.length },
+      flujo: "lateral"
+    }).catch(() => {});
+  }
+}
 async function verArtefacto(caseId, tipo) {
   try {
     let html = null;
@@ -6219,6 +6228,17 @@ function on(id, ev, h) {
   if (el) el.addEventListener(ev, h);
 }
 function showStatus(msg, type) {
+   // Notificar al kernel
+  if (window.SAVIA && msg) {
+    try {
+      window.SAVIA.enviar({
+        de: "sistema",
+        tipo: "STATUS",
+        payload: { msg, type },
+        flujo: "circular"
+      }).catch(() => {});
+    } catch (e) {}
+  }
   const el = document.getElementById("global-toast");
   if (!el) return;
   if (!msg) { el.style.transform = "translateX(-50%) translateY(-120%)"; return; }
@@ -11736,6 +11756,15 @@ window.seleccionarPacienteConsulta = async function(subjectId) {
     console.error("[seleccionarPacienteConsulta]", e);
     showStatus("Error: " + e.message, "error");
   }
+  // Al final de cada función:
+if (window.SAVIA) {
+  window.SAVIA.enviar({
+    de: "agente-paciente",
+    tipo: "paciente:seleccionado",
+    payload: { subject_id: data.subject_id, nombre: data.nombre },
+    flujo: "ascendente"
+  }).catch(() => {});
+}
 };
 
 function renderInfoPacienteConsulta(p) {
@@ -13706,6 +13735,19 @@ window.firmarYGenerarConsulta = async function() {
       btn.disabled = false;
       btn.textContent = original;
     }
+  }
+  // Al final, notificar
+  if (window.SAVIA) {
+    window.SAVIA.enviar({
+      de: "agente-consulta",
+      tipo: "consulta:firmada",
+      payload: {
+        case_id: s.caseId,
+        subject_id: s.paciente?.subject_id,
+        tiene_ordenes: (s.ordenesLab?.length || 0) + (s.ordenesImagen?.length || 0) > 0
+      },
+      flujo: "ascendente"
+    }).catch(() => {});
   }
 };
 
@@ -20732,6 +20774,17 @@ if (typeof _generarInformeFinalConEpisodio === "function") {
     }
     
     return result;
+    if (window.SAVIA) {
+    window.SAVIA.enviar({
+      de: "agente-tamizaje",
+      tipo: "tamizaje:firmado",
+      payload: {
+        case_id: casoActual?.case_id,
+        subject_id: casoActual?.subject?.subject_id
+      },
+      flujo: "ascendente"
+    }).catch(() => {});
+  }
   };
 }
 
@@ -20984,5 +21037,10 @@ if (document.readyState === "loading") {
 
 console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializando");
 </script>
+<!-- ═══════════════════════════════════════════════════════════
+     KERNEL DE AGENTES — Sprint 1
+     Carga después del monolito para envolverlo sin modificarlo
+     ═══════════════════════════════════════════════════════════ -->
+<script type="module" src="js/kernel/init.js"></script>
 </body>
 </html>
