@@ -16657,7 +16657,8 @@ const PLANES_SUSCRIPCION = {
     link_pago: "https://buy.stripe.com/test_REEMPLAZA_premium"
   }
 };
-
+window.PLANES = window.PLANES || PLANES;  // expone PLANES al scope global
+window.PLANES_SUSCRIPCION = PLANES_SUSCRIPCION;
 console.log("[Suscripciones] Módulo v1.0 cargado");
 
 /* ═══════════════════════════════════════════════════════════
@@ -18801,10 +18802,10 @@ window.exportarSuscripcionesCSV = async function() {
    ═══════════════════════════════════════════════════════════ */
 
 // Hook 1: Al cargar el portal del paciente
-const _cargarPortalPacienteOrig = window.cargarPortalPaciente;
+const _cargarPortalPacienteOrigSUS = window.cargarPortalPaciente;
 if (typeof _cargarPortalPacienteOrig === "function") {
   window.cargarPortalPaciente = async function() {
-    await _cargarPortalPacienteOrig.apply(this, arguments);
+    await _cargarPortalPacienteOrigSUS.apply(this, arguments);
     if (typeof cargarEstadoSuscripcion === "function") {
       setTimeout(cargarEstadoSuscripcion, 300);
     }
@@ -18812,7 +18813,7 @@ if (typeof _cargarPortalPacienteOrig === "function") {
 }
 
 // Hook 2: Antes de firmar una consulta
-const _firmarYGenerarConsultaOrig = window.firmarYGenerarConsulta;
+const _firmarYGenerarConsultaOrigSUS = window.firmarYGenerarConsulta;
 if (typeof _firmarYGenerarConsultaOrig === "function") {
   window.firmarYGenerarConsulta = async function() {
     const s = window._consultaState;
@@ -18826,15 +18827,15 @@ if (typeof _firmarYGenerarConsultaOrig === "function") {
       }
     }
     
-    return _firmarYGenerarConsultaOrig.apply(this, arguments);
+    return _firmarYGenerarConsultaOrigSUS.apply(this, arguments);
   };
 }
 
 // Hook 3: Al firmar, consumir cuota (después del éxito)
-const _firmarYGenerarConsultaConConsumo = window.firmarYGenerarConsulta;
+const _firmarYGenerarConsultaConConsumoSUS = window.firmarYGenerarConsulta;
 window.firmarYGenerarConsulta = async function() {
   const s = window._consultaState;
-  const result = await _firmarYGenerarConsultaConConsumo.apply(this, arguments);
+  const result = await _firmarYGenerarConsultaConConsumoSUS.apply(this, arguments);
   
   // Consumir cuota si se firmó correctamente
   if (s && s.paciente && s.consultaId) {
@@ -18845,10 +18846,10 @@ window.firmarYGenerarConsulta = async function() {
 };
 
 // Hook 4: Al cambiar subtab Admin
-const _cambiarSubtabAdminOrig = window.cambiarSubtabAdmin;
-if (typeof _cambiarSubtabAdminOrig === "function") {
+const _cambiarSubtabAdminOrigSUS = window.cambiarSubtabAdmin;
+if (typeof _cambiarSubtabAdminOrigSUS === "function") {
   window.cambiarSubtabAdmin = function(subtab) {
-    _cambiarSubtabAdminOrig.apply(this, arguments);
+    _cambiarSubtabAdminOrigSUS.apply(this, arguments);
     if (subtab === "suscripciones") {
       setTimeout(renderAdminSuscripciones, 100);
     }
