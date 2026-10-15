@@ -12,7 +12,7 @@ export const agentePortal = {
   categoria: "paciente",
   
   permisos: {
-    ver: ["paciente"]
+    ver: ["paciente", "admin"]
   },
   
   async init(kernel) {
