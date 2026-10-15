@@ -25,21 +25,50 @@ async function bootstrap() {
   console.log("🚀 KERNEL — Inicializando sistema de agentes");
   console.log("═══════════════════════════════════════════════════");
   
-  // 1. Esperar a que Supabase esté listo
+  // ESPERAR A QUE SUPABASE ESTÉ LISTO
+  console.log("[Kernel] Esperando a que Supabase esté listo...");
+  
   let intentos = 0;
-  while (!window.supabaseClient && intentos < 30) {
+  const MAX_INTENTOS = 100;
+  
+  while (!window.supabaseClient && intentos < MAX_INTENTOS) {
     await new Promise(r => setTimeout(r, 200));
     intentos++;
+    if (intentos % 10 === 0) {
+      console.log(`[Kernel] Esperando Supabase... (${intentos * 200}ms)`);
+    }
   }
   
   if (!window.supabaseClient) {
-    console.warn("[Kernel] Supabase no disponible, modo degradado");
+    console.warn("[Kernel] Supabase no disponible tras 20s, modo degradado");
+  } else {
+    console.log("[Kernel] ✓ Supabase disponible tras", intentos * 200, "ms");
   }
   
-  // 2. Inicializar kernel
+  // ESPERAR A QUE EL USUARIO ESTÉ AUTENTICADO
+  console.log("[Kernel] Esperando a que el usuario esté autenticado...");
+  
+  let intentosUser = 0;
+  const MAX_INTENTOS_USER = 150;
+  
+  while (!window.usuarioActual && intentosUser < MAX_INTENTOS_USER) {
+    await new Promise(r => setTimeout(r, 200));
+    intentosUser++;
+    if (intentosUser % 15 === 0) {
+      console.log(`[Kernel] Esperando usuario... (${intentosUser * 200}ms)`);
+    }
+  }
+  
+  if (!window.usuarioActual) {
+    console.warn("[Kernel] Usuario no autenticado tras 30s. Registrando solo agentes públicos.");
+  } else {
+    console.log("[Kernel] ✓ Usuario autenticado:", window.usuarioActual.email, "| Rol:", window.usuarioActual.rol);
+  }
+  
+  // INICIALIZAR KERNEL
   await kernel.init();
   
-  // 3. Registrar servicios compartidos
+  // REGISTRAR SERVICIOS COMPARTIDOS
   kernel.registrarServicio("ia", {
     async llamarKimi(prompt) {
       if (typeof window.llamarKimiConsulta === "function") {
@@ -58,12 +87,14 @@ async function bootstrap() {
     generarHash: (t) => window.generarHash?.(t)
   });
   
-  // 4. Registrar entidades base
+  // REGISTRAR ENTIDADES BASE
   kernel.registrarEntidad("paciente", {
     async buscar(query) {
-      return window.supabaseClient?.rpc("buscar_pacientes", { query });
+      if (!window.supabaseClient) return null;
+      return window.supabaseClient.rpc("buscar_pacientes", { query });
     },
     async obtener(subjectId) {
+      if (!window.supabaseClient) return null;
       const { data } = await window.supabaseClient
         .from("patients").select("*").eq("subject_id", subjectId).single();
       return data;
@@ -72,6 +103,7 @@ async function bootstrap() {
   
   kernel.registrarEntidad("medico", {
     async obtener(id) {
+      if (!window.supabaseClient) return null;
       const { data } = await window.supabaseClient
         .from("medicos").select("*").eq("id", id).single();
       return data;
@@ -80,13 +112,14 @@ async function bootstrap() {
   
   kernel.registrarEntidad("empresa", {
     async listar() {
+      if (!window.supabaseClient) return [];
       const { data } = await window.supabaseClient
         .from("empresas_instituciones").select("*").eq("activo", true);
       return data || [];
     }
   });
   
-  // 5. Registrar agentes (adapters)
+  // REGISTRAR AGENTES (ADAPTERS)
   await kernel.registrar(agenteTamizaje);
   await kernel.registrar(agenteConsulta);
   await kernel.registrar(agenteSuscripciones);
@@ -94,10 +127,10 @@ async function bootstrap() {
   await kernel.registrar(agenteEspecialidad);
   await kernel.registrar(agentePortal);
   
-  // 6. Activar todos los agentes
+  // ACTIVAR TODOS LOS AGENTES
   await kernel.activarTodos();
   
-  // 7. Log final
+  // LOG FINAL
   console.log("═══════════════════════════════════════════════════");
   console.log("✅ KERNEL listo");
   console.log("   Agentes registrados:", kernel.agentes.size);
@@ -106,7 +139,7 @@ async function bootstrap() {
   console.log("   Entidades:", kernel.entidades.size);
   console.log("═══════════════════════════════════════════════════");
   
-  // 8. Exponer API global para debug
+  // EXPONER API GLOBAL
   window.EcoRadAi = {
     kernel,
     savia: SAVIA,
