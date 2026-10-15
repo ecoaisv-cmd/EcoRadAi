@@ -246,6 +246,52 @@ class Kernel {
   /**
    * Estadísticas del kernel.
    */
+
+    /**
+   * Suscribirse a eventos (delega a SAVIA).
+   * Esto permite que los agentes hagan `kernel.on("evento", cb)`
+   * sin tener que importar SAVIA directamente.
+   */
+  on(evento, callback) {
+    if (!this._listeners) {
+      this._listeners = new Map();
+    }
+    if (!this._listeners.has(evento)) {
+      this._listeners.set(evento, []);
+    }
+    this._listeners.get(evento).push(callback);
+    
+    console.log(`[Kernel] ✓ Listener registrado: ${evento}`);
+    
+    // Retornar función para desuscribirse
+    return () => {
+      const cbs = this._listeners.get(evento) || [];
+      const idx = cbs.indexOf(callback);
+      if (idx >= 0) cbs.splice(idx, 1);
+    };
+  }
+  
+  /**
+   * Emitir un evento (delega a SAVIA).
+   */
+  emit(evento, payload) {
+    if (!this._listeners) this._listeners = new Map();
+    
+    // Ejecutar listeners locales
+    const callbacks = this._listeners.get(evento) || [];
+    callbacks.forEach(cb => {
+      try { cb(payload); } catch (e) { console.error(`[Kernel] Error en listener ${evento}:`, e); }
+    });
+    
+    // También emitir por SAVIA para que llegue a otros agentes
+    return SAVIA.enviar({
+      de: "kernel",
+      tipo: evento,
+      payload: payload,
+      flujo: "circular"
+    }).catch(() => {});
+  }
+  
   stats() {
     return {
       agentes_registrados: this.agentes.size,
