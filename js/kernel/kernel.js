@@ -196,15 +196,51 @@ class Kernel {
   /**
    * Inicializa el kernel.
    */
-  async init() {
+    async init() {
     if (this._inicializado) return;
     
     console.log("[Kernel] Inicializando...");
     
     await MEMORIA.init();
     
+    // NUEVO: Listener de login (re-registra agentes cuando el usuario entra)
+    this._escucharLogin();
+    
     this._inicializado = true;
     console.log("[Kernel] ✓ Listo. Agentes:", this.agentes.size);
+  }
+  
+  /**
+   * Suscribirse a eventos de autenticación para registrar agentes
+   * cuando el usuario inicie sesión.
+   */
+  async _escucharLogin() {
+    if (this._escuchandoLogin) return;
+    this._escuchandoLogin = true;
+    
+    console.log("[Kernel] ✓ Listener de login activado");
+    
+    let usuarioAnterior = null;
+    setInterval(async () => {
+      const usuarioActual = window.usuarioActual;
+      if (usuarioActual?.id !== usuarioAnterior?.id) {
+        usuarioAnterior = usuarioActual;
+        console.log("[Kernel] Cambio de usuario detectado:", usuarioActual?.email || "anon");
+        
+        // Reintentar registrar agentes que fallaron por permisos
+        for (const [id, agente] of this.agentes.entries()) {
+          if (this._tienePermiso(agente)) {
+            if (!this.activos.has(id)) {
+              try {
+                await this.activar(id);
+              } catch (e) {
+                console.error(`[Kernel] Error activando ${id}:`, e);
+              }
+            }
+          }
+        }
+      }
+    }, 1000);
   }
   
   /**
