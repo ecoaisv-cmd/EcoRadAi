@@ -5671,6 +5671,7 @@ async function cargarPortalPaciente() {
 
     console.log("[Portal] ✅ Renderizado completo");
 
+  
   } catch (e) {
     console.error("[Portal] Error:", e);
     contenedor.innerHTML = `
@@ -5683,31 +5684,25 @@ async function cargarPortalPaciente() {
   }
 }
 
-window.cargarPortalPaciente = cargarPortalPaciente;
-/* ═══════════════════════════════════════════════════════════
-   VISOR DE ARTEFACTOS (informe médico, lite, receta)
-   ═══════════════════════════════════════════════════════════ */
-
-/* ═══════════════════════════════════════════════════════════
-   v23.6 — verArtefacto con soporte para consultas
-   Detecta si el case_id es de tamizaje (ECO-) o consulta (CONS-)
-   ═══════════════════════════════════════════════════════════ */
-
-/* ═══════════════════════════════════════════════════════════
-   v24.6 — verArtefacto CORREGIDO
-   - Usa .limit(1) en lugar de .maybeSingle()
-   - Acepta variantes de nombres de tipo
-   ═══════════════════════════════════════════════════════════ */
-// Notificar al kernel
+// ═══════════════════════════════════════════════════════════
+// Wrapper: notificar al kernel cuando el portal termine de cargar
+// ═══════════════════════════════════════════════════════════
+const _cargarPortalPacienteOrig = cargarPortalPaciente;
+window.cargarPortalPaciente = async function() {
+  const result = await _cargarPortalPacienteOrig.apply(this, arguments);
+  
   if (window.SAVIA) {
     window.SAVIA.enviar({
       de: "agente-portal",
       tipo: "portal:cargado",
-      payload: { eventos: eventos.length },
-      flujo: "lateral"
+      flujo: "lateral",
+      payload: { timestamp: new Date().toISOString() }
     }).catch(() => {});
   }
-}
+  
+  return result;
+};
+
 async function verArtefacto(caseId, tipo) {
   try {
     let html = null;
