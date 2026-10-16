@@ -2,20 +2,14 @@
  * agente-paciente.js
  * Capa: RAÍZ
  * Dominio: identidad
- * Versión: 1.0.0
+ * Versión: 1.1.0 (Sprint 3 Fase A)
  * 
- * Envuelve:
- *   - buscarPacienteLive()
- *   - seleccionarPacienteExistente()
- *   - mostrarFormularioPacienteNuevo()
- *   - guardarFichaPaciente()
- *   - guardarConsentimientoPaciente()
- *   - regenerarSubjectId()
+ * Emite: savia:aporte-paciente
  */
 
 export const agentePaciente = {
   id: "agente-paciente",
-  version: "1.0.0",
+  version: "1.1.0",
   nombre: "Agente Paciente",
   icono: "👤",
   capa: "raiz",
@@ -36,7 +30,8 @@ export const agentePaciente = {
     "paciente:seleccionado",
     "paciente:guardado",
     "paciente:consentimiento-otorgado",
-    "paciente:busqueda-iniciada"
+    "paciente:busqueda-iniciada",
+    "savia:aporte-paciente"
   ],
 
   eventos_suscritos: [
@@ -56,6 +51,28 @@ export const agentePaciente = {
       console.log("[agente-paciente] Tamizaje firmado:", evt.payload?.case_id);
     });
 
+    // Escuchar cuando se selecciona un paciente para emitir aporte
+    kernel.on("paciente:seleccionado", (evt) => {
+      const p = evt.payload;
+      console.log("[agente-paciente] Paciente seleccionado:", p?.subject_id);
+      
+      // Emitir aporte a SAVIA
+      window.kernel.emit("savia:aporte-paciente", {
+        subject_id: p?.subject_id,
+        nombre: p?.nombre,
+        edad: p?.edad,
+        sexo: p?.sexo,
+        dui: p?.dui,
+        departamento: p?.departamento,
+        municipio: p?.municipio,
+        zona_geografica: p?.zona_geografica,
+        empresa: p?.empresa,
+        email: p?.email,
+        telefono: p?.telefono,
+        timestamp: new Date().toISOString()
+      });
+    });
+
     console.log("[agente-paciente] ✓ Listo");
   },
 
@@ -64,13 +81,12 @@ export const agentePaciente = {
   },
 
   async mount(container, params) {
-    // En el futuro, montar UI del agente aquí
     console.log("[agente-paciente] mount() — pendiente de UI propia");
   },
 
   api: {
     /**
-     * Busca pacientes por query (nombre, DUI, email, teléfono, ID).
+     * Busca pacientes por query.
      */
     async buscar(query) {
       if (!query || query.trim().length < 2) return [];
@@ -87,7 +103,7 @@ export const agentePaciente = {
     },
 
     /**
-     * Obtiene un paciente completo por subject_id.
+     * Obtiene un paciente por subject_id.
      */
     async obtener(subjectId) {
       if (!subjectId) return null;
@@ -106,7 +122,7 @@ export const agentePaciente = {
     },
 
     /**
-     * Guarda o actualiza un paciente.
+     * Guarda un paciente.
      */
     async guardar(pacienteData) {
       try {
@@ -122,12 +138,12 @@ export const agentePaciente = {
     },
 
     /**
-     * Aporta el contexto del paciente actual a otro agente.
+     * Aporta el contexto del paciente actual a SAVIA.
      */
     async aportar() {
       const p = window._pacienteActual;
       if (!p) return null;
-      return {
+      const aporte = {
         subject_id: p.subject_id,
         nombre: p.nombre,
         edad: p.edad,
@@ -138,6 +154,13 @@ export const agentePaciente = {
         departamento: p.departamento,
         municipio: p.municipio
       };
+      
+      window.kernel.emit("savia:aporte-paciente", {
+        ...aporte,
+        timestamp: new Date().toISOString()
+      });
+      
+      return aporte;
     },
 
     /**
