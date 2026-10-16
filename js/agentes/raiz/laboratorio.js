@@ -43,10 +43,22 @@ export const agenteLaboratorio = {
   async init(kernel) {
     console.log("[agente-laboratorio] Inicializando...");
 
-    kernel.on("paciente:seleccionado", (evt) => {
-      console.log("[agente-laboratorio] Recalculando labs para:", evt.payload?.subject_id);
-      this.api.recalcularCalculados();
-    });
+   kernel.on("paciente:seleccionado", (evt) => {
+  console.log("[agente-laboratorio] Recalculando labs para:", evt.payload?.subject_id);
+  this.api.recalcularCalculados();
+  // Emitir aporte inicial (aunque sea vacío)
+  agenteLaboratorio._emitirAporte();
+});
+
+// Emitir aporte cuando los labs se actualizan
+kernel.on("laboratorio:actualizado", () => {
+  agenteLaboratorio._emitirAporte();
+});
+
+// Emitir aporte cuando el usuario interactúa con labs
+kernel.on("lab:input-changed", () => {
+  agenteLaboratorio._emitirAporte();
+});
 
     // Emitir aporte cuando los labs se actualizan
     kernel.on("laboratorio:actualizado", (evt) => {
