@@ -21229,16 +21229,19 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
 
 <!-- ═══════════════════════════════════════════════════════════════
      SPRINT 3 FASE D — UI de Interconsultas AI en Consulta SOAP
-     v3.0 — Blindado contra:
-       - Bug de EcoRadAi.obtener("savia") devolviendo undefined
-       - Error eventos_suscritos en savia.registrar()
+     v3.1 — Watcher global + canal respaldo + timeout de seguridad
+     Blindado contra:
+       - Bug de EcoRadAi.obtener("savia")
+       - Bug de savia.registrar() (eventos_suscritos undefined)
        - Coordinador sin contexto pre-registrado (tests simulados)
      ═══════════════════════════════════════════════════════════════ -->
 <script>
 "use strict";
 
 (function() {
-  // ─── Estado local de la fase D ─────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // ESTADO LOCAL
+  // ═══════════════════════════════════════════════════════════════
   const ESTADO_D = {
     contextoId: null,
     caseId: null,
@@ -21258,7 +21261,9 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     "savia:tronco:sin-interconsultas"
   ];
 
-  // ─── Utilidades ────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // UTILIDADES
+  // ═══════════════════════════════════════════════════════════════
   function $id(id) { return document.getElementById(id); }
   function mostrar(id) { const el = $id(id); if (el) el.style.display = ""; }
   function ocultar(id) { const el = $id(id); if (el) el.style.display = "none"; }
@@ -21266,24 +21271,19 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     return String(s || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
   }
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
   // OBTENCIÓN ROBUSTA DE SAVIA
-  // window.SAVIA es la instancia real (kernel.obtener está roto)
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
   function obtenerSavia() {
-    // PRIORIDAD 1: window.SAVIA (instancia real)
     if (window.SAVIA && typeof window.SAVIA.emitirContexto === "function") {
       return window.SAVIA;
     }
-    // PRIORIDAD 2: kernel.savia
     if (window.kernel && window.kernel.savia && typeof window.kernel.savia.emitirContexto === "function") {
       return window.kernel.savia;
     }
-    // PRIORIDAD 3: EcoRadAi.savia
     if (window.EcoRadAi && window.EcoRadAi.savia && typeof window.EcoRadAi.savia.emitirContexto === "function") {
       return window.EcoRadAi.savia;
     }
-    // PRIORIDAD 4: EcoRadAi.obtener("savia")
     if (window.EcoRadAi && typeof window.EcoRadAi.obtener === "function") {
       try {
         const s = window.EcoRadAi.obtener("savia");
@@ -21294,7 +21294,6 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     return null;
   }
 
-  // Diagnóstico accesible desde consola
   window.diagnosticarSaviaFaseD = function() {
     return {
       "window.SAVIA": typeof window.SAVIA,
@@ -21306,102 +21305,197 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     };
   };
 
-  // ═══════════════════════════════════════════════════════════════════
-  // REGISTRAR RECEPTOR UI COMO PSEUDO-AGENTE
-  // Requiere eventos_suscritos: [] por el bug de savia.js
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
+  // WATCHER GLOBAL — Intercepta eventos del broadcast de SAVIA
+  // No depende de savia.registrar() ni savia.suscribir()
+  // ═══════════════════════════════════════════════════════════════
+  function instalarWatcherGlobal(savia, handlers) {
+    if (window._faseD_watcherActivo) {
+      // Si ya está activo pero con handlers viejos, los reemplazamos
+      window._faseD_handlers = handlers;
+      console.log("[FaseD] Watcher ya activo — handlers actualizados");
+      return;
+    }
+
+    window._faseD_handlers = handlers;
+
+    // ─── Estrategia 1: Monkey-patch de métodos de SAVIA ───
+    const metodosCandidatos = ["propagar", "_broadcast", "broadcast", "emitir", "_enviarA"];
+
+    metodosCandidatos.forEach(metodo => {
+      if (typeof savia[metodo] !== "function") return;
+      if (savia[metodo]._faseDPatched) return;
+
+      const original = savia[metodo];
+      const patched = function(evento) {
+        // Llamar al original
+        let resultado;
+        try {
+          resultado = original.apply(this, arguments);
+        } catch (e) {
+          console.error(`[FaseD] Error en savia.${metodo}():`, e);
+          throw e;
+        }
+
+        // Después, despachar a handlers si el evento nos interesa
+        try {
+          const h = window._faseD_handlers;
+          if (!h) return resultado;
+
+          // El evento puede venir como primer argumento directo, o dentro de arguments
+          const ev = evento || arguments[0];
+          const tipo = ev && ev.tipo;
+          if (!tipo) return resultado;
+
+          if (tipo === "especialista:respuesta") h.onEspecialistaRespuesta(ev);
+          else if (tipo === "savia:tronco:plan-integrado") h.onPlanIntegrado(ev);
+          else if (tipo === "savia:tronco:sin-interconsultas") h.onSinInterconsultas(ev);
+        } catch (e) {
+          console.warn("[FaseD] Watcher error:", e);
+        }
+
+        return resultado;
+      };
+      patched._faseDPatched = true;
+      savia[metodo] = patched;
+      console.log(`[FaseD] ✓ Watcher instalado en savia.${metodo}()`);
+    });
+
+    // ─── Estrategia 2: Polling del historial/pendientes de SAVIA ───
+    if (!window._faseD_pollingId) {
+      let ultimoTimestamp = Date.now();
+      window._faseD_pollingId = setInterval(() => {
+        try {
+          const h = window._faseD_handlers;
+          if (!h) return;
+
+          // Buscar colecciones de eventos en SAVIA
+          const posibles = [
+            savia.historial,
+            savia.eventos,
+            savia._historial,
+            savia._eventos,
+            savia.eventosRecientes,
+            savia.pendientes
+          ];
+
+          for (const coleccion of posibles) {
+            if (!coleccion) continue;
+            const items = Array.isArray(coleccion)
+              ? coleccion
+              : (coleccion.values ? [...coleccion.values()] : []);
+
+            items.slice(-30).forEach(ev => {
+              if (!ev || !ev.tipo) return;
+              const ts = ev.timestamp ? new Date(ev.timestamp).getTime() : 0;
+              if (ts && ts <= ultimoTimestamp) return;
+
+              try {
+                if (ev.tipo === "especialista:respuesta") h.onEspecialistaRespuesta(ev);
+                else if (ev.tipo === "savia:tronco:plan-integrado") h.onPlanIntegrado(ev);
+                else if (ev.tipo === "savia:tronco:sin-interconsultas") h.onSinInterconsultas(ev);
+              } catch (e) {}
+            });
+          }
+          ultimoTimestamp = Date.now();
+        } catch (e) {}
+      }, 1000);
+      console.log("[FaseD] ✓ Polling de historial activo (1s)");
+    }
+
+    window._faseD_watcherActivo = true;
+    console.log("[FaseD] ✓ Watcher global activo");
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // CANAL DE RESPALDO — window.addEventListener("savia:evento")
+  // ═══════════════════════════════════════════════════════════════
+  function instalarCanalRespaldo(handlers) {
+    if (window._faseD_canalActivo) {
+      window._faseD_handlers = handlers;
+      return;
+    }
+    window._faseD_canalActivo = true;
+    window._faseD_handlers = handlers;
+
+    window.addEventListener("savia:evento", (ev) => {
+      const evento = ev.detail;
+      if (!evento || !evento.tipo) return;
+      const h = window._faseD_handlers;
+      if (!h) return;
+      const t = evento.tipo;
+      if (t === "especialista:respuesta") h.onEspecialistaRespuesta(evento);
+      else if (t === "savia:tronco:plan-integrado") h.onPlanIntegrado(evento);
+      else if (t === "savia:tronco:sin-interconsultas") h.onSinInterconsultas(evento);
+    });
+
+    console.log("[FaseD] Canal de respaldo (window events) activado");
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // REGISTRAR RECEPTOR UI (best-effort)
+  // No crítico: si falla, el watcher global cubre la funcionalidad
+  // ═══════════════════════════════════════════════════════════════
   function registrarReceptorUI(savia, handlers) {
-    if (ESTADO_D.receptorRegistrado) {
-      console.log("[FaseD] Receptor ya registrado previamente");
-      return true;
-    }
+    if (ESTADO_D.receptorRegistrado) return true;
 
-    // Verificar si ya existe en savia.agentes
-    if (savia.agentes && typeof savia.agentes.has === "function" && savia.agentes.has(RECEPTOR_ID)) {
-      console.log("[FaseD] Receptor ya existe en savia.agentes");
-      ESTADO_D.receptorRegistrado = true;
-      return true;
-    }
-
+    // Intento 1: savia.suscribir directo
     try {
-      savia.registrar({
+      if (typeof savia.suscribir === "function") {
+        savia.suscribir(RECEPTOR_ID, TIPOS_SUSCRITOS);
+      }
+    } catch (e) {
+      // Ignorar: es esperado sin registro previo
+    }
+
+    // Intento 2: savia.registrar con objeto robusto anti-bug
+    try {
+      const receptor = {
         id: RECEPTOR_ID,
         nombre: "UI Consulta Fase D",
         capa: "ui",
         dominio: "interfaz",
         tipo: "ui",
         version: "1.0.0",
-        // ═══ CAMPOS REQUERIDOS POR savia.js / kernel ═══
-        eventos_suscritos: [],           // ← FIX bug eventos_suscritos
-        suscripciones: TIPOS_SUSCRITOS,  // ← FIX suscripción automática
         activo: true,
+        eventos_suscritos: [],
+        suscripciones: TIPOS_SUSCRITOS,
+        eventos: [],
+        estado: "activo",
+        metadata: {},
         async init() { return true; },
+        async activar() { return true; },
         async recibir(evento) {
           const t = evento && evento.tipo;
-          if (t === "especialista:respuesta") handlers.onEspecialistaRespuesta(evento);
-          else if (t === "savia:tronco:plan-integrado") handlers.onPlanIntegrado(evento);
-          else if (t === "savia:tronco:sin-interconsultas") handlers.onSinInterconsultas(evento);
+          const h = window._faseD_handlers || handlers;
+          if (!h) return;
+          if (t === "especialista:respuesta") h.onEspecialistaRespuesta(evento);
+          else if (t === "savia:tronco:plan-integrado") h.onPlanIntegrado(evento);
+          else if (t === "savia:tronco:sin-interconsultas") h.onSinInterconsultas(evento);
         }
-      });
-      console.log("[FaseD] ✓ Receptor UI registrado como pseudo-agente");
-      ESTADO_D.receptorRegistrado = true;
-    } catch (e) {
-      console.warn("[FaseD] Error al registrar receptor:", e.message);
-      // Intentar registrar con objeto mínimo por si acaso
-      try {
-        savia.registrar({
-          id: RECEPTOR_ID,
-          eventos_suscritos: [],
-          async init() { return true; },
-          async recibir(evento) {
-            const t = evento && evento.tipo;
-            if (t === "especialista:respuesta") handlers.onEspecialistaRespuesta(evento);
-            else if (t === "savia:tronco:plan-integrado") handlers.onPlanIntegrado(evento);
-            else if (t === "savia:tronco:sin-interconsultas") handlers.onSinInterconsultas(evento);
-          }
-        });
-        console.log("[FaseD] ✓ Receptor UI registrado (versión mínima)");
-        ESTADO_D.receptorRegistrado = true;
-      } catch (e2) {
-        console.error("[FaseD] No se pudo registrar receptor UI:", e2.message);
-        return false;
-      }
-    }
+      };
 
-    // Suscribir a los eventos
-    try {
-      if (typeof savia.suscribir === "function") {
-        savia.suscribir(RECEPTOR_ID, TIPOS_SUSCRITOS);
-        console.log("[FaseD] ✓ Receptor UI suscrito a:", TIPOS_SUSCRITOS.join(", "));
-      }
+      savia.registrar(receptor);
+      console.log("[FaseD] ✓ Receptor UI registrado en SAVIA");
+      ESTADO_D.receptorRegistrado = true;
+
+      // Re-intentar suscribir ahora que existe
+      try {
+        if (typeof savia.suscribir === "function") {
+          savia.suscribir(RECEPTOR_ID, TIPOS_SUSCRITOS);
+          console.log("[FaseD] ✓ Receptor suscrito a eventos");
+        }
+      } catch (e) {}
     } catch (e) {
-      console.warn("[FaseD] Error al suscribir receptor:", e.message);
+      console.warn("[FaseD] savia.registrar() falló. Watcher global cubrirá la funcionalidad.");
     }
 
     return true;
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  // CANAL DE RESPALDO — Escuchar eventos globales de window
-  // Si el kernel emite CustomEvents en window, los capturamos aquí
-  // ═══════════════════════════════════════════════════════════════════
-  function instalarCanalRespaldo(handlers) {
-    if (window._faseD_canalActivo) return;
-    window._faseD_canalActivo = true;
-
-    window.addEventListener("savia:evento", (ev) => {
-      const evento = ev.detail;
-      if (!evento || !evento.tipo) return;
-      const t = evento.tipo;
-      if (t === "especialista:respuesta") handlers.onEspecialistaRespuesta(evento);
-      else if (t === "savia:tronco:plan-integrado") handlers.onPlanIntegrado(evento);
-      else if (t === "savia:tronco:sin-interconsultas") handlers.onSinInterconsultas(evento);
-    });
-
-    console.log("[FaseD] Canal de respaldo (window events) activado");
-  }
-
-  // ─── Render de la lista de sugeridas ───────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // RENDER DE LA LISTA DE SUGERENCIAS
+  // ═══════════════════════════════════════════════════════════════
   function renderInterconsultasSugeridas(lista) {
     const cont = $id("consulta-ic-lista");
     const empty = $id("consulta-ic-empty");
@@ -21504,7 +21598,9 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     if (btn) btn.style.display = n > 0 ? "" : "none";
   }
 
-  // ─── API pública 1: sugerirInterconsultasDesdeConsulta ─────────────
+  // ═══════════════════════════════════════════════════════════════
+  // API 1 — sugerirInterconsultasDesdeConsulta
+  // ═══════════════════════════════════════════════════════════════
   window.sugerirInterconsultasDesdeConsulta = function(jsonAnalisis, meta) {
     meta = meta || {};
     try {
@@ -21540,7 +21636,9 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     }
   };
 
-  // ─── API pública 2: consultaEjecutarInterconsultas ─────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // API 2 — consultaEjecutarInterconsultas
+  // ═══════════════════════════════════════════════════════════════
   window.consultaEjecutarInterconsultas = async function() {
     if (ESTADO_D.ejecutando) {
       console.warn("[FaseD] Ya hay una ejecución en curso");
@@ -21595,11 +21693,13 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
       if (rows) rows.appendChild(row);
     });
 
-    // ─── Handlers de eventos ────────────────────────────────────────
+    // ─── Handlers de eventos ────────────────────────────────
     const onEspecialistaRespuesta = (evento) => {
       const p = (evento && evento.payload) || {};
       const key = p.especialista;
       if (!key) return;
+      // Evitar procesar dos veces el mismo especialista
+      if (ESTADO_D.respuestas[key]) return;
 
       ESTADO_D.respuestas[key] = p.resultado || null;
 
@@ -21621,6 +21721,8 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     };
 
     const onPlanIntegrado = (evento) => {
+      // Evitar procesar dos veces
+      if (ESTADO_D.planIntegrado) return;
       ESTADO_D.planIntegrado = (evento && evento.payload) || null;
       renderPlanIntegrado(evento.payload);
       finalizarEjecucion();
@@ -21632,13 +21734,17 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
 
     const handlers = { onEspecialistaRespuesta, onPlanIntegrado, onSinInterconsultas };
 
-    // ─── Registrar receptor como pseudo-agente ──────────────────────
-    registrarReceptorUI(savia, handlers);
+    // ─── Instalar mecanismos de captura de eventos ───────────
+    try {
+      registrarReceptorUI(savia, handlers);
+    } catch (e) {
+      console.warn("[FaseD] Error en registro (continuamos con watcher):", e.message);
+    }
 
-    // ─── Instalar canal de respaldo (window events) ─────────────────
+    instalarWatcherGlobal(savia, handlers);
     instalarCanalRespaldo(handlers);
 
-    // ─── Emitir decisión al coordinador ─────────────────────────────
+    // ─── Emitir decisión al coordinador ─────────────────────
     try {
       const payloadDecision = {
         contexto_id: ESTADO_D.contextoId,
@@ -21672,20 +21778,16 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
 
     } catch (e) {
       console.error("[FaseD] Error emitiendo decisión:", e);
-      console.error("[FaseD] Stack:", e.stack);
       alert("Error al ejecutar interconsultas: " + e.message);
       finalizarEjecucion();
       return;
     }
 
     // ═══ TIMEOUT CORTO (6s): liberar UI si el coordinador no responde ═══
-    // En tests simulados, el coordinador no tiene el contexto pre-registrado.
-    // Esto evita que la UI quede bloqueada.
     setTimeout(() => {
       if (ESTADO_D.ejecutando) {
         console.warn("[FaseD] Sin respuesta del coordinador en 6s. Liberando UI...");
 
-        // Marcar filas sin respuesta
         document.querySelectorAll("#consulta-ic-rows .ic-row").forEach(row => {
           if (!row.classList.contains("done")) {
             row.classList.add("error");
@@ -21694,7 +21796,6 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
           }
         });
 
-        // Mostrar mensaje explicativo en el panel del plan
         const planCard = $id("consulta-ic-plan-card");
         const planCont = $id("consulta-ic-plan-content");
         if (planCard && planCont && !planCont.innerHTML.trim()) {
@@ -21724,7 +21825,9 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     }, 5 * 60 * 1000);
   };
 
-  // ─── Render del plan integrado ─────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // RENDER DEL PLAN INTEGRADO
+  // ═══════════════════════════════════════════════════════════════
   function renderPlanIntegrado(planPayload) {
     const card = $id("consulta-ic-plan-card");
     const cont = $id("consulta-ic-plan-content");
@@ -21788,7 +21891,9 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     }
   }
 
-  // ─── API pública 3: consultaConfirmarDecision ─────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // API 3 — consultaConfirmarDecision
+  // ═══════════════════════════════════════════════════════════════
   window.consultaConfirmarDecision = async function(accion) {
     accion = accion || "autorizar";
     if (accion === "rechazar") {
@@ -21800,7 +21905,9 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     return window.consultaEjecutarInterconsultas();
   };
 
-  // ─── Bind del botón ────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // BIND DEL BOTÓN
+  // ═══════════════════════════════════════════════════════════════
   function bindBoton() {
     const btn = $id("btn-ejecutar-interconsultas-consulta");
     if (btn && !btn._faseDBound) {
