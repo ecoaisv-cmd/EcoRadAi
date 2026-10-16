@@ -80,13 +80,18 @@ export const agenteSaviaConsolidadora = {
     });
 
     // Escuchar eventos de firma para consolidar
-    kernel.on("tamizaje:firmado", (evt) => {
-      this._consolidarYemitir(evt.payload, "tamizaje");
-    });
+   kernel.on("tamizaje:firmado", (evt) => {
+  // Esperar 150ms para dar tiempo a que todos los agentes emitan sus aportes
+  setTimeout(() => {
+    agenteSaviaConsolidadora._consolidarYemitir(evt.payload, "tamizaje");
+  }, 150);
+});
 
-    kernel.on("consulta:firmada", (evt) => {
-      this._consolidarYemitir(evt.payload, "consulta");
-    });
+kernel.on("consulta:firmada", (evt) => {
+  setTimeout(() => {
+    agenteSaviaConsolidadora._consolidarYemitir(evt.payload, "consulta");
+  }, 150);
+});
 
     console.log("[agente-savia-consolidadora] ✓ Listo");
   },
