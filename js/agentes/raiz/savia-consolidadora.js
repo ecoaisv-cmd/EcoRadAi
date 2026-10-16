@@ -176,19 +176,21 @@ export const agenteSaviaConsolidadora = {
     this._casoActualId = null;
   },
 
-  api: {
+ api: {
     /**
      * Estado actual de los aportes recibidos.
      */
     estadoAportes() {
+      // Referencia explícita al agente (no usar `this` porque apunta al objeto api)
+      const agente = agenteSaviaConsolidadora;
       return {
-        paciente: !!this._aportesActuales.paciente,
-        clinica: !!this._aportesActuales.clinica,
-        laboratorio: !!this._aportesActuales.laboratorio,
-        imagen: !!this._aportesActuales.imagen,
-        social: !!this._aportesActuales.social,
-        caso: this._casoActualId,
-        consolidaciones: this._consolidacionesRealizadas
+        paciente: !!agente._aportesActuales.paciente,
+        clinica: !!agente._aportesActuales.clinica,
+        laboratorio: !!agente._aportesActuales.laboratorio,
+        imagen: !!agente._aportesActuales.imagen,
+        social: !!agente._aportesActuales.social,
+        caso: agente._casoActualId,
+        consolidaciones: agente._consolidacionesRealizadas
       };
     },
 
@@ -196,7 +198,8 @@ export const agenteSaviaConsolidadora = {
      * Fuerza la consolidación (útil para tests).
      */
     async forzarConsolidacion(payload, origen) {
-      return await this._consolidarYemitir(payload, origen);
+      const agente = agenteSaviaConsolidadora;
+      return await agente._consolidarYemitir(payload, origen);
     }
   }
 };
