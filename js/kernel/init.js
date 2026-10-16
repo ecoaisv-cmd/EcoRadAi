@@ -25,6 +25,8 @@ import { agenteTrabajoSocial } from "../agentes/raiz/trabajo-social.js";
 
 // NUEVO Sprint 3 Fase A: Consolidador de SAVIA
 import { agenteSaviaConsolidadora } from "../agentes/raiz/savia-consolidadora.js";
+// Motor unificado de interconsultas (Sprint 3 Fase B)
+import "../agentes/tronco/_motor-interconsultas.js";
 
 async function bootstrap() {
   console.log("═══════════════════════════════════════════════════");
