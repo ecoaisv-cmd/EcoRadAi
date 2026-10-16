@@ -79,12 +79,21 @@ export const agenteCoordinador = {
     ESTADO.planesIntegrados = 0;
     ESTADO.errores = [];
     ESTADO.contextosActivos.clear();
+
+    // ═══ SUSCRIPCIÓN AUTOMÁTICA A SAVIA ═══
+    try {
+      SAVIA.suscribir(this.id, this.suscripciones, (evento) => this.recibir(evento));
+      console.log(`[Coordinador] ✓ Suscrito a ${this.suscripciones.length} tipos`);
+    } catch (e) {
+      console.error("[Coordinador] Error suscribiendo a SAVIA:", e.message);
+    }
+
     console.log("[Coordinador] ✓ Agente listo");
     return true;
   },
 
-  /* ─── MANEJADOR DE EVENTOS ─── */
-  async onEvento(evento) {
+    /* ─── MANEJADOR DE EVENTOS (recibir, requerido por savia.js) ─── */
+  async recibir(evento) {
     const { tipo, payload } = evento;
 
     try {
@@ -111,7 +120,6 @@ export const agenteCoordinador = {
       return null;
     }
   },
-
   /* ─── PROCESO 1: SAVIA RAÍZ → SAVIA TRONCO ─── */
   async _procesarSaviaRaiz(savia) {
     const inicio = Date.now();
