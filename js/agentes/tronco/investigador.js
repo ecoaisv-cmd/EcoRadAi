@@ -63,12 +63,21 @@ export const agenteInvestigador = {
     ESTADO.patronesDetectados = [];
     ESTADO.contadorPorZona = {};
     ESTADO.contadorPorDiagnostico = {};
+
+    // ═══ SUSCRIPCIÓN AUTOMÁTICA A SAVIA ═══
+    try {
+      SAVIA.suscribir(this.id, this.suscripciones, (evento) => this.recibir(evento));
+      console.log(`[Investigador] ✓ Suscrito a ${this.suscripciones.length} tipos`);
+    } catch (e) {
+      console.error("[Investigador] Error suscribiendo a SAVIA:", e.message);
+    }
+
     console.log("[Investigador] ✓ Agente listo");
     return true;
   },
 
-  /* ─── MANEJADOR ─── */
-  async onEvento(evento) {
+   /* ─── MANEJADOR (recibir, requerido por savia.js) ─── */
+  async recibir(evento) {
     const { tipo, payload } = evento;
 
     try {
