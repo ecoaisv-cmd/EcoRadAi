@@ -61,19 +61,28 @@ export const agenteAdministrador = {
 
   suscripciones: TIPOS_ESCUCHAR,
 
-  /* ─── INICIALIZACIÓN ─── */
+   /* ─── INICIALIZACIÓN ─── */
   async init() {
     console.log("[Administrador] ▶ Inicializando agente...");
     ESTADO.iniciado_at = new Date().toISOString();
     ESTADO.operacionesRegistradas = 0;
     ESTADO.operacionesPorTipo = {};
+
+    // ═══ SUSCRIPCIÓN AUTOMÁTICA A SAVIA ═══
+    try {
+      SAVIA.suscribir(this.id, this.suscripciones, (evento) => this.recibir(evento));
+      console.log(`[Administrador] ✓ Suscrito a ${this.suscripciones.length} tipos`);
+    } catch (e) {
+      console.error("[Administrador] Error suscribiendo a SAVIA:", e.message);
+    }
+
     await this._cargarMetricas();
     console.log("[Administrador] ✓ Agente listo. Suscripciones activas:", ESTADO.suscripcionesActivas);
     return true;
   },
 
-  /* ─── MANEJADOR ─── */
-  async onEvento(evento) {
+  /* ─── MANEJADOR (recibir, requerido por savia.js) ─── */
+  async recibir(evento) {
     const { tipo, payload } = evento;
     try {
       switch (tipo) {
