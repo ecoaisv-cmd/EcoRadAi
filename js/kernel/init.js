@@ -27,6 +27,10 @@ import { agenteTrabajoSocial } from "../agentes/raiz/trabajo-social.js";
 import { agenteSaviaConsolidadora } from "../agentes/raiz/savia-consolidadora.js";
 // Motor unificado de interconsultas (Sprint 3 Fase B)
 import "../agentes/tronco/_motor-interconsultas.js";
+// Agentes maestros del TRONCO (Sprint 3 Fase C)
+import { agenteCoordinador } from "../agentes/tronco/coordinador.js";
+import { agenteInvestigador } from "../agentes/tronco/investigador.js";
+import { agenteAdministrador } from "../agentes/tronco/administrador.js";
 
 async function bootstrap() {
   console.log("═══════════════════════════════════════════════════");
@@ -142,7 +146,15 @@ async function bootstrap() {
   await kernel.registrar(agenteImagen);
   await kernel.registrar(agenteTrabajoSocial);
   await kernel.registrar(agenteSaviaConsolidadora);
-  console.log("[Kernel] ✓ 6 agentes de RAÍZ registrados");
+console.log("[Kernel] ✓ 6 agentes de RAÍZ registrados");
+  
+// ─── REGISTRAR AGENTES MAESTROS DEL TRONCO (Sprint 3 Fase C) ───
+console.log("[Kernel] Registrando agentes maestros del TRONCO...");
+await kernel.registrar(agenteCoordinador);
+await kernel.registrar(agenteInvestigador);
+await kernel.registrar(agenteAdministrador);
+console.log("[Kernel] ✓ 3 agentes maestros del TRONCO registrados");
+
   
   // ─── ACTIVAR TODOS ───
   await kernel.activarTodos();
