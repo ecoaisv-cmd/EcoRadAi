@@ -2400,6 +2400,10 @@ const ESPECIALISTAS = {
   oncologo:            { nombre:"IA-Oncólogo",                rol:"Oncología",              costo_estimado:0.004, tiempo_estimado_seg:20 },
   oftalmologo:         { nombre:"IA-Oftalmólogo",             rol:"Oftalmología",           costo_estimado:0.004, tiempo_estimado_seg:20 }
 };
+
+
+// ═══ Exponer globalmente para el kernel de agentes (Sprint 3) ═══
+if (typeof window !== "undefined") { window.ESPECIALISTAS = ESPECIALISTAS; }
 /* ═══════════════════════════════════════════════════════════
    CATÁLOGO GEOGRÁFICO DE EL SALVADOR
    14 departamentos + 262 municipios + 4 zonas geográficas
@@ -4168,6 +4172,9 @@ const PROMPTS_INTERCONSULTA = {
   oncologo:`Eres oncólogo con 15 años. CASO: {CONTEXTO_JSON}. Devuelve JSON con: resumen, estadificacion, diagnostico_oncologico, plan_terapeutico, seguimiento, banderas_rojas, confianza, referencias. Usa tildes y ñ. DEVUELVE ÚNICAMENTE JSON.`,
   oftalmologo:`Eres oftalmólogo retinólogo con 15 años. CASO: {CONTEXTO_JSON}. Devuelve JSON con: resumen, clasificacion_etdrs, hallazgos_retinianos, plan_terapeutico, seguimiento_meses, banderas_rojas, confianza, referencias. Usa tildes y ñ. DEVUELVE ÚNICAMENTE JSON.`
 };
+
+// ═══ Exponer globalmente para el kernel de agentes (Sprint 3) ═══
+if (typeof window !== "undefined") { window.PROMPTS_INTERCONSULTA = PROMPTS_INTERCONSULTA; }
 
 function slug(s) {
   return String(s).toLowerCase()
