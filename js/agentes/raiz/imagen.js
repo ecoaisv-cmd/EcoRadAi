@@ -2,19 +2,14 @@
  * agente-imagen.js
  * Capa: RAÍZ
  * Dominio: imagen
- * Versión: 1.0.0
+ * Versión: 1.1.0 (Sprint 3 Fase A)
  * 
- * Envuelve:
- *   - TAMIZAJES_REGISTRY (protocolos)
- *   - renderPaginasImagenes()
- *   - capturedImages[], capturedImageTags[]
- *   - handleFiles(), removeImage(), renderGallery()
- *   - verImagenes(), ampliarImagen()
+ * Emite: savia:aporte-imagen
  */
 
 export const agenteImagen = {
   id: "agente-imagen",
-  version: "1.0.0",
+  version: "1.1.0",
   nombre: "Agente Imagen",
   icono: "🖼️",
   capa: "raiz",
@@ -35,12 +30,14 @@ export const agenteImagen = {
     "imagen:capturada",
     "imagen:eliminada",
     "imagen:galeria-actualizada",
-    "imagen:protocolo-completado"
+    "imagen:protocolo-completado",
+    "savia:aporte-imagen"
   ],
 
   eventos_suscritos: [
     "tamizaje:seleccionado",
-    "paciente:seleccionado"
+    "paciente:seleccionado",
+    "imagen:galeria-actualizada"
   ],
 
   async init(kernel) {
@@ -50,15 +47,34 @@ export const agenteImagen = {
       console.log("[agente-imagen] Tamizaje seleccionado:", evt.payload?.tamizaje_id);
     });
 
+    // Emitir aporte cuando la galería se actualiza
+    kernel.on("imagen:galeria-actualizada", (evt) => {
+      this._emitirAporte();
+    });
+
     console.log("[agente-imagen] ✓ Listo");
   },
 
   async recibir(evt) {
     console.log("[agente-imagen] Evento recibido:", evt.tipo);
+    if (evt.tipo === "tamizaje:firmado" || evt.tipo === "consulta:firmada") {
+      this._emitirAporte();
+    }
   },
 
   async mount(container, params) {
     console.log("[agente-imagen] mount() — pendiente de UI propia");
+  },
+
+  _emitirAporte() {
+    window.kernel.emit("savia:aporte-imagen", {
+      hallazgos: {},
+      imagenes: this.api.capturadas(),
+      protocolo: this.api.protocoloActual(),
+      total: this.api.contarCapturadas(),
+      timestamp: new Date().toISOString()
+    });
+    console.log("[agente-imagen] 📤 Aporte emitido con", this.api.contarCapturadas(), "imágenes");
   },
 
   api: {
@@ -83,7 +99,7 @@ export const agenteImagen = {
     },
 
     /**
-     * Obtiene el protocolo de imagen del tamizaje actual.
+     * Protocolo del tamizaje actual.
      */
     protocoloActual() {
       const t = this.obtenerTamizaje(window.estudioActual || "corporativo_metabolico");
@@ -91,14 +107,14 @@ export const agenteImagen = {
     },
 
     /**
-     * Cuenta las imágenes capturadas actualmente.
+     * Cuenta las imágenes capturadas.
      */
     contarCapturadas() {
       return (window.capturedImages || []).length;
     },
 
     /**
-     * Devuelve las imágenes capturadas actualmente.
+     * Devuelve las imágenes capturadas.
      */
     capturadas() {
       const imgs = window.capturedImages || [];
@@ -111,7 +127,7 @@ export const agenteImagen = {
     },
 
     /**
-     * Añade una imagen manualmente (dataURL).
+     * Añade una imagen manualmente.
      */
     agregar(dataUrl, tag) {
       if (!window.capturedImages) window.capturedImages = [];
@@ -119,6 +135,7 @@ export const agenteImagen = {
       window.capturedImages.push(dataUrl);
       window.capturedImageTags.push(tag || "Vista " + window.capturedImages.length);
       if (typeof window.renderGallery === "function") window.renderGallery();
+      this._emitirAporte();
     },
 
     /**
@@ -127,11 +144,12 @@ export const agenteImagen = {
     eliminar(indice) {
       if (typeof window.removeImage === "function") {
         window.removeImage(indice);
+        this._emitirAporte();
       }
     },
 
     /**
-     * Limpia todas las imágenes capturadas.
+     * Limpia todas las imágenes.
      */
     limpiar() {
       window.capturedImages = [];
@@ -140,7 +158,7 @@ export const agenteImagen = {
     },
 
     /**
-     * Renderiza las páginas de imágenes para el informe.
+     * Renderiza las páginas de imágenes.
      */
     renderPaginas(googleFonts, fecha, caseId, caso) {
       if (typeof window.renderPaginasImagenes === "function") {
@@ -150,7 +168,7 @@ export const agenteImagen = {
     },
 
     /**
-     * Abre el visor de imágenes de un caso.
+     * Abre el visor de imágenes.
      */
     async ver(caseId) {
       if (typeof window.verImagenes === "function") {
@@ -159,9 +177,10 @@ export const agenteImagen = {
     },
 
     /**
-     * Aporta el contexto de imágenes para interconsultas.
+     * Aporta el contexto de imágenes a SAVIA.
      */
     async aportar() {
+      this._emitirAporte();
       return {
         total: this.contarCapturadas(),
         imagenes: this.capturadas(),
