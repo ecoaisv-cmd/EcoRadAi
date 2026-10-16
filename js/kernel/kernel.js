@@ -7,6 +7,10 @@
  * - Verificar dependencias
  * - Orquestar ciclos de vida (init/mount/unmount)
  * - Exponer servicios compartidos
+ * 
+ * v1.1 — Sprint 2 fix:
+ * - emit() envuelve el evento en formato canónico { de, tipo, payload, flujo, timestamp }
+ * - on() recibe el evento envuelto (consistente con SAVIA)
  */
 
 import SAVIA from "./savia.js";
@@ -19,6 +23,7 @@ class Kernel {
     this.activos = new Set();       // ids activos
     this.servicios = new Map();     // servicios compartidos
     this.entidades = new Map();     // entidades base
+    this._listeners = new Map();    // eventos → [callbacks]
     this._inicializado = false;
   }
   
@@ -26,7 +31,6 @@ class Kernel {
    * Registra un agente con su manifiesto.
    */
   async registrar(manifiesto) {
-    // Validar
     const err = this._validarManifiesto(manifiesto);
     if (err) throw new Error(`Manifiesto inválido: ${err}`);
     
@@ -35,7 +39,6 @@ class Kernel {
       return;
     }
     
-    // Verificar permisos del usuario
     if (!this._tienePermiso(manifiesto)) {
       console.log(`[Kernel] ${manifiesto.id} no permitido para rol actual`);
       return;
@@ -66,10 +69,11 @@ class Kernel {
     }
     
     this.activos.add(agenteId);
+    
     SAVIA.enviar({
       de: "kernel",
       tipo: "AGENTE_ACTIVADO",
-      payload: { id: agenteId, manifiesto: agente },
+      payload: { id: agenteId, manifiesto: agente.id },
       flujo: "circular"
     }).catch(() => {});
     
@@ -80,7 +84,7 @@ class Kernel {
    * Activa todos los agentes registrados.
    */
   async activarTodos() {
-    for (const [id, agente] of this.agentes.entries()) {
+    for (const [id] of this.agentes.entries()) {
       try {
         await this.activar(id);
       } catch (e) {
@@ -121,21 +125,29 @@ class Kernel {
   }
   
   /**
-   * Obtiene un agente.
+   * Obtiene un agente por ID.
    */
   obtener(agenteId) {
     return this.agentes.get(agenteId);
   }
   
   /**
-   * Lista agentes.
+   * Lista agentes. Acepta filtro como string (capa) u objeto.
+   * 
+   *   kernel.listar()                    → todos
+   *   kernel.listar("raiz")              → por capa
+   *   kernel.listar({ dominio: "social" }) → por objeto
    */
-  listar(filtro = {}) {
+  listar(filtro) {
     let lista = Array.from(this.agentes.values());
     
-    if (filtro.capa) lista = lista.filter(a => a.capa === filtro.capa);
-    if (filtro.dominio) lista = lista.filter(a => a.dominio === filtro.dominio);
-    if (filtro.activos) lista = lista.filter(a => this.activos.has(a.id));
+    if (typeof filtro === "string") {
+      lista = lista.filter(a => a.capa === filtro);
+    } else if (filtro && typeof filtro === "object") {
+      if (filtro.capa) lista = lista.filter(a => a.capa === filtro.capa);
+      if (filtro.dominio) lista = lista.filter(a => a.dominio === filtro.dominio);
+      if (filtro.activos) lista = lista.filter(a => this.activos.has(a.id));
+    }
     
     return lista;
   }
@@ -196,14 +208,12 @@ class Kernel {
   /**
    * Inicializa el kernel.
    */
-    async init() {
+  async init() {
     if (this._inicializado) return;
     
     console.log("[Kernel] Inicializando...");
     
     await MEMORIA.init();
-    
-    // NUEVO: Listener de login (re-registra agentes cuando el usuario entra)
     this._escucharLogin();
     
     this._inicializado = true;
@@ -211,8 +221,7 @@ class Kernel {
   }
   
   /**
-   * Suscribirse a eventos de autenticación para registrar agentes
-   * cuando el usuario inicie sesión.
+   * Listener de login.
    */
   async _escucharLogin() {
     if (this._escuchandoLogin) return;
@@ -227,7 +236,6 @@ class Kernel {
         usuarioAnterior = usuarioActual;
         console.log("[Kernel] Cambio de usuario detectado:", usuarioActual?.email || "anon");
         
-        // Reintentar registrar agentes que fallaron por permisos
         for (const [id, agente] of this.agentes.entries()) {
           if (this._tienePermiso(agente)) {
             if (!this.activos.has(id)) {
@@ -244,18 +252,16 @@ class Kernel {
   }
   
   /**
-   * Estadísticas del kernel.
-   */
-
-    /**
-   * Suscribirse a eventos (delega a SAVIA).
-   * Esto permite que los agentes hagan `kernel.on("evento", cb)`
-   * sin tener que importar SAVIA directamente.
+   * Suscribirse a un evento.
+   * El callback recibe un evento envuelto: { de, tipo, payload, flujo, timestamp }
+   * 
+   *   kernel.on("paciente:seleccionado", (evt) => {
+   *     console.log(evt.payload.subject_id);
+   *   });
+   * 
+   * Retorna una función para desuscribirse.
    */
   on(evento, callback) {
-    if (!this._listeners) {
-      this._listeners = new Map();
-    }
     if (!this._listeners.has(evento)) {
       this._listeners.set(evento, []);
     }
@@ -263,7 +269,6 @@ class Kernel {
     
     console.log(`[Kernel] ✓ Listener registrado: ${evento}`);
     
-    // Retornar función para desuscribirse
     return () => {
       const cbs = this._listeners.get(evento) || [];
       const idx = cbs.indexOf(callback);
@@ -272,26 +277,39 @@ class Kernel {
   }
   
   /**
-   * Emitir un evento (delega a SAVIA).
+   * Emite un evento al bus local Y a SAVIA.
+   * 
+   * v1.1 — Ahora envuelve el evento en formato canónico:
+   *   { de, tipo, payload, flujo, timestamp }
+   * Los listeners locales reciben el evento envuelto (consistente con SAVIA).
    */
-  emit(evento, payload) {
-    if (!this._listeners) this._listeners = new Map();
-    
-    // Ejecutar listeners locales
-    const callbacks = this._listeners.get(evento) || [];
-    callbacks.forEach(cb => {
-      try { cb(payload); } catch (e) { console.error(`[Kernel] Error en listener ${evento}:`, e); }
-    });
-    
-    // También emitir por SAVIA para que llegue a otros agentes
-    return SAVIA.enviar({
+  emit(evento, data = {}) {
+    // 1. Construir el evento canónico
+    const eventoCanonico = {
       de: "kernel",
       tipo: evento,
-      payload: payload,
-      flujo: "circular"
-    }).catch(() => {});
+      payload: data || {},
+      flujo: "circular",
+      timestamp: new Date().toISOString()
+    };
+    
+    // 2. Notificar listeners locales con el evento envuelto
+    const callbacks = this._listeners.get(evento) || [];
+    callbacks.forEach(cb => {
+      try {
+        cb(eventoCanonico);
+      } catch (e) {
+        console.error(`[Kernel] Error en listener ${evento}:`, e);
+      }
+    });
+    
+    // 3. Propagar a SAVIA (broadcast a agentes suscritos)
+    return SAVIA.enviar(eventoCanonico).catch(() => {});
   }
   
+  /**
+   * Estadísticas del kernel.
+   */
   stats() {
     return {
       agentes_registrados: this.agentes.size,
@@ -299,7 +317,7 @@ class Kernel {
       servicios: this.servicios.size,
       entidades: this.entidades.size,
       savia: SAVIA.stats(),
-      memoria: MEMORIA.stats()
+      memoria: MEMORIA.stats ? MEMORIA.stats() : {}
     };
   }
 }
