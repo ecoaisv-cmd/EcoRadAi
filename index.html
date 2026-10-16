@@ -21229,6 +21229,7 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
 
 <!-- ═══════════════════════════════════════════════════════════════
      SPRINT 3 FASE D — UI de Interconsultas AI en Consulta SOAP
+     v2.0 — Blindado contra el bug de EcoRadAi.obtener("savia")
      ═══════════════════════════════════════════════════════════════ -->
 <script>
 "use strict";
@@ -21255,6 +21256,54 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
   function capitalizar(s) {
     return String(s || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // OBTENCIÓN DE SAVIA — window.SAVIA directo (kernel.obtener está roto)
+  // ═══════════════════════════════════════════════════════════════════
+  function obtenerSavia() {
+    // PRIORIDAD 1: window.SAVIA (la instancia real con todos los métodos)
+    if (window.SAVIA && typeof window.SAVIA.emitirContexto === "function") {
+      return window.SAVIA;
+    }
+
+    // PRIORIDAD 2: kernel.savia
+    if (window.kernel && window.kernel.savia && typeof window.kernel.savia.emitirContexto === "function") {
+      return window.kernel.savia;
+    }
+
+    // PRIORIDAD 3: EcoRadAi.savia
+    if (window.EcoRadAi && window.EcoRadAi.savia && typeof window.EcoRadAi.savia.emitirContexto === "function") {
+      return window.EcoRadAi.savia;
+    }
+
+    // PRIORIDAD 4: EcoRadAi.obtener("savia") — último recurso
+    if (window.EcoRadAi && typeof window.EcoRadAi.obtener === "function") {
+      try {
+        const s = window.EcoRadAi.obtener("savia");
+        if (s && typeof s.emitirContexto === "function") return s;
+      } catch (e) { /* continuar */ }
+    }
+
+    console.error("[FaseD] SAVIA no disponible. Diagnóstico:", {
+      windowSAVIA: typeof window.SAVIA,
+      windowSAVIA_emitirContexto: typeof window.SAVIA?.emitirContexto,
+      kernelSAVIA: typeof window.kernel?.savia,
+      EcoRadAiSAVIA: typeof window.EcoRadAi?.savia
+    });
+    return null;
+  }
+
+  // Exponer para diagnóstico desde consola
+  window.diagnosticarSaviaFaseD = function() {
+    return {
+      "window.SAVIA": typeof window.SAVIA,
+      "window.SAVIA.emitirContexto": typeof window.SAVIA?.emitirContexto,
+      "window.kernel.savia": typeof window.kernel?.savia,
+      "window.EcoRadAi.savia": typeof window.EcoRadAi?.savia,
+      "claves kernel.entidades": window.kernel?.entidades ? [...window.kernel.entidades.keys()] : null,
+      "claves kernel.servicios": window.kernel?.servicios ? [...window.kernel.servicios.keys()] : null
+    };
+  };
 
   // ─── Render de la lista de sugeridas ───────────────────────────────
   function renderInterconsultasSugeridas(lista) {
@@ -21381,7 +21430,6 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
 
       renderInterconsultasSugeridas(lista);
 
-      // Auto-scroll a la sección
       setTimeout(() => {
         const sec = $id("sec-consulta-interconsultas");
         if (sec && sec.style.display !== "none") {
@@ -21414,13 +21462,13 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
       return;
     }
 
-    const savia = window.SAVIA
-      || (window.EcoRadAi && window.EcoRadAi.obtener && window.EcoRadAi.obtener("savia"));
-
-    if (!savia || typeof savia.emitir !== "function") {
-      alert("SAVIA no está disponible. Recarga la página.");
+    // ═══ OBTENER SAVIA con el helper robusto ═══
+    const savia = obtenerSavia();
+    if (!savia) {
+      alert("SAVIA no está disponible. Revisa la consola para el diagnóstico.");
       return;
     }
+    console.log("[FaseD] SAVIA obtenido. emitirContexto:", typeof savia.emitirContexto);
 
     ESTADO_D.ejecutando = true;
     ESTADO_D.respuestas = {};
@@ -21482,30 +21530,38 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
       finalizarEjecucion();
     };
 
+    // ═══ Registrar pseudo-agente receptor y suscribirlo ═══
     try {
       if (typeof savia.registrar === "function") {
-        savia.registrar({
-          id: RECEPTOR_ID,
-          nombre: "UI Consulta Fase D",
-          capa: "ui",
-          async init() { return true; },
-          async recibir(evento) {
-            const t = evento && evento.tipo;
-            if (t === "especialista:respuesta") onEspecialistaRespuesta(evento);
-            else if (t === "savia:tronco:plan-integrado") onPlanIntegrado(evento);
-            else if (t === "savia:tronco:sin-interconsultas") onSinInterconsultas(evento);
-          }
-        });
+        try {
+          savia.registrar({
+            id: RECEPTOR_ID,
+            nombre: "UI Consulta Fase D",
+            capa: "ui",
+            async init() { return true; },
+            async recibir(evento) {
+              const t = evento && evento.tipo;
+              if (t === "especialista:respuesta") onEspecialistaRespuesta(evento);
+              else if (t === "savia:tronco:plan-integrado") onPlanIntegrado(evento);
+              else if (t === "savia:tronco:sin-interconsultas") onSinInterconsultas(evento);
+            }
+          });
+          console.log("[FaseD] Receptor UI registrado como pseudo-agente");
+        } catch (e) {
+          console.warn("[FaseD] Error al registrar receptor:", e.message);
+        }
       }
+
       if (typeof savia.suscribir === "function") {
         savia.suscribir(RECEPTOR_ID, [
           "especialista:respuesta",
           "savia:tronco:plan-integrado",
           "savia:tronco:sin-interconsultas"
         ]);
+        console.log("[FaseD] ✓ Receptor UI suscrito a eventos");
       }
     } catch (e) {
-      console.warn("[FaseD] No se pudo suscribir el receptor UI:", e);
+      console.warn("[FaseD] Error al suscribir receptor UI:", e);
     }
 
     // ─── Emitir decisión al coordinador ────────────────────────────
@@ -21527,24 +21583,23 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
 
       console.log("[FaseD] Emitiendo medico:decision-interconsultas:", payloadDecision);
 
-      if (typeof savia.emitirContexto === "function") {
-        await savia.emitirContexto(
-          ESTADO_D.contextoId,
-          "medico:decision-interconsultas",
-          payloadDecision,
-          { de: "ui-consulta-soap" }
-        );
-      } else if (typeof savia.emitir === "function") {
-        await savia.emitir({
-          de: "ui-consulta-soap",
-          tipo: "medico:decision-interconsultas",
-          flujo: "circular",
-          payload: payloadDecision
-        });
+      if (typeof savia.emitirContexto !== "function") {
+        throw new Error("SAVIA no tiene emitirContexto como función");
       }
+
+      await savia.emitirContexto(
+        ESTADO_D.contextoId,
+        "medico:decision-interconsultas",
+        payloadDecision,
+        { de: "ui-consulta-soap" }
+      );
+
+      console.log("[FaseD] ✓ Decisión emitida, esperando al coordinador...");
+
     } catch (e) {
       console.error("[FaseD] Error emitiendo decisión:", e);
-      alert("Error al ejecutar interconsultas. Revisa la consola.");
+      console.error("[FaseD] Stack:", e.stack);
+      alert("Error al ejecutar interconsultas: " + e.message);
       finalizarEjecucion();
       return;
     }
@@ -21658,8 +21713,50 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
 
   console.log("[FaseD] UI de interconsultas cargada. Funciones expuestas:",
     ["sugerirInterconsultasDesdeConsulta", "consultaEjecutarInterconsultas", "consultaConfirmarDecision"]);
+  console.log("[FaseD] Usa window.diagnosticarSaviaFaseD() para verificar SAVIA");
 })();
-</script>     
+</script> 
+
+<!-- ═══════════════════════════════════════════════════════════
+     FIX — Registrar SAVIA en kernel.entidades
+     Corrige el bug de EcoRadAi.obtener("savia")
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  let intentos = 0;
+  const MAX = 40;
+
+  function registrar() {
+    intentos++;
+
+    if (window.kernel && window.kernel.entidades && window.SAVIA) {
+      if (!window.kernel.entidades.has("savia")) {
+        window.kernel.entidades.set("savia", window.SAVIA);
+        console.log("[Fix] ✓ SAVIA registrado en kernel.entidades");
+      } else {
+        console.log("[Fix] SAVIA ya estaba en kernel.entidades");
+      }
+      return;
+    }
+
+    if (intentos < MAX) {
+      setTimeout(registrar, 250);
+    } else {
+      console.warn("[Fix] Timeout. Estado:", {
+        kernel: typeof window.kernel,
+        kernelEntidades: typeof window.kernel?.entidades,
+        SAVIA: typeof window.SAVIA
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(registrar, 500));
+  } else {
+    setTimeout(registrar, 500);
+  }
+})();
+</script>
 <script type="module" src="js/kernel/init.js"></script>
 
 </body>
