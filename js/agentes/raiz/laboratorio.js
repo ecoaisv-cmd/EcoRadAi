@@ -2,19 +2,14 @@
  * agente-laboratorio.js
  * Capa: RAÍZ
  * Dominio: laboratorio
- * Versión: 1.0.0
+ * Versión: 1.1.0 (Sprint 3 Fase A)
  * 
- * Envuelve:
- *   - LABS_REGISTRY
- *   - parsearLabsConIA()
- *   - recogerLabs()
- *   - detectarAlteraciones()
- *   - calcHOMA(), calcTFG()
+ * Emite: savia:aporte-laboratorio
  */
 
 export const agenteLaboratorio = {
   id: "agente-laboratorio",
-  version: "1.0.0",
+  version: "1.1.0",
   nombre: "Agente Laboratorio",
   icono: "🔬",
   capa: "raiz",
@@ -34,12 +29,15 @@ export const agenteLaboratorio = {
   eventos_emitidos: [
     "laboratorio:parseado",
     "laboratorio:alteraciones-detectadas",
-    "laboratorio:guardado"
+    "laboratorio:guardado",
+    "savia:aporte-laboratorio"
   ],
 
   eventos_suscritos: [
     "paciente:seleccionado",
-    "consulta:firmada"
+    "consulta:firmada",
+    "tamizaje:firmado",
+    "laboratorio:actualizado"
   ],
 
   async init(kernel) {
@@ -50,15 +48,39 @@ export const agenteLaboratorio = {
       this.api.recalcularCalculados();
     });
 
+    // Emitir aporte cuando los labs se actualizan
+    kernel.on("laboratorio:actualizado", (evt) => {
+      this._emitirAporte();
+    });
+
     console.log("[agente-laboratorio] ✓ Listo");
   },
 
   async recibir(evt) {
     console.log("[agente-laboratorio] Evento recibido:", evt.tipo);
+    // Si nos avisan que un caso se firmó, emitir el aporte final
+    if (evt.tipo === "tamizaje:firmado" || evt.tipo === "consulta:firmada") {
+      this._emitirAporte();
+    }
   },
 
   async mount(container, params) {
     console.log("[agente-laboratorio] mount() — pendiente de UI propia");
+  },
+
+  _emitirAporte() {
+    const labs = this.api.recoger();
+    const alteraciones = this.api.detectarAlteraciones(labs);
+    
+    window.kernel.emit("savia:aporte-laboratorio", {
+      labs: labs,
+      alteraciones: alteraciones.alteraciones || [],
+      severidad_global: alteraciones.severidad_global || "normal",
+      total_alterados: alteraciones.total_alterados || 0,
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log("[agente-laboratorio] 📤 Aporte emitido con", alteraciones.total_alterados, "alteraciones");
   },
 
   api: {
@@ -73,7 +95,7 @@ export const agenteLaboratorio = {
     },
 
     /**
-     * Lista los labs registrados en el LABS_REGISTRY.
+     * Lista los labs registrados.
      */
     listar(filtro) {
       if (window.LABS_REGISTRY?.listar) {
@@ -93,7 +115,7 @@ export const agenteLaboratorio = {
     },
 
     /**
-     * Obtiene un lab específico por id.
+     * Obtiene un lab por id.
      */
     obtener(labId) {
       if (window.LABS_REGISTRY?._items) {
@@ -125,7 +147,7 @@ export const agenteLaboratorio = {
     },
 
     /**
-     * Recalcula los valores calculados (HOMA-IR, TFG, etc.).
+     * Recalcula los valores calculados.
      */
     recalcularCalculados() {
       if (typeof window.calcHOMA === "function") window.calcHOMA();
@@ -133,16 +155,11 @@ export const agenteLaboratorio = {
     },
 
     /**
-     * Aporta los labs para interconsultas.
+     * Aporta los labs a SAVIA.
      */
     async aportar() {
-      const labs = this.recoger();
-      const alteraciones = this.detectarAlteraciones(labs);
-      return {
-        valores: labs,
-        alteraciones: alteraciones.alteraciones,
-        severidad_global: alteraciones.severidad_global
-      };
+      this._emitirAporte();
+      return this.recoger();
     }
   }
 };
