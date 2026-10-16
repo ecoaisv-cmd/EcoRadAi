@@ -2,20 +2,14 @@
  * agente-clinica.js
  * Capa: RAÍZ
  * Dominio: clinica
- * Versión: 1.0.0
+ * Versión: 1.1.0 (Sprint 3 Fase A)
  * 
- * Envuelve:
- *   - recogerClinica()
- *   - CONSULTA_SISTEMAS
- *   - CONSULTA_ANTECEDENTES
- *   - CONSULTA_EXAMEN_FISICO
- *   - CONSULTA_VITALES
- *   - ESCALAS_REGISTRY (parcial)
+ * Emite: savia:aporte-clinica
  */
 
 export const agenteClinica = {
   id: "agente-clinica",
-  version: "1.0.0",
+  version: "1.1.0",
   nombre: "Agente Clínica",
   icono: "🩺",
   capa: "raiz",
@@ -35,12 +29,14 @@ export const agenteClinica = {
   eventos_emitidos: [
     "clinica:datos-recogidos",
     "clinica:escalas-actualizadas",
-    "clinica:vitales-capturados"
+    "clinica:vitales-capturados",
+    "savia:aporte-clinica"
   ],
 
   eventos_suscritos: [
     "paciente:seleccionado",
-    "consulta:firmada"
+    "consulta:firmada",
+    "clinica:actualizada"
   ],
 
   async init(kernel) {
@@ -50,21 +46,50 @@ export const agenteClinica = {
       console.log("[agente-clinica] Paciente seleccionado:", evt.payload?.subject_id);
     });
 
+    // Emitir aporte cuando la clínica se actualiza
+    kernel.on("clinica:actualizada", (evt) => {
+      this._emitirAporte();
+    });
+
     console.log("[agente-clinica] ✓ Listo");
   },
 
   async recibir(evt) {
     console.log("[agente-clinica] Evento recibido:", evt.tipo);
+    // Si nos avisan que un caso se firmó, emitir el aporte final
+    if (evt.tipo === "tamizaje:firmado" || evt.tipo === "consulta:firmada") {
+      this._emitirAporte();
+    }
   },
 
   async mount(container, params) {
     console.log("[agente-clinica] mount() — pendiente de UI propia");
   },
 
+  _emitirAporte() {
+    const clinica = this.api.recoger();
+    window.kernel.emit("savia:aporte-clinica", {
+      signos_vitales: {
+        peso_kg: clinica.peso_kg,
+        talla_cm: clinica.talla_cm,
+        imc: clinica.imc,
+        circunferencia_cintura_cm: clinica.circunferencia_cintura_cm,
+        presion_sistolica: clinica.presion_sistolica_mmhg,
+        presion_diastolica: clinica.presion_diastolica_mmhg,
+        frecuencia_cardiaca: clinica.frecuencia_cardiaca_lpm,
+        saturacion_o2: clinica.saturacion_o2_pct
+      },
+      examen_fisico: clinica.examen_fisico || {},
+      escalas: clinica.escalas || {},
+      habitos: clinica.habitos || {},
+      timestamp: new Date().toISOString()
+    });
+    console.log("[agente-clinica] 📤 Aporte emitido");
+  },
+
   api: {
     /**
      * Recolecta TODA la clínica actual desde el DOM.
-     * Reutiliza la función del monolito.
      */
     recoger() {
       if (typeof window.recogerClinica === "function") {
@@ -75,7 +100,7 @@ export const agenteClinica = {
     },
 
     /**
-     * Devuelve las constantes clínicas (sistemas, antecedentes, examen físico).
+     * Constantes clínicas.
      */
     constantes() {
       return {
@@ -87,7 +112,7 @@ export const agenteClinica = {
     },
 
     /**
-     * Cuenta cuántas escalas clínicas hay registradas.
+     * Cuenta las escalas clínicas registradas.
      */
     contarEscalas() {
       if (window.ESCALAS_REGISTRY?._items) {
@@ -97,7 +122,7 @@ export const agenteClinica = {
     },
 
     /**
-     * Recalcula TODAS las escalas (IMC, TFG, PHQ9, etc.).
+     * Recalcula todas las escalas.
      */
     recalcular() {
       if (typeof window.recalcularTodasLasEscalas === "function") {
@@ -108,7 +133,7 @@ export const agenteClinica = {
     },
 
     /**
-     * Recoge signos vitales para el contexto de interconsultas.
+     * Recoge signos vitales.
      */
     vitales() {
       const clinica = this.recoger();
@@ -121,6 +146,14 @@ export const agenteClinica = {
         frecuencia_cardiaca_lpm: clinica.frecuencia_cardiaca_lpm,
         saturacion_o2_pct: clinica.saturacion_o2_pct
       };
+    },
+
+    /**
+     * Aporta el contexto clínico a SAVIA.
+     */
+    async aportar() {
+      this._emitirAporte();
+      return this.recoger();
     }
   }
 };
