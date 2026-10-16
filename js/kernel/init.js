@@ -1,8 +1,6 @@
 /**
  * BOOTSTRAP — Inicialización del kernel y agentes.
- * 
- * v1.1 — Sprint 2 fix:
- * - window.EcoRadAi expone obtener(), porCapa(), porDominio(), health(), on()
+ * v1.2 — Sprint 3 Fase A
  */
 
 import kernel from "./kernel.js";
@@ -18,16 +16,19 @@ import { agenteEpisodios } from "../adapters/episodios-adapter.js";
 import { agenteEspecialidad } from "../adapters/especialidad-adapter.js";
 import { agentePortal } from "../adapters/portal-adapter.js";
 
-// Agentes de RAÍZ del Sprint 2
+// Agentes de RAÍZ (Sprint 2)
 import { agentePaciente } from "../agentes/raiz/paciente.js";
 import { agenteClinica } from "../agentes/raiz/clinica.js";
 import { agenteLaboratorio } from "../agentes/raiz/laboratorio.js";
 import { agenteImagen } from "../agentes/raiz/imagen.js";
 import { agenteTrabajoSocial } from "../agentes/raiz/trabajo-social.js";
 
+// NUEVO Sprint 3 Fase A: Consolidador de SAVIA
+import { agenteSaviaConsolidadora } from "../agentes/raiz/savia-consolidadora.js";
+
 async function bootstrap() {
   console.log("═══════════════════════════════════════════════════");
-  console.log("🚀 KERNEL — Inicializando sistema de agentes");
+  console.log("🚀 KERNEL — Inicializando sistema de agentes v1.2");
   console.log("═══════════════════════════════════════════════════");
   
   // ─── ESPERAR A SUPABASE ───
@@ -131,14 +132,15 @@ async function bootstrap() {
   await kernel.registrar(agenteEspecialidad);
   await kernel.registrar(agentePortal);
   
-  // ─── REGISTRAR AGENTES DE RAÍZ (Sprint 2) ───
+  // ─── REGISTRAR AGENTES DE RAÍZ (Sprint 2 + 3A) ───
   console.log("[Kernel] Registrando agentes de RAÍZ...");
   await kernel.registrar(agentePaciente);
   await kernel.registrar(agenteClinica);
   await kernel.registrar(agenteLaboratorio);
   await kernel.registrar(agenteImagen);
   await kernel.registrar(agenteTrabajoSocial);
-  console.log("[Kernel] ✓ 5 agentes de RAÍZ registrados");
+  await kernel.registrar(agenteSaviaConsolidadora);
+  console.log("[Kernel] ✓ 6 agentes de RAÍZ registrados");
   
   // ─── ACTIVAR TODOS ───
   await kernel.activarTodos();
@@ -160,7 +162,6 @@ async function bootstrap() {
     memoria: MEMORIA,
     contexto,
 
-    // Stats y health
     stats: () => kernel.stats(),
     health: () => {
       const s = kernel.stats();
@@ -172,31 +173,29 @@ async function bootstrap() {
           tronco: agentes.filter(a => a.capa === "tronco").length,
           fruto: agentes.filter(a => a.capa === "fruto").length
         },
-        version: "v23.4-sprint2"
+        version: "v23.4-sprint3a"
       };
     },
 
-    // Listar y obtener
     listar: () => kernel.listar().map(a => a.id),
     listarFull: () => kernel.listar(),
     obtener: (id) => kernel.obtener(id),
     porCapa: (capa) => kernel.listar(capa).map(a => a.id),
     porDominio: (dominio) => kernel.listar({ dominio }).map(a => a.id),
 
-    // Eventos
     emit: (evt, data) => kernel.emit(evt, data),
     on: (evt, cb) => kernel.on(evt, cb),
 
-    // SAVIA
     saviaStats: () => SAVIA.stats(),
-    saviaListar: () => SAVIA.listar()
+    saviaListar: () => SAVIA.listar(),
+    suscriptoresDe: (tipo) => SAVIA.suscriptoresDe(tipo),
+    historialDeContexto: (contexto_id) => SAVIA.historialDeContexto(contexto_id)
   };
   
   console.log("[Kernel] API global: window.EcoRadAi");
   console.log("[Kernel] Prueba: window.EcoRadAi.health()");
 }
 
-// Auto-inicializar
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", bootstrap);
 } else {
