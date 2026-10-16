@@ -6,6 +6,11 @@
  * - Descendente: fruto → tronco → raíz
  * - Lateral: mismo nivel
  * - Circular: todos ↔ todos
+ * 
+ * v1.1 — Sprint 2 fix:
+ * - registrar() auto-suscribe usando agente.eventos_suscritos
+ * - propagar() busca en ambas fuentes (suscritoA y eventos_suscritos)
+ * - enviar() acepta evento con o sin para_agente
  */
 
 import contexto from "./contexto.js";
@@ -16,6 +21,7 @@ class Savia {
   constructor() {
     this.agentes = new Map();      // id → agente
     this.conexiones = new Map();   // agente_id → [{destino, tipos}]
+    this.suscripciones = new Map(); // agente_id → Set(tipos)
     this.pendientes = [];          // cola de eventos si el destino no existe
     this.metricas = {
       enviados: 0,
@@ -26,13 +32,22 @@ class Savia {
   
   /**
    * Registra un agente en el bus.
+   * Auto-suscribe el agente a sus eventos declarados.
    */
   registrar(agenteId, agente) {
     if (this.agentes.has(agenteId)) {
       console.warn(`[Savia] Agente ${agenteId} ya registrado, sobreescribiendo`);
     }
     this.agentes.set(agenteId, agente);
-    console.log(`[Savia] ✓ Agente registrado: ${agenteId}`);
+    
+    // ═══ AUTO-SUSCRIPCIÓN ═══
+    const tipos = agente.eventos_suscritos || agente.suscritoA || [];
+    if (!this.suscripciones.has(agenteId)) {
+      this.suscripciones.set(agenteId, new Set());
+    }
+    tipos.forEach(t => this.suscripciones.get(agenteId).add(t));
+    
+    console.log(`[Savia] ✓ Agente registrado: ${agenteId} (suscrito a ${tipos.length} eventos)`);
     
     // Procesar eventos pendientes para este agente
     this._procesarPendientes(agenteId);
@@ -50,18 +65,33 @@ class Savia {
   }
   
   /**
-   * Envía un evento a un agente específico.
+   * Suscribe un agente a tipos de eventos (alternativa a registrar).
+   */
+  suscribir(agenteId, tipos) {
+    const agente = this.agentes.get(agenteId);
+    if (!agente) {
+      console.warn(`[Savia] No se puede suscribir ${agenteId}, no existe`);
+      return;
+    }
+    if (!this.suscripciones.has(agenteId)) {
+      this.suscripciones.set(agenteId, new Set());
+    }
+    tipos.forEach(t => this.suscripciones.get(agenteId).add(t));
+    console.log(`[Savia] ✓ ${agenteId} suscrito a:`, tipos);
+  }
+  
+  /**
+   * Envía un evento a un agente específico o broadcast.
    * 
    * @param {object} evt - { de, para, tipo, payload, flujo, urgente }
-   * @returns {Promise<any>} Respuesta del destinatario
+   * @returns {Promise<any>} Respuesta del destinatario o resultado del broadcast
    */
   async enviar(evt) {
     const t0 = Date.now();
     const { de, para, tipo, payload = {}, flujo = "ascendente", urgente = false } = evt;
     
-    // Validar
     if (!de || !tipo) {
-      console.error("[Savia] Evento inválido:", evt);
+      console.error("[Savia] Evento inválido (falta de o tipo):", evt);
       return null;
     }
     
@@ -69,7 +99,9 @@ class Savia {
     this.metricas.enviados++;
     
     // Contexto
-    contexto.set(`savia.ultimo_evento.${tipo}`, { de, para, payload, t: new Date().toISOString() });
+    contexto.set(`savia.ultimo_evento.${tipo}`, {
+      de, para, payload, t: new Date().toISOString()
+    });
     
     // Broadcast si no hay destino
     if (!para || para === "*") {
@@ -84,7 +116,6 @@ class Savia {
       return null;
     }
     
-    // Verificar que el destinatario pueda recibir este evento
     if (typeof destinatario.recibir !== "function") {
       console.warn(`[Savia] Agente ${para} no tiene método recibir()`);
       return null;
@@ -100,7 +131,6 @@ class Savia {
       console.error(`[Savia] Error en ${de} → ${para}:`, e);
       this.metricas.errores++;
       
-      // Escalar a humano si es urgente o crítico
       if (urgente) {
         await this.escalarAHumano({ de, para, tipo, error: e.message, payload });
       }
@@ -126,20 +156,28 @@ class Savia {
     const { de, tipo, payload = {}, flujo = "circular" } = evt;
     
     const interesados = Array.from(this.agentes.entries())
-      .filter(([id, agente]) => {
+      .filter(([id]) => {
         if (id === de) return false;
-        // Verificar si el agente está suscrito a este tipo
-        const suscripciones = agente.suscritoA || agente.eventos_suscritos || [];
-        return suscripciones.includes("*") || suscripciones.includes(tipo);
+        
+        // ═══ Buscar suscripciones en AMBAS fuentes ═══
+        const suscripcionesSet = this.suscripciones.get(id);
+        if (suscripcionesSet && (suscripcionesSet.has("*") || suscripcionesSet.has(tipo))) {
+          return true;
+        }
+        
+        const agente = this.agentes.get(id);
+        const suscripcionesArr = agente?.eventos_suscritos || agente?.suscritoA || [];
+        return suscripcionesArr.includes("*") || suscripcionesArr.includes(tipo);
       });
     
     console.log(`[Savia] Broadcast ${de} → ${interesados.length} agentes (${tipo})`);
     
     const resultados = await Promise.allSettled(
       interesados.map(([id, agente]) =>
-        agente.recibir({ de, tipo, payload, flujo })
-          .catch(e => { 
-            console.warn(`[Savia] Error en ${id}:`, e); 
+        Promise.resolve()
+          .then(() => agente.recibir({ de, tipo, payload, flujo }))
+          .catch(e => {
+            console.warn(`[Savia] Error en ${id}:`, e);
             return null;
           })
       )
@@ -150,19 +188,6 @@ class Savia {
       resultado: r.status === "fulfilled" ? r.value : null,
       error: r.status === "rejected" ? r.reason : null
     }));
-  }
-  
-  /**
-   * Suscribe un agente a tipos de eventos (alternativa a `conectar`).
-   */
-  suscribir(agenteId, tipos) {
-    const agente = this.agentes.get(agenteId);
-    if (!agente) {
-      console.warn(`[Savia] No se puede suscribir ${agenteId}, no existe`);
-      return;
-    }
-    agente.suscritoA = tipos;
-    console.log(`[Savia] ✓ ${agenteId} suscrito a:`, tipos);
   }
   
   /**
@@ -189,7 +214,7 @@ class Savia {
   _sanitizarPayload(payload) {
     if (!payload || typeof payload !== "object") return payload;
     
-    const MAX_SIZE = 5000; // caracteres
+    const MAX_SIZE = 5000;
     const json = JSON.stringify(payload);
     if (json.length > MAX_SIZE) {
       return { _truncado: true, _tamaño_original: json.length, _preview: json.substring(0, 500) };
@@ -214,7 +239,6 @@ class Savia {
         user_id: window.usuarioActual?.id || null
       });
     } catch (e) {
-      // No relanzar, es auditoría
       console.warn("[Savia] Insert falló:", e.message);
     }
   }
@@ -227,11 +251,8 @@ class Savia {
     if (pendientesParaEste.length === 0) return;
     
     console.log(`[Savia] Procesando ${pendientesParaEste.length} eventos pendientes para ${agenteId}`);
-    
-    // Los removemos de la cola
     this.pendientes = this.pendientes.filter(p => p.evt.para !== agenteId);
     
-    // Los ejecutamos
     pendientesParaEste.forEach(p => {
       this.enviar(p.evt).catch(e => console.warn("[Savia] Error en pendiente:", e));
     });
@@ -254,6 +275,14 @@ class Savia {
    */
   listar() {
     return Array.from(this.agentes.keys());
+  }
+  
+  /**
+   * Devuelve las suscripciones de un agente.
+   */
+  suscripcionesDe(agenteId) {
+    const set = this.suscripciones.get(agenteId);
+    return set ? Array.from(set) : [];
   }
 }
 
