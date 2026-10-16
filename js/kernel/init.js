@@ -20,6 +20,15 @@ import { agentePortal } from "../adapters/portal-adapter.js";
 /**
  * Inicializa el kernel y registra todos los agentes.
  */
+// ═══════════════════════════════════════════════════════════
+// SPRINT 2 — Agentes de RAÍZ
+// ═══════════════════════════════════════════════════════════
+import { agentePaciente } from "../agentes/raiz/paciente.js";
+import { agenteClinica } from "../agentes/raiz/clinica.js";
+import { agenteLaboratorio } from "../agentes/raiz/laboratorio.js";
+import { agenteImagen } from "../agentes/raiz/imagen.js";
+import { agenteTrabajoSocial } from "../agentes/raiz/trabajo-social.js";
+
 async function bootstrap() {
   console.log("═══════════════════════════════════════════════════");
   console.log("🚀 KERNEL — Inicializando sistema de agentes");
@@ -126,7 +135,19 @@ async function bootstrap() {
   await kernel.registrar(agenteEpisodios);
   await kernel.registrar(agenteEspecialidad);
   await kernel.registrar(agentePortal);
-  
+
+  // ═══════════════════════════════════════════════════════════
+// SPRINT 2 — Registrar los 5 agentes de RAÍZ
+// ═══════════════════════════════════════════════════════════
+console.log("[Kernel] Registrando agentes de RAÍZ...");
+
+await kernel.registrar(agentePaciente);
+await kernel.registrar(agenteClinica);
+await kernel.registrar(agenteLaboratorio);
+await kernel.registrar(agenteImagen);
+await kernel.registrar(agenteTrabajoSocial);
+
+console.log("[Kernel] ✓ 5 agentes de RAÍZ registrados");
   // ACTIVAR TODOS LOS AGENTES
   await kernel.activarTodos();
   
