@@ -986,6 +986,93 @@ input[type="checkbox"]{width:auto}
   font-size: 10px;
   margin-top: 3px;
 }
+/* ═══════════════════════════════════════════════════════════
+   SPRINT 3 FASE D — Estilos UI Interconsultas AI
+   ═══════════════════════════════════════════════════════════ */
+.badge-gold {
+  background: linear-gradient(135deg,#d4a017,#ff9500);
+  color: #fff;
+}
+.ic-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: background 0.15s;
+  background: var(--bg);
+  cursor: pointer;
+}
+.ic-item:hover {
+  background: rgba(212,175,55,0.05);
+  border-color: var(--corp-gold);
+}
+.ic-item input[type="checkbox"] {
+  margin-top: 3px;
+  accent-color: var(--corp-gold);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.ic-item-info {
+  flex: 1;
+  min-width: 0;
+}
+.ic-item-nombre {
+  font-weight: 600;
+  text-transform: capitalize;
+  font-size: 13px;
+  color: var(--corp);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ic-item-just {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+  line-height: 1.5;
+}
+.ic-prioridad {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.ic-prioridad-alta  { background: #ff4d4d22; color: #ff3b30; }
+.ic-prioridad-media { background: #ffaa0022; color: #ff9500; }
+.ic-prioridad-baja  { background: #4caf5022; color: #34c759; }
+
+.ic-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.ic-row:last-child { border-bottom: none; }
+.ic-row .spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--corp-gold);
+  border-radius: 50%;
+  animation: ic-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+.ic-row.done .spinner   { display: none; }
+.ic-row.done .ic-check  { display: inline; color: var(--positive); }
+.ic-row.error .ic-check { display: inline; color: var(--danger); }
+.ic-check { display: none; font-weight: 700; font-size: 15px; flex-shrink: 0; }
+.ic-row-status { color: var(--text-tertiary); font-size: 12px; }
+@keyframes ic-spin { to { transform: rotate(360deg); } }
 @media print {
   #sec-consulta .card.no-print { display: none !important; }
 }
@@ -1930,6 +2017,58 @@ input[type="checkbox"]{width:auto}
       <button class="btn btn-primary" onclick="consultaIrACierre()">Continuar → Cierre</button>
     </div>
   </div>
+  <!-- ═══════════════════════════════════════════════════════════════
+       SPRINT 3 FASE D — Interconsultas AI sugeridas (Consulta SOAP)
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="card" id="sec-consulta-interconsultas" style="display:none">
+    <div class="card-title">
+      <span class="num">IA</span>
+      <span>Interconsultas AI sugeridas</span>
+      <span id="consulta-ic-badge" class="badge badge-gold" style="margin-left:auto;display:none">0</span>
+    </div>
+
+    <div id="consulta-ic-empty" class="empty-state">
+      <div class="icon">🩺</div>
+      <p>Ejecuta el análisis con IA para ver las interconsultas sugeridas.</p>
+    </div>
+
+    <div id="consulta-ic-lista" style="display:none"></div>
+
+    <div id="consulta-ic-resumen" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <p id="consulta-ic-count" style="margin:0 0 4px 0;font-weight:600">0 interconsultas seleccionadas</p>
+      <p id="consulta-ic-cost" style="margin:0;color:var(--text-dim);font-size:13px">Costo estimado: $0.00</p>
+    </div>
+
+    <button class="btn btn-gold" id="btn-ejecutar-interconsultas-consulta"
+            style="display:none;margin-top:12px;width:100%">
+      🩺 Ejecutar interconsultas autorizadas
+    </button>
+  </div>
+
+  <!-- Panel de progreso en vivo -->
+  <div class="card" id="consulta-ic-panel-card" style="display:none;margin-top:12px">
+    <div class="card-title">
+      <span class="num">⏳</span>
+      <span>Panel de interconsultas</span>
+    </div>
+    <div class="agent-panel" id="consulta-ic-panel">
+      <div class="agent-panel-header" style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+        <span>Ejecutando especialistas</span>
+        <span id="consulta-ic-progress" style="font-weight:600">0/0</span>
+      </div>
+      <div id="consulta-ic-rows" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- Plan integrado final -->
+  <div class="card" id="consulta-ic-plan-card" style="display:none;margin-top:12px">
+    <div class="card-title">
+      <span class="num">✓</span>
+      <span>Plan integrado final</span>
+    </div>
+    <div id="consulta-ic-plan-content" style="padding:12px 0"></div>
+  </div>
+  <!-- ═══════════════════════════════════════════════════════════════ -->
 
   <!-- PASO 7 — CIERRE Y FIRMA -->
   <div class="card" id="consulta-cierre-card" style="display:none">
@@ -12541,7 +12680,37 @@ REGLAS ANTI-MARKDOWN:
 REGLAS ORTOGRÁFICAS OBLIGATORIAS:
 - TODAS las palabras en español deben llevar tilde y eñe.
 - NUNCA reemplaces ñ por n: riñón, tamaño, año, niño, señal, muñeca, pequeño, dueño, España, compañía, montaña, campaña, sueño.
-- Tildes en -ción, -sión: hipertensión, diagnóstico, evaluación, presión, función, medicación, duración, validación, derivación, nutrición.`;
+- Tildes en -ción, -sión: hipertensión, diagnóstico, evaluación, presión, función, medicación, duración, validación, derivación, nutrición.
+
+═══ SPRINT 3 FASE D — Interconsultas sugeridas (obligatorio) ═══
+
+Además del análisis clínico, DEBES devolver dentro del JSON estructurado una lista
+de "interconsultas_sugeridas" con los especialistas que consideres apropiados
+para este caso según los hallazgos S + O.
+
+Formato EXACTO dentro del objeto JSON (después del campo seguimiento):
+"interconsultas_sugeridas": [
+  { "especialista": "endocrinologo", "prioridad": "alta", "justificacion": "HbA1c 7.2% + HOMA-IR 3.1", "hallazgos_relacionados": ["hba1c","homa"] },
+  { "especialista": "nutricionista", "prioridad": "media", "justificacion": "IMC 31.2 con resistencia a insulina" }
+]
+
+Especialistas disponibles (usa SOLO estos keys en minúsculas sin acentos):
+nutricionista, fisico, psicologo, cardiologo, endocrinologo,
+nefrologo, hepatologo, ginecologo, mastologo, pediatra,
+internista, radiologo, neurologo, neurologo_pediatrico,
+psiquiatra_infantil, fonoaudiologo, terapista_ocupacional,
+neuropsicologo, psiquiatra, neumologo, alergologo,
+terapista_respiratorio, traumatologo, reumatologo,
+fisioterapeuta, dermatologo, ocupacional, urologo,
+oncologo, oftalmologo
+
+Prioridades válidas: "alta", "media", "baja".
+
+REGLAS:
+- Sugiere SOLO interconsultas clínicamente justificadas por los hallazgos.
+- Si no hay hallazgos que las justifiquen, devuelve "interconsultas_sugeridas": []
+- Máximo 5 sugerencias por caso.
+- Cada sugerencia DEBE tener justificacion clínica específica (no genérica).`;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -12826,8 +12995,21 @@ function autoPoblarDesdeJSON(json) {
   if (json.complejidad_sugerida) {
     s.complejidadCalculada = json.complejidad_sugerida;
   }
-}
 
+  // ═══════════════════════════════════════════════════════════════
+  // SPRINT 3 FASE D — Disparar UI de interconsultas sugeridas
+  // ═══════════════════════════════════════════════════════════════
+  if (typeof window.sugerirInterconsultasDesdeConsulta === "function") {
+    try {
+      window.sugerirInterconsultasDesdeConsulta(json, {
+        caseId: s.caseId || null,
+        contextoId: s.caseId ? "SAV-RAIZ-" + s.caseId : null
+      });
+    } catch (e) {
+      console.warn("[FaseD] No se pudo disparar sugerirInterconsultasDesdeConsulta:", e);
+    }
+  }
+}
 /* ═══════════════════════════════════════════════════════════
    DIAGNÓSTICOS
    ═══════════════════════════════════════════════════════════ */
@@ -21044,6 +21226,441 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
      KERNEL DE AGENTES — Sprint 1
      Carga después del monolito para envolverlo sin modificarlo
      ═══════════════════════════════════════════════════════════ -->
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SPRINT 3 FASE D — UI de Interconsultas AI en Consulta SOAP
+     ═══════════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+(function() {
+  // ─── Estado local de la fase D ─────────────────────────────────────
+  const ESTADO_D = {
+    contextoId: null,
+    caseId: null,
+    interconsultasSugeridas: [],
+    seleccionadas: new Set(),
+    ejecutando: false,
+    respuestas: {},
+    planIntegrado: null,
+  };
+
+  const COSTO_POR_INTERCONSULTA = 0.35;
+  const RECEPTOR_ID = "ui-consulta-fase-d";
+
+  // ─── Utilidades ────────────────────────────────────────────────────
+  function $id(id) { return document.getElementById(id); }
+  function mostrar(id) { const el = $id(id); if (el) el.style.display = ""; }
+  function ocultar(id) { const el = $id(id); if (el) el.style.display = "none"; }
+  function capitalizar(s) {
+    return String(s || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  // ─── Render de la lista de sugeridas ───────────────────────────────
+  function renderInterconsultasSugeridas(lista) {
+    const cont = $id("consulta-ic-lista");
+    const empty = $id("consulta-ic-empty");
+    const seccion = $id("sec-consulta-interconsultas");
+    const badge = $id("consulta-ic-badge");
+    const resumen = $id("consulta-ic-resumen");
+    const btnEjecutar = $id("btn-ejecutar-interconsultas-consulta");
+
+    if (!cont || !seccion) return;
+
+    ESTADO_D.seleccionadas.clear();
+    cont.innerHTML = "";
+
+    if (!Array.isArray(lista) || lista.length === 0) {
+      mostrar("sec-consulta-interconsultas");
+      if (empty) {
+        empty.style.display = "";
+        const p = empty.querySelector("p");
+        if (p) p.textContent = "Kimi no sugirió interconsultas para este caso.";
+      }
+      cont.style.display = "none";
+      if (resumen) resumen.style.display = "none";
+      if (btnEjecutar) btnEjecutar.style.display = "none";
+      if (badge) badge.style.display = "none";
+      return;
+    }
+
+    ESTADO_D.interconsultasSugeridas = lista.slice();
+
+    mostrar("sec-consulta-interconsultas");
+    if (empty) empty.style.display = "none";
+    cont.style.display = "";
+    if (badge) {
+      badge.textContent = String(lista.length);
+      badge.style.display = "";
+    }
+
+    lista.forEach((ic, idx) => {
+      const key = String(ic.especialista || "").trim().toLowerCase();
+      if (!key) return;
+
+      const prioridad = String(ic.prioridad || "media").toLowerCase();
+      const just = String(ic.justificacion || "").trim();
+
+      const item = document.createElement("label");
+      item.className = "ic-item";
+      item.setAttribute("for", `ic-check-${idx}`);
+
+      const check = document.createElement("input");
+      check.type = "checkbox";
+      check.id = `ic-check-${idx}`;
+      check.dataset.key = key;
+      check.checked = prioridad === "alta";
+      if (check.checked) ESTADO_D.seleccionadas.add(key);
+
+      check.addEventListener("change", () => {
+        if (check.checked) ESTADO_D.seleccionadas.add(key);
+        else ESTADO_D.seleccionadas.delete(key);
+        actualizarResumen();
+      });
+
+      const info = document.createElement("div");
+      info.className = "ic-item-info";
+
+      const nombre = document.createElement("div");
+      nombre.className = "ic-item-nombre";
+      nombre.textContent = capitalizar(key);
+
+      const prio = document.createElement("span");
+      prio.className = `ic-prioridad ic-prioridad-${prioridad}`;
+      prio.textContent = prioridad;
+      nombre.appendChild(prio);
+
+      info.appendChild(nombre);
+
+      if (just) {
+        const j = document.createElement("div");
+        j.className = "ic-item-just";
+        j.textContent = just;
+        info.appendChild(j);
+      }
+
+      item.appendChild(check);
+      item.appendChild(info);
+      cont.appendChild(item);
+    });
+
+    actualizarResumen();
+    if (resumen) resumen.style.display = "";
+  }
+
+  function actualizarResumen() {
+    const n = ESTADO_D.seleccionadas.size;
+    const count = $id("consulta-ic-count");
+    const cost = $id("consulta-ic-cost");
+    const btn = $id("btn-ejecutar-interconsultas-consulta");
+
+    if (count) count.textContent = `${n} interconsulta${n === 1 ? "" : "s"} seleccionada${n === 1 ? "" : "s"}`;
+    if (cost) cost.textContent = `Costo estimado: $${(n * COSTO_POR_INTERCONSULTA).toFixed(2)}`;
+    if (btn) btn.style.display = n > 0 ? "" : "none";
+  }
+
+  // ─── API pública 1: sugerirInterconsultasDesdeConsulta ─────────────
+  window.sugerirInterconsultasDesdeConsulta = function(jsonAnalisis, meta) {
+    meta = meta || {};
+    try {
+      const lista = Array.isArray(jsonAnalisis && jsonAnalisis.interconsultas_sugeridas)
+        ? jsonAnalisis.interconsultas_sugeridas
+        : [];
+
+      const s = window._consultaState || {};
+      const caseId = meta.caseId
+        || s.caseId
+        || (window.casoActual && window.casoActual.case_id)
+        || null;
+
+      ESTADO_D.caseId = caseId;
+      ESTADO_D.contextoId = meta.contextoId
+        || (caseId ? `SAV-RAIZ-${caseId}` : null);
+
+      console.log("[FaseD] Sugerencias recibidas:", lista.length, "| caseId:", caseId, "| contexto:", ESTADO_D.contextoId);
+
+      renderInterconsultasSugeridas(lista);
+
+      // Auto-scroll a la sección
+      setTimeout(() => {
+        const sec = $id("sec-consulta-interconsultas");
+        if (sec && sec.style.display !== "none") {
+          sec.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 300);
+
+      return lista;
+    } catch (e) {
+      console.error("[FaseD] Error en sugerirInterconsultasDesdeConsulta:", e);
+      return [];
+    }
+  };
+
+  // ─── API pública 2: consultaEjecutarInterconsultas ─────────────────
+  window.consultaEjecutarInterconsultas = async function() {
+    if (ESTADO_D.ejecutando) {
+      console.warn("[FaseD] Ya hay una ejecución en curso");
+      return;
+    }
+
+    const seleccionadas = Array.from(ESTADO_D.seleccionadas);
+    if (seleccionadas.length === 0) {
+      alert("Selecciona al menos una interconsulta.");
+      return;
+    }
+
+    if (!ESTADO_D.contextoId) {
+      alert("No hay contexto_id. Ejecuta primero el análisis con IA.");
+      return;
+    }
+
+    const savia = window.SAVIA
+      || (window.EcoRadAi && window.EcoRadAi.obtener && window.EcoRadAi.obtener("savia"));
+
+    if (!savia || typeof savia.emitir !== "function") {
+      alert("SAVIA no está disponible. Recarga la página.");
+      return;
+    }
+
+    ESTADO_D.ejecutando = true;
+    ESTADO_D.respuestas = {};
+    ESTADO_D.planIntegrado = null;
+
+    const panelCard = $id("consulta-ic-panel-card");
+    const rows = $id("consulta-ic-rows");
+    const progress = $id("consulta-ic-progress");
+    const btnEjecutar = $id("btn-ejecutar-interconsultas-consulta");
+
+    if (panelCard) panelCard.style.display = "";
+    if (btnEjecutar) {
+      btnEjecutar.disabled = true;
+      btnEjecutar.textContent = "⏳ Ejecutando...";
+    }
+    ocultar("consulta-ic-plan-card");
+    if (rows) rows.innerHTML = "";
+    if (progress) progress.textContent = `0/${seleccionadas.length}`;
+
+    seleccionadas.forEach(key => {
+      const row = document.createElement("div");
+      row.className = "ic-row";
+      row.id = `ic-row-${key}`;
+      row.innerHTML =
+        '<span class="spinner"></span>' +
+        '<span class="ic-check">✓</span>' +
+        '<span style="flex:1;text-transform:capitalize;font-weight:600">' + capitalizar(key) + '</span>' +
+        '<span class="ic-row-status">en cola…</span>';
+      if (rows) rows.appendChild(row);
+    });
+
+    // ─── Suscriptores temporales ───────────────────────────────────
+    const onEspecialistaRespuesta = (evento) => {
+      const p = (evento && evento.payload) || {};
+      const key = p.especialista;
+      if (!key) return;
+
+      ESTADO_D.respuestas[key] = p.resultado || null;
+
+      const row = $id(`ic-row-${key}`);
+      if (row) {
+        row.classList.remove("error");
+        row.classList.add("done");
+        const st = row.querySelector(".ic-row-status");
+        if (st) st.textContent = "completado";
+      }
+
+      const done = Object.keys(ESTADO_D.respuestas).length;
+      if (progress) progress.textContent = `${done}/${seleccionadas.length}`;
+    };
+
+    const onPlanIntegrado = (evento) => {
+      ESTADO_D.planIntegrado = (evento && evento.payload) || null;
+      renderPlanIntegrado(evento.payload);
+      finalizarEjecucion();
+    };
+
+    const onSinInterconsultas = () => {
+      finalizarEjecucion();
+    };
+
+    try {
+      if (typeof savia.registrar === "function") {
+        savia.registrar({
+          id: RECEPTOR_ID,
+          nombre: "UI Consulta Fase D",
+          capa: "ui",
+          async init() { return true; },
+          async recibir(evento) {
+            const t = evento && evento.tipo;
+            if (t === "especialista:respuesta") onEspecialistaRespuesta(evento);
+            else if (t === "savia:tronco:plan-integrado") onPlanIntegrado(evento);
+            else if (t === "savia:tronco:sin-interconsultas") onSinInterconsultas(evento);
+          }
+        });
+      }
+      if (typeof savia.suscribir === "function") {
+        savia.suscribir(RECEPTOR_ID, [
+          "especialista:respuesta",
+          "savia:tronco:plan-integrado",
+          "savia:tronco:sin-interconsultas"
+        ]);
+      }
+    } catch (e) {
+      console.warn("[FaseD] No se pudo suscribir el receptor UI:", e);
+    }
+
+    // ─── Emitir decisión al coordinador ────────────────────────────
+    try {
+      const payloadDecision = {
+        contexto_id: ESTADO_D.contextoId,
+        case_id: ESTADO_D.caseId,
+        interconsultas: seleccionadas.map(key => {
+          const sug = ESTADO_D.interconsultasSugeridas.find(x => x.especialista === key) || {};
+          return {
+            especialista: key,
+            prioridad: sug.prioridad || "media",
+            justificacion: sug.justificacion || ""
+          };
+        }),
+        decision: "autorizar",
+        timestamp: new Date().toISOString()
+      };
+
+      console.log("[FaseD] Emitiendo medico:decision-interconsultas:", payloadDecision);
+
+      if (typeof savia.emitirContexto === "function") {
+        await savia.emitirContexto(
+          ESTADO_D.contextoId,
+          "medico:decision-interconsultas",
+          payloadDecision,
+          { de: "ui-consulta-soap" }
+        );
+      } else if (typeof savia.emitir === "function") {
+        await savia.emitir({
+          de: "ui-consulta-soap",
+          tipo: "medico:decision-interconsultas",
+          flujo: "circular",
+          payload: payloadDecision
+        });
+      }
+    } catch (e) {
+      console.error("[FaseD] Error emitiendo decisión:", e);
+      alert("Error al ejecutar interconsultas. Revisa la consola.");
+      finalizarEjecucion();
+      return;
+    }
+
+    // Timeout de seguridad: 5 minutos
+    setTimeout(() => {
+      if (ESTADO_D.ejecutando) {
+        console.warn("[FaseD] Timeout de seguridad (5 min) — finalizando");
+        finalizarEjecucion();
+      }
+    }, 5 * 60 * 1000);
+  };
+
+  // ─── Render del plan integrado ─────────────────────────────────────
+  function renderPlanIntegrado(planPayload) {
+    const card = $id("consulta-ic-plan-card");
+    const cont = $id("consulta-ic-plan-content");
+    if (!card || !cont) return;
+
+    const plan = (planPayload && (planPayload.plan || planPayload.plan_integrado)) || planPayload || {};
+    cont.innerHTML = "";
+
+    const secciones = [
+      { key: "diagnostico", titulo: "Diagnóstico" },
+      { key: "farmacologico", titulo: "Tratamiento farmacológico" },
+      { key: "no_farmacologico", titulo: "Tratamiento no farmacológico" },
+      { key: "metas", titulo: "Metas" },
+      { key: "laboratorios", titulo: "Laboratorios" },
+      { key: "seguimiento", titulo: "Seguimiento" },
+      { key: "resumen", titulo: "Resumen" }
+    ];
+
+    let algo = false;
+    secciones.forEach(s => {
+      const val = plan[s.key];
+      if (!val) return;
+      algo = true;
+
+      const h = document.createElement("h4");
+      h.textContent = s.titulo;
+      h.style.cssText = "margin:12px 0 4px;color:var(--corp-gold);font-size:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700";
+      cont.appendChild(h);
+
+      const body = document.createElement("div");
+      body.style.cssText = "font-size:13px;line-height:1.6;white-space:pre-wrap;color:var(--text-primary)";
+
+      if (Array.isArray(val)) {
+        body.textContent = val.map(x =>
+          typeof x === "string" ? "• " + x : "• " + JSON.stringify(x)
+        ).join("\n");
+      } else if (typeof val === "object") {
+        body.textContent = JSON.stringify(val, null, 2);
+      } else {
+        body.textContent = String(val);
+      }
+      cont.appendChild(body);
+    });
+
+    if (!algo) {
+      cont.innerHTML =
+        '<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5">' +
+        JSON.stringify(plan, null, 2) +
+        "</pre>";
+    }
+
+    card.style.display = "";
+  }
+
+  function finalizarEjecucion() {
+    ESTADO_D.ejecutando = false;
+    const btn = $id("btn-ejecutar-interconsultas-consulta");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "🩺 Ejecutar interconsultas autorizadas";
+    }
+    document.querySelectorAll("#consulta-ic-rows .ic-row").forEach(row => {
+      if (!row.classList.contains("done")) {
+        row.classList.add("error");
+        const st = row.querySelector(".ic-row-status");
+        if (st && st.textContent === "en cola…") st.textContent = "sin respuesta";
+      }
+    });
+  }
+
+  // ─── API pública 3: consultaConfirmarDecision ─────────────────────
+  window.consultaConfirmarDecision = async function(accion) {
+    accion = accion || "autorizar";
+    if (accion === "rechazar") {
+      ESTADO_D.seleccionadas.clear();
+      actualizarResumen();
+      alert("Interconsultas rechazadas. El caso continuará sin especialistas.");
+      return;
+    }
+    return window.consultaEjecutarInterconsultas();
+  };
+
+  // ─── Bind del botón ────────────────────────────────────────────────
+  function bindBoton() {
+    const btn = $id("btn-ejecutar-interconsultas-consulta");
+    if (btn && !btn._faseDBound) {
+      btn._faseDBound = true;
+      btn.addEventListener("click", () => window.consultaEjecutarInterconsultas());
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindBoton);
+  } else {
+    bindBoton();
+  }
+
+  console.log("[FaseD] UI de interconsultas cargada. Funciones expuestas:",
+    ["sugerirInterconsultasDesdeConsulta", "consultaEjecutarInterconsultas", "consultaConfirmarDecision"]);
+})();
+</script>     
 <script type="module" src="js/kernel/init.js"></script>
+
 </body>
 </html>
