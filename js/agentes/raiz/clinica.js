@@ -42,10 +42,20 @@ export const agenteClinica = {
   async init(kernel) {
     console.log("[agente-clinica] Inicializando...");
 
-    kernel.on("paciente:seleccionado", (evt) => {
-      console.log("[agente-clinica] Paciente seleccionado:", evt.payload?.subject_id);
-    });
+   kernel.on("paciente:seleccionado", (evt) => {
+  console.log("[agente-clinica] Paciente seleccionado:", evt.payload?.subject_id);
+  // Emitir aporte inicial (aunque sea vacío)
+  agenteClinica._emitirAporte();
+});
 
+// Emitir aporte cuando la clínica cambia
+kernel.on("clinica:actualizada", () => {
+  agenteClinica._emitirAporte();
+});
+
+kernel.on("vitales:actualizados", () => {
+  agenteClinica._emitirAporte();
+});
     // Emitir aporte cuando la clínica se actualiza
     kernel.on("clinica:actualizada", (evt) => {
       this._emitirAporte();
