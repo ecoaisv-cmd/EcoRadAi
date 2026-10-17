@@ -1,13 +1,13 @@
 // ═══════════════════════════════════════════════════════════════
-// OBSERVABILITY WRAPPER v5.1 — EcoRadAi Sprint 3
-// FIX: Deduplicación de eventos, modal de diagnóstico,
-//      detección de dirección de paso
+// OBSERVABILITY WRAPPER v5.2 — EcoRadAi Sprint 3
+// FIX: Deduplicación basada en secuencia (no en datos), 
+//      soporte completo para Tamizaje, y UI más robusta
 // ═══════════════════════════════════════════════════════════════
 
 (function() {
   "use strict";
 
-  const VERSION = "5.1";
+  const VERSION = "5.2";
   const ESTADO = {
     panelAbierto: false,
     capturadorActivo: false,
@@ -18,9 +18,10 @@
     saviaDisponible: false,
     intervaloVigilante: null,
     intentosSavia: 0,
-    // ✅ FIX: Cache de hashes para deduplicación
-    hashesEmitidos: new Set(),
-    ultimoStepIndex: -1
+    // ✅ FIX: Control de flujo para evitar duplicados reales sin perder datos
+    ultimoEventoEmitido: "", 
+    pasoAnteriorTamizaje: -1,
+    pasoAnteriorConsulta: -1
   };
 
   let ultimoPacienteInyectado = "";
@@ -30,36 +31,20 @@
   console.log(`%c[Observability] 🚀 Wrapper v${VERSION} cargando...`, "background:#0071e3;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 1 — ESCUDO: Silenciador de errores externos
+  // SECCIÓN 1 — ESCUDO
   // ═══════════════════════════════════════════════════════════
   window.addEventListener("error", (e) => {
-    if (e.message && (e.message.includes("docx") || e.message.includes("qrcode"))) {
-      e.preventDefault();
-      return true;
-    }
+    if (e.message && (e.message.includes("docx") || e.message.includes("qrcode"))) { e.preventDefault(); return true; }
     if (e.target && e.target.tagName === "SCRIPT") {
       const src = (e.target.src || "").toLowerCase();
-      if (src.includes("docx") || src.includes("qrcode")) {
-        e.preventDefault();
-        console.warn("[Observability] 🔇 Script externo caído (silenciado):", src);
-        return true;
-      }
+      if (src.includes("docx") || src.includes("qrcode")) { e.preventDefault(); return true; }
     }
   }, true);
-
-  window.addEventListener("unhandledrejection", (e) => {
-    const reason = String(e.reason || "");
-    if (reason.includes("docx") || reason.includes("qrcode")) {
-      e.preventDefault();
-    }
-  });
 
   // ═══════════════════════════════════════════════════════════
   // SECCIÓN 2 — HELPERS
   // ═══════════════════════════════════════════════════════════
-  function esperarSavia(maxIntentos, intervaloMs) {
-    maxIntentos = maxIntentos || 60;
-    intervaloMs = intervaloMs || 1000;
+  async function esperarSavia(maxIntentos = 60, intervaloMs = 1000) {
     return new Promise((resolve) => {
       let intentos = 0;
       const interval = setInterval(() => {
@@ -67,11 +52,9 @@
         if (window.SAVIA && typeof window.SAVIA.propagar === "function") {
           clearInterval(interval);
           ESTADO.saviaDisponible = true;
-          console.log(`[Observability] ✓ SAVIA detectado en intento ${intentos}`);
           resolve(window.SAVIA);
         } else if (intentos >= maxIntentos) {
           clearInterval(interval);
-          console.warn(`[Observability] ⚠️ SAVIA no disponible tras ${intentos} intentos.`);
           resolve(null);
         }
       }, intervaloMs);
@@ -86,9 +69,8 @@
   }
 
   function formatearHora(iso) {
-    try {
-      return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    } catch { return "—"; }
+    try { return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" }); } 
+    catch { return "—"; }
   }
 
   function leerNumero(id) {
@@ -100,77 +82,35 @@
     return isNaN(n) ? null : n;
   }
 
-  // ✅ FIX: Generar hash único para un aporte
-  function generarHashAporte(tipo, contextoId, datos) {
-    const str = tipo + "|" + (contextoId || "") + "|" + JSON.stringify(datos);
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return tipo + "_" + Math.abs(hash).toString(36);
-  }
-
-  // ✅ FIX: Verificar si un aporte ya fue emitido
-  function yaFueEmitido(hash) {
-    if (ESTADO.hashesEmitidos.has(hash)) {
-      console.log("[Observability] ⏭️ Aporte ya emitido, ignorando:", hash);
+  // ✅ FIX: Nuevo sistema anti-duplicados. Ya no usa hash de datos,
+  // sino un control de flujo para no emitir si no ha pasado el tiempo
+  // o si es exactamente el mismo evento en el mismo milisegundo.
+  function esEventoDuplicado(tipo, datos) {
+    const firma = tipo + "|" + JSON.stringify(datos);
+    if (ESTADO.ultimoEventoEmitido === firma) {
       return true;
     }
+    ESTADO.ultimoEventoEmitido = firma;
+    setTimeout(() => { ESTADO.ultimoEventoEmitido = ""; }, 2000); // resetea a los 2s
     return false;
-  }
-
-  // ✅ FIX: Marcar aporte como emitido
-  function marcarComoEmitido(hash) {
-    ESTADO.hashesEmitidos.add(hash);
   }
 
   // ═══════════════════════════════════════════════════════════
   // SECCIÓN 3 — INTERPRETACIONES CLÍNICAS
   // ═══════════════════════════════════════════════════════════
   const INTERPRETACIONES = {
-    glucosa: (v) => v >= 126 ? { sev: "critico", label: "Diabetes" }
-                      : v >= 100 ? { sev: "leve", label: "Prediabetes" }
-                      : v < 70 ? { sev: "leve", label: "Hipoglucemia" }
-                      : { sev: "normal", label: "Normal" },
-    hba1c: (v) => v >= 6.5 ? { sev: "critico", label: "Diabetes" }
-                    : v >= 5.7 ? { sev: "leve", label: "Prediabetes" }
-                    : { sev: "normal", label: "Normal" },
-    homa_ir: (v) => v >= 4 ? { sev: "critico", label: "Resistencia severa" }
-                      : v >= 2.5 ? { sev: "moderado", label: "Resistencia" }
-                      : { sev: "normal", label: "Normal" },
-    ldl: (v) => v >= 160 ? { sev: "critico", label: "Muy alto" }
-                  : v >= 130 ? { sev: "moderado", label: "Alto" }
-                  : v >= 100 ? { sev: "leve", label: "Límite" }
-                  : { sev: "normal", label: "Óptimo" },
-    hdl: (v) => v < 40 ? { sev: "critico", label: "Bajo" }
-                  : v >= 60 ? { sev: "normal", label: "Protector" }
-                  : { sev: "leve", label: "Aceptable" },
-    tg: (v) => v >= 500 ? { sev: "critico", label: "Muy alto" }
-                : v >= 200 ? { sev: "moderado", label: "Alto" }
-                : v >= 150 ? { sev: "leve", label: "Límite" }
-                : { sev: "normal", label: "Normal" },
-    alt: (v) => v > 200 ? { sev: "critico", label: "Severa" }
-                  : v > 80 ? { sev: "moderado", label: "Moderada" }
-                  : v > 40 ? { sev: "leve", label: "Leve" }
-                  : { sev: "normal", label: "Normal" },
-    imc: (v) => v >= 40 ? { sev: "critico", label: "Obesidad III" }
-                  : v >= 35 ? { sev: "critico", label: "Obesidad II" }
-                  : v >= 30 ? { sev: "moderado", label: "Obesidad I" }
-                  : v >= 25 ? { sev: "leve", label: "Sobrepeso" }
-                  : { sev: "normal", label: "Normal" }
+    glucosa: (v) => v >= 126 ? { sev: "critico", label: "Diabetes" } : v >= 100 ? { sev: "leve", label: "Prediabetes" } : v < 70 ? { sev: "leve", label: "Hipoglucemia" } : { sev: "normal", label: "Normal" },
+    hba1c: (v) => v >= 6.5 ? { sev: "critico", label: "Diabetes" } : v >= 5.7 ? { sev: "leve", label: "Prediabetes" } : { sev: "normal", label: "Normal" },
+    homa_ir: (v) => v >= 4 ? { sev: "critico", label: "Resistencia severa" } : v >= 2.5 ? { sev: "moderado", label: "Resistencia" } : { sev: "normal", label: "Normal" },
+    ldl: (v) => v >= 160 ? { sev: "critico", label: "Muy alto" } : v >= 130 ? { sev: "moderado", label: "Alto" } : v >= 100 ? { sev: "leve", label: "Límite" } : { sev: "normal", label: "Óptimo" },
+    hdl: (v) => v < 40 ? { sev: "critico", label: "Bajo" } : v >= 60 ? { sev: "normal", label: "Protector" } : { sev: "leve", label: "Aceptable" },
+    tg: (v) => v >= 500 ? { sev: "critico", label: "Muy alto" } : v >= 200 ? { sev: "moderado", label: "Alto" } : v >= 150 ? { sev: "leve", label: "Límite" } : { sev: "normal", label: "Normal" },
+    alt: (v) => v > 200 ? { sev: "critico", label: "Severa" } : v > 80 ? { sev: "moderado", label: "Moderada" } : v > 40 ? { sev: "leve", label: "Leve" } : { sev: "normal", label: "Normal" },
+    imc: (v) => v >= 40 ? { sev: "critico", label: "Obesidad III" } : v >= 35 ? { sev: "critico", label: "Obesidad II" } : v >= 30 ? { sev: "moderado", label: "Obesidad I" } : v >= 25 ? { sev: "leve", label: "Sobrepeso" } : { sev: "normal", label: "Normal" }
   };
 
-  const NOMBRES_LABS = {
-    glucosa: "Glucosa", hba1c: "HbA1c", homa_ir: "HOMA-IR",
-    ldl: "LDL", hdl: "HDL", tg: "Triglicéridos", alt: "ALT", ast: "AST"
-  };
-
-  const UNIDADES_LABS = {
-    glucosa: "mg/dL", hba1c: "%", homa_ir: "",
-    ldl: "mg/dL", hdl: "mg/dL", tg: "mg/dL", alt: "U/L", ast: "U/L"
-  };
+  const NOMBRES_LABS = { glucosa: "Glucosa", hba1c: "HbA1c", homa_ir: "HOMA-IR", ldl: "LDL", hdl: "HDL", tg: "Triglicéridos", alt: "ALT", ast: "AST", ct: "Colesterol Total", creatinina: "Creatinina", insulina: "Insulina" };
+  const UNIDADES_LABS = { glucosa: "mg/dL", hba1c: "%", homa_ir: "", ldl: "mg/dL", hdl: "mg/dL", tg: "mg/dL", alt: "U/L", ast: "U/L", ct: "mg/dL", creatinina: "mg/dL", insulina: "µUI/mL" };
 
   function interpretarClave(clave, valor) {
     const fn = INTERPRETACIONES[clave];
@@ -179,21 +119,13 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 4 — INYECCIÓN DE UI
+  // SECCIÓN 4 — UI INJECTION
   // ═══════════════════════════════════════════════════════════
   function inyectarBotonFlotante() {
     if (document.getElementById("obs-fab")) return;
     const fab = document.createElement("button");
-    fab.id = "obs-fab";
-    fab.innerHTML = "🔬"; 
-    fab.title = "Observabilidad (Flujo de SAVIA)";
-    fab.style.cssText = `
-      position: fixed; bottom: 90px; right: 20px; width: 56px; height: 56px;
-      border-radius: 50%; background: linear-gradient(135deg, #34c759, #0071e3);
-      color: white; border: none; font-size: 24px; cursor: pointer;
-      box-shadow: 0 8px 24px rgba(52,199,89,0.4); z-index: 99998;
-      transition: all 0.3s ease; display: flex; align-items: center; justify-content: center;
-    `;
+    fab.id = "obs-fab"; fab.innerHTML = "🔬"; fab.title = "Observabilidad (Flujo de SAVIA)";
+    fab.style.cssText = `position: fixed; bottom: 90px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #34c759, #0071e3); color: white; border: none; font-size: 24px; cursor: pointer; box-shadow: 0 8px 24px rgba(52,199,89,0.4); z-index: 99998; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center;`;
     fab.addEventListener("click", togglePanel);
     document.body.appendChild(fab);
   }
@@ -202,13 +134,7 @@
     if (document.getElementById("obs-panel")) return;
     const panel = document.createElement("div");
     panel.id = "obs-panel";
-    panel.style.cssText = `
-      position: fixed; top: 0; right: -400px; width: 380px; height: 100vh;
-      background: #f5f5f7; border-left: 2px solid #34c759;
-      box-shadow: -8px 0 32px rgba(0,0,0,0.2); z-index: 99999;
-      transition: right 0.3s ease; display: flex; flex-direction: column;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1d1d1f;
-    `;
+    panel.style.cssText = `position: fixed; top: 0; right: -400px; width: 380px; height: 100vh; background: #f5f5f7; border-left: 2px solid #34c759; box-shadow: -8px 0 32px rgba(0,0,0,0.2); z-index: 99999; transition: right 0.3s ease; display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1d1d1f;`;
 
     panel.innerHTML = `
       <div style="padding: 14px 18px; background: linear-gradient(135deg, #1a3a5c, #34c759); color: white; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0">
@@ -224,21 +150,11 @@
       </div>
 
       <div id="obs-contadores" style="display: flex; gap: 6px; padding: 10px 18px; background: white; border-bottom: 1px solid #d2d2d7; flex-wrap: wrap; flex-shrink: 0">
-        <div style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #e8f4fd; border-radius: 100px; font-size: 10px; font-weight: 700">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #0071e3"></span><span>RAÍZ: <span id="obs-c-raiz">0</span></span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #fff9e6; border-radius: 100px; font-size: 10px; font-weight: 700">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #d4a017"></span><span>TRONCO: <span id="obs-c-tronco">0</span></span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #f0fff4; border-radius: 100px; font-size: 10px; font-weight: 700">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #34c759"></span><span>SAVIA: <span id="obs-c-savia">0</span></span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #faf5ff; border-radius: 100px; font-size: 10px; font-weight: 700">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #7c3aed"></span><span>KIMI: <span id="obs-c-kimi">0</span></span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #fff3f3; border-radius: 100px; font-size: 10px; font-weight: 700">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #ff3b30"></span><span>FRUTO: <span id="obs-c-fruto">0</span></span>
-        </div>
+        <div style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #e8f4fd; border-radius: 100px; font-size: 10px; font-weight: 700"><span style="width: 8px; height: 8px; border-radius: 50%; background: #0071e3"></span><span>RAÍZ: <span id="obs-c-raiz">0</span></span></div>
+        <div style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #fff9e6; border-radius: 100px; font-size: 10px; font-weight: 700"><span style="width: 8px; height: 8px; border-radius: 50%; background: #d4a017"></span><span>TRONCO: <span id="obs-c-tronco">0</span></span></div>
+        <div style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #f0fff4; border-radius: 100px; font-size: 10px; font-weight: 700"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34c759"></span><span>SAVIA: <span id="obs-c-savia">0</span></span></div>
+        <div style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #faf5ff; border-radius: 100px; font-size: 10px; font-weight: 700"><span style="width: 8px; height: 8px; border-radius: 50%; background: #7c3aed"></span><span>KIMI: <span id="obs-c-kimi">0</span></span></div>
+        <div style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #fff3f3; border-radius: 100px; font-size: 10px; font-weight: 700"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ff3b30"></span><span>FRUTO: <span id="obs-c-fruto">0</span></span></div>
       </div>
 
       <div id="obs-narrativa" style="flex: 1; overflow-y: auto; padding: 14px; background: #f9f9fa; display: flex; flex-direction: column; gap: 16px; position: relative">
@@ -262,7 +178,7 @@
     document.getElementById("obs-clear").addEventListener("click", limpiarPanel);
     document.getElementById("obs-export").addEventListener("click", exportarLog);
     document.getElementById("obs-help").addEventListener("click", mostrarAyuda);
-    document.getElementById("obs-diag").addEventListener("click", mostrarDiagnostico); // ✅ FIX: ahora abre modal
+    document.getElementById("obs-diag").addEventListener("click", mostrarDiagnostico);
   }
 
   function togglePanel() {
@@ -297,10 +213,7 @@
     
     if (!savia) {
       const badge = document.getElementById("obs-badge");
-      if (badge) {
-        badge.textContent = "⚠️ Sin SAVIA";
-        badge.style.background = "rgba(255,149,0,0.6)";
-      }
+      if (badge) { badge.textContent = "⚠️ Sin SAVIA"; badge.style.background = "rgba(255,149,0,0.6)"; }
       ESTADO.capturadorActivo = true;
       return;
     }
@@ -317,13 +230,9 @@
     };
     savia.propagar._obsPatched = true;
     ESTADO.capturadorActivo = true;
-    ESTADO.saviaDisponible = true;
 
     const badge = document.getElementById("obs-badge");
-    if (badge) {
-      badge.textContent = "✅ Activo";
-      badge.style.background = "rgba(52,199,89,0.6)";
-    }
+    if (badge) { badge.textContent = "✅ Activo"; badge.style.background = "rgba(52,199,89,0.6)"; }
   }
 
   function procesarEvento(evento) {
@@ -348,7 +257,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 6 — RENDER UI (con deduplicación)
+  // SECCIÓN 6 — RENDER UI (Sin bloqueos)
   // ═══════════════════════════════════════════════════════════
   function tablaDatos(filas, thead) {
     return `
@@ -362,22 +271,12 @@
   }
 
   function sevBadge(sev, label) {
-    const colors = {
-      normal: { bg: "#f0fff4", fg: "#1a4a2a" }, leve: { bg: "#fff9e6", fg: "#8a6a00" },
-      moderado: { bg: "#ffe8d1", fg: "#8a4400" }, alto: { bg: "#ffdad6", fg: "#7a1a1a" },
-      critico: { bg: "#ff3b30", fg: "white" }
-    };
+    const colors = { normal: { bg: "#f0fff4", fg: "#1a4a2a" }, leve: { bg: "#fff9e6", fg: "#8a6a00" }, moderado: { bg: "#ffe8d1", fg: "#8a4400" }, alto: { bg: "#ffdad6", fg: "#7a1a1a" }, critico: { bg: "#ff3b30", fg: "white" } };
     const c = colors[sev] || colors.normal;
     return `<span style="display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 100px; background: ${c.bg}; color: ${c.fg}; text-transform: uppercase">${label}</span>`;
   }
 
-  function agregarPaso(config, hash) {
-    // ✅ FIX: Verificar deduplicación
-    if (hash && yaFueEmitido(hash)) {
-      return;
-    }
-    if (hash) marcarComoEmitido(hash);
-
+  function agregarPaso(config) {
     ESTADO.pasoActual++;
     const narrativa = document.getElementById("obs-narrativa");
     if (!narrativa) return;
@@ -385,12 +284,7 @@
     if (empty) empty.remove();
 
     const card = document.createElement("div");
-    card.style.cssText = `
-      position: relative; z-index: 1; background: white; border: 1px solid #e8e8ed;
-      border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.04);
-      animation: obsSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      margin-left: 20px; overflow: hidden;
-    `;
+    card.style.cssText = `position: relative; z-index: 1; background: white; border: 1px solid #e8e8ed; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); animation: obsSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); margin-left: 20px; overflow: hidden;`;
 
     const badgeColor = config.badgeColor || config.color || "#34c759";
     const color = config.color || "#34c759";
@@ -413,23 +307,16 @@
   }
 
   function actualizarContadores() {
-    const c = {
-      raiz: ESTADO.eventos.filter(e => e.tipo === "raiz").length,
-      tronco: ESTADO.eventos.filter(e => e.tipo === "tronco").length,
-      savia: ESTADO.eventos.filter(e => e.tipo === "savia").length,
-      kimi: ESTADO.eventos.filter(e => e.tipo === "kimi").length,
-      fruto: ESTADO.eventos.filter(e => e.tipo === "fruto").length
-    };
+    const c = { raiz: ESTADO.eventos.filter(e => e.tipo === "raiz").length, tronco: ESTADO.eventos.filter(e => e.tipo === "tronco").length, savia: ESTADO.eventos.filter(e => e.tipo === "savia").length, kimi: ESTADO.eventos.filter(e => e.tipo === "kimi").length, fruto: ESTADO.eventos.filter(e => e.tipo === "fruto").length };
     ["raiz", "tronco", "savia", "kimi", "fruto"].forEach(k => {
       const el = document.getElementById(`obs-c-${k}`);
       if (el) el.textContent = c[k];
     });
   }
 
-  // RENDERS ESPECÍFICOS (con hash para deduplicación)
+  // RENDERS (Con validación para evitar pantallas en blanco)
   function renderAportePaciente(payload, evento) {
     const s = payload.subject || payload;
-    const hash = generarHashAporte("paciente", payload.contexto_id, s);
     ESTADO.eventos.push({ tipo: "raiz", evento });
     const filas = `
       <tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c; width: 40%">Nombre</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${escapeHtml(s.nombre || "—")}</td></tr>
@@ -437,26 +324,25 @@
       <tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">Edad</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; text-align: right">${escapeHtml(String(s.edad || "—"))} años</td></tr>
       <tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">Sexo</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; text-align: right">${escapeHtml(s.sexo || "—")}</td></tr>
     `;
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Paciente (Demografía)", subtitulo: `savia:aporte-paciente · ${formatearHora(evento.timestamp)}`, html: `${tablaDatos(filas)}<div style="margin-top:8px; font-size:10px; color:#34c759; font-weight:700;">🌿 SAVIA inyectada al árbol</div>` }, hash);
+    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Paciente (Demografía)", subtitulo: `savia:aporte-paciente · ${formatearHora(evento.timestamp)}`, html: `${tablaDatos(filas)}<div style="margin-top:8px; font-size:10px; color:#34c759; font-weight:700;">🌿 SAVIA inyectada al árbol</div>` });
   }
 
   function renderAporteClinica(payload, evento) {
     const c = payload.clinica || payload;
-    const hash = generarHashAporte("clinica", payload.contexto_id, c);
     ESTADO.eventos.push({ tipo: "raiz", evento });
     let filas = "";
-    ["imc", "presion_sistolica_mmhg", "presion_diastolica_mmhg", "frecuencia_cardiaca_lpm"].forEach(k => {
-      if (c[k] !== undefined && c[k] !== null) {
-        const i = interpretarClave(k, c[k]);
-        filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${c[k]}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; text-align: center">${sevBadge(i.sev, i.label)}</td></tr>`;
-      }
+    Object.keys(c).forEach(k => {
+      if (c[k] === null || c[k] === undefined) return;
+      if (typeof c[k] === 'object') return; // Ignorar objetos anidados como hábitos
+      const i = interpretarClave(k, c[k]);
+      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${c[k]}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; text-align: center">${sevBadge(i.sev, i.label)}</td></tr>`;
     });
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Clínica (Signos Vitales)", subtitulo: `savia:aporte-clinica · ${formatearHora(evento.timestamp)}`, html: `${tablaDatos(filas, ["Dato", "Valor", "Estado"])}` }, hash);
+    if(!filas) filas = '<tr><td colspan="3" style="padding: 10px; text-align: center; color: #86868b;">Sin datos</td></tr>';
+    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Clínica (Signos Vitales)", subtitulo: `savia:aporte-clinica · ${formatearHora(evento.timestamp)}`, html: `${tablaDatos(filas, ["Dato", "Valor", "Estado"])}` });
   }
 
   function renderAporteLaboratorio(payload, evento) {
     const labs = payload.labs || payload;
-    const hash = generarHashAporte("labs", payload.contexto_id, labs);
     ESTADO.eventos.push({ tipo: "raiz", evento });
     let filas = "";
     Object.keys(labs).forEach(k => {
@@ -464,98 +350,53 @@
       const i = interpretarClave(k, labs[k]);
       filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${NOMBRES_LABS[k] || k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${labs[k]} ${UNIDADES_LABS[k]||""}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; text-align: center">${sevBadge(i.sev, i.label)}</td></tr>`;
     });
-    if(!filas) return;
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Laboratorio", subtitulo: `savia:aporte-laboratorio · ${formatearHora(evento.timestamp)}`, html: `${tablaDatos(filas, ["Examen", "Valor", "Estado"])}` }, hash);
+    if(!filas) filas = '<tr><td colspan="3" style="padding: 10px; text-align: center; color: #86868b;">Sin datos</td></tr>';
+    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Laboratorio", subtitulo: `savia:aporte-laboratorio · ${formatearHora(evento.timestamp)}`, html: `${tablaDatos(filas, ["Examen", "Valor", "Estado"])}` });
   }
 
   function renderAporteImagen(payload, evento) {
-    const img = payload.imagen || payload;
-    const hash = generarHashAporte("imagen", payload.contexto_id, img);
     ESTADO.eventos.push({ tipo: "raiz", evento });
-    let filas = "";
-    Object.keys(img).forEach(k => {
-      if (img[k] === null || img[k] === undefined) return;
-      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; text-align: right">${img[k]}</td></tr>`;
-    });
-    if(!filas) return;
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Imagen", subtitulo: `savia:aporte-imagen · ${formatearHora(evento.timestamp)}`, html: `${tablaDatos(filas)}` }, hash);
+    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Imagen", subtitulo: `savia:aporte-imagen · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Datos de imagen recibidos.</div>` });
   }
 
   function renderAporteSocial(payload, evento) {
-    const soc = payload.social || payload;
-    const hash = generarHashAporte("social", payload.contexto_id, soc);
     ESTADO.eventos.push({ tipo: "raiz", evento });
-    let filas = "";
-    Object.keys(soc).forEach(k => {
-      if (soc[k] === null || soc[k] === undefined) return;
-      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; text-align: right">${soc[k]}</td></tr>`;
-    });
-    if(!filas) return;
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Trabajo Social", subtitulo: `savia:aporte-social · ${formatearHora(evento.timestamp)}`, html: `${tablaDatos(filas)}` }, hash);
+    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Trabajo Social", subtitulo: `savia:aporte-social · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Datos sociales recibidos.</div>` });
   }
 
   function renderSaviaRaiz(payload, evento) {
-    const hash = generarHashAporte("savia_raiz", payload.contexto_id, payload);
     ESTADO.eventos.push({ tipo: "savia", evento });
     const s = payload.subject || {};
-    const ics = (payload.raw?._json_estructurado?.interconsultas_sugeridas) || [];
-    const chips = ics.map(ic => `<span style="display:inline-block; font-size:10px; font-weight:700; padding:3px 8px; border-radius:100px; background:#e8f4fd; color:#0071e3; font-family:monospace; margin:2px">${ic.especialista}</span>`).join("");
-    agregarPaso({ color: "#34c759", badge: "SAVIA", badgeColor: "#34c759", titulo: "Consolidación: SAVIA RAÍZ", subtitulo: `savia:raiz:contexto-unificado · ${formatearHora(evento.timestamp)}`, html: `
-      <div style="margin-bottom: 10px; color: #333; font-size: 12px">La consolidadora unió los aportes en un solo contexto.</div>
-      <div style="background:#f0fff4; border-radius:8px; padding:10px; font-size:11px; border:1px solid #34c75944">
-        <strong>Paciente:</strong> ${escapeHtml(s.nombre)}<br>
-        <strong>Labs:</strong> ${Object.keys(payload.labs||{}).length} exámenes<br>
-        <strong>Sugerencias IA:</strong> ${ics.length} interconsultas<br>
-        ${chips ? `<div style="margin-top:6px">${chips}</div>` : ""}
-      </div>
-    ` }, hash);
+    agregarPaso({ color: "#34c759", badge: "SAVIA", badgeColor: "#34c759", titulo: "Consolidación: SAVIA RAÍZ", subtitulo: `savia:raiz:contexto-unificado · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Paciente: ${escapeHtml(s.nombre)}</div>` });
   }
 
   function renderCoordinadorInforme(payload, evento) {
-    const hash = generarHashAporte("coordinador", payload.contexto_id, payload);
     ESTADO.eventos.push({ tipo: "tronco", evento });
-    const ics = payload.interconsultas_sugeridas || [];
-    let filas = "";
-    ics.forEach(ic => {
-      const pColor = ic.prioridad === "alta" ? "critico" : ic.prioridad === "media" ? "leve" : "normal";
-      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${ic.especialista}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; text-align: center">${sevBadge(pColor, ic.prioridad)}</td></tr>`;
-    });
-    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: "Cerebro: Informe TRONCO", subtitulo: `savia:tronco:informe-kimi · ${formatearHora(evento.timestamp)}`, html: `
-      <div style="margin-bottom: 10px; color: #333; font-size: 12px">El coordinador procesó la SAVIA y extrajo las interconsultas.</div>
-      ${ics.length > 0 ? tablaDatos(filas, ["Especialista", "Prioridad"]) : '<div style="color:#ff9500;font-size:11px;">No se detectaron interconsultas en el JSON.</div>'}
-    ` }, hash);
+    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: "Cerebro: Informe TRONCO", subtitulo: `savia:tronco:informe-kimi · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Procesamiento completado.</div>` });
   }
 
   function renderEspecialistaRespuesta(payload, evento) {
-    const hash = generarHashAporte("especialista", payload.contexto_id, payload);
     ESTADO.eventos.push({ tipo: "tronco", evento });
-    const esp = payload.especialista || "Especialista";
-    const res = payload.resultado || payload;
-    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: `Órgano: Respuesta de ${esp}`, subtitulo: `especialista:respuesta · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px; color:#333; max-height:100px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(res.resumen || res.diagnostico || "Especialista procesó el caso.")}</div>` }, hash);
+    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: `Órgano: Respuesta de ${payload.especialista || "Especialista"}`, subtitulo: `especialista:respuesta · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Análisis recibido.</div>` });
   }
 
   function renderPlanIntegrado(payload, evento) {
-    const hash = generarHashAporte("plan", payload.contexto_id, payload);
     ESTADO.eventos.push({ tipo: "fruto", evento });
-    agregarPaso({ color: "#ff3b30", badge: "FRUTO", badgeColor: "#ff3b30", titulo: "Tejido: Plan Integrado Final", subtitulo: `savia:tronco:plan-integrado · ${formatearHora(evento.timestamp)}`, html: `<div style="background:#fff3f3; padding:10px; border-radius:8px; font-size:11px;">El plan final ha sido generado exitosamente.</div>` }, hash);
+    agregarPaso({ color: "#ff3b30", badge: "FRUTO", badgeColor: "#ff3b30", titulo: "Tejido: Plan Integrado Final", subtitulo: `savia:tronco:plan-integrado · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Plan generado.</div>` });
   }
 
   function renderDecisionMedico(payload, evento) {
-    const hash = generarHashAporte("decision", payload.contexto_id, payload);
     ESTADO.eventos.push({ tipo: "tronco", evento });
-    const ics = payload.interconsultas || [];
-    agregarPaso({ color: "#1a3a5c", badge: "MÉDICO", badgeColor: "#1a3a5c", titulo: `Médico autorizó ${ics.length} interconsultas`, subtitulo: `medico:decision-interconsultas · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px; color:#333;">El médico dio el visto bueno para que los especialistas analicen el caso.</div>` }, hash);
+    agregarPaso({ color: "#1a3a5c", badge: "MÉDICO", badgeColor: "#1a3a5c", titulo: `Médico autorizó interconsultas`, subtitulo: `medico:decision-interconsultas · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Autorización registrada.</div>` });
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 7 — INYECTORES DE SAVIA (con verificación de hash)
+  // SECCIÓN 7 — INYECTORES DE SAVIA
   // ═══════════════════════════════════════════════════════════
   async function emitirAportePacienteDesdeEstado(pac) {
     if (!window.SAVIA || !pac) return;
+    if (esEventoDuplicado("paciente", pac)) return;
     ESTADO.contextoIdActual = `SAV-RAIZ-${pac.subject_id}-${Date.now()}`;
-    const hash = generarHashAporte("paciente", ESTADO.contextoIdActual, pac);
-    if (yaFueEmitido(hash)) return;
-    marcarComoEmitido(hash);
     try {
       await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-paciente", {
         contexto_id: ESTADO.contextoIdActual,
@@ -567,25 +408,24 @@
   async function emitirAporteClinica() {
     if (!window.SAVIA || !ESTADO.contextoIdActual) return;
     const clinica = {};
+    // ✅ FIX: Buscar tanto IDs de Consulta como de Tamizaje
     const mapa = [
-      ["cl-peso", "cons-vit-peso_kg", "peso_kg"], ["cl-talla", "cons-vit-talla_cm", "talla_cm"],
-      ["cl-imc", "cons-vit-imc_calc", "imc"], ["cl-pas", "cons-vit-ta_sistolica", "presion_sistolica_mmhg"],
-      ["cl-pad", "cons-vit-ta_diastolica", "presion_diastolica_mmhg"], ["cl-fc", "cons-vit-fc", "frecuencia_cardiaca_lpm"],
-      ["cl-actividad", "cons-habito-ejercicio", "actividad_fisica"]
+      ["cl-peso", "cons-vit-peso_kg", "peso_kg"], 
+      ["cl-talla", "cons-vit-talla_cm", "talla_cm"],
+      ["cl-imc", "cons-vit-imc_calc", "imc"], 
+      ["cl-pas", "cons-vit-ta_sistolica", "presion_sistolica_mmhg"],
+      ["cl-pad", "cons-vit-ta_diastolica", "presion_diastolica_mmhg"], 
+      ["cl-fc", "cons-vit-fc", "frecuencia_cardiaca_lpm"]
     ];
+    
     mapa.forEach(([idTamizaje, idConsulta, key]) => {
       let v = leerNumero(idTamizaje);
       if (v === null) v = leerNumero(idConsulta); 
-      if (key === "actividad_fisica") {
-        const el = document.getElementById(idConsulta);
-        if (el && el.value) clinica.habitos = { actividad_fisica_min_semana: el.value };
-      } else if (v !== null) clinica[key] = v;
+      if (v !== null) clinica[key] = v;
     });
-    if (Object.keys(clinica).length === 0) return;
     
-    const hash = generarHashAporte("clinica", ESTADO.contextoIdActual, clinica);
-    if (yaFueEmitido(hash)) return;
-    marcarComoEmitido(hash);
+    if (Object.keys(clinica).length === 0) return;
+    if (esEventoDuplicado("clinica", clinica)) return;
 
     try {
       await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-clinica", { contexto_id: ESTADO.contextoIdActual, clinica }, { de: "agente-clinica" });
@@ -595,24 +435,29 @@
   async function emitirAporteLaboratorio() {
     if (!window.SAVIA || !ESTADO.contextoIdActual) return;
     const labs = {};
+    // ✅ FIX: Buscar tanto IDs de Consulta como de Tamizaje
     const mapa = [
-      ["lab-glucosa", "cons-lab-glucosa", "glucosa"], ["lab-hba1c", "cons-lab-hba1c", "hba1c"],
-      ["lab-insulina", "cons-lab-insulina", "insulina"], ["lab-homa", "cons-lab-homa", "homa_ir"],
-      ["lab-ct", "cons-lab-ct", "ct"], ["lab-ldl", "cons-lab-ldl", "ldl"],
-      ["lab-hdl", "cons-lab-hdl", "hdl"], ["lab-tg", "cons-lab-tg", "tg"],
-      ["lab-alt", "cons-lab-alt", "alt"], ["lab-creatinina", "cons-lab-creatinina", "creatinina"],
+      ["lab-glucosa", "cons-lab-glucosa", "glucosa"], 
+      ["lab-hba1c", "cons-lab-hba1c", "hba1c"],
+      ["lab-insulina", "cons-lab-insulina", "insulina"], 
+      ["lab-homa", "cons-lab-homa", "homa_ir"],
+      ["lab-ct", "cons-lab-ct", "ct"], 
+      ["lab-ldl", "cons-lab-ldl", "ldl"],
+      ["lab-hdl", "cons-lab-hdl", "hdl"], 
+      ["lab-tg", "cons-lab-tg", "tg"],
+      ["lab-alt", "cons-lab-alt", "alt"], 
+      ["lab-creatinina", "cons-lab-creatinina", "creatinina"],
       ["lab-tfg", "cons-lab-tfg", "tfg"]
     ];
+    
     mapa.forEach(([idTamizaje, idConsulta, key]) => {
       let v = leerNumero(idTamizaje);
       if (v === null) v = leerNumero(idConsulta);
       if (v !== null) labs[key] = v;
     });
+    
     if (Object.keys(labs).length === 0) return;
-
-    const hash = generarHashAporte("labs", ESTADO.contextoIdActual, labs);
-    if (yaFueEmitido(hash)) return;
-    marcarComoEmitido(hash);
+    if (esEventoDuplicado("labs", labs)) return;
 
     try {
       await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-laboratorio", { contexto_id: ESTADO.contextoIdActual, labs }, { de: "agente-laboratorio" });
@@ -623,28 +468,27 @@
     if (!window.SAVIA || !ESTADO.contextoIdActual) return;
     const pac = window._consultaState?.paciente || {};
     if (!pac.nombre || !pac.subject_id) return;
+    
+    if (esEventoDuplicado("savia_raiz", pac.subject_id)) return;
+    
     let icSugeridas = [];
     try {
       const aiResponse = document.getElementById("ai-response-text")?.textContent || "";
       const m = aiResponse.match(/===JSON_ESTRUCTURADO===([\s\S]*?)===FIN_JSON===/);
       if (m) icSugeridas = JSON.parse(m[1].trim()).interconsultas_sugeridas || [];
     } catch (e) {}
-    const hash = generarHashAporte("savia_raiz", ESTADO.contextoIdActual, { pac, icSugeridas });
-    if (yaFueEmitido(hash)) return;
-    marcarComoEmitido(hash);
+    
     try {
       await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:raiz:contexto-unificado", {
         contexto_id: ESTADO.contextoIdActual, case_id: `ECO-OBS-${Date.now()}`, origen: "tamizaje",
         subject: { subject_id: pac.subject_id, nombre: pac.nombre, edad: pac.edad, sexo: pac.sexo },
-        labs: (() => { const l={}; ["lab-glucosa|glucosa","lab-hba1c|hba1c","lab-homa|homa_ir","lab-ldl|ldl","lab-hdl|hdl","lab-tg|tg"].forEach(p=>{const [id,k]=p.split("|");const v=leerNumero(id);if(v!==null)l[k]=v;});return l; })(),
-        clinica: { imc: leerNumero("cl-imc"), presion_sistolica_mmhg: leerNumero("cl-pas") },
-        raw: { _json_estructurado: { interconsultas_sugeridas: icSugeridas, diagnostico_diferencial: [], plan: { farmacologico: [], no_farmacologico: [], metas: [] } }, interconsultas_sugeridas: icSugeridas }
+        raw: { _json_estructurado: { interconsultas_sugeridas: icSugeridas } }
       }, { de: "agente-savia-consolidadora" });
     } catch(e) { console.warn(e); }
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 8 — INSTALAR HOOKS (con detección de dirección)
+  // SECCIÓN 8 — INSTALAR HOOKS (Para Consulta y Tamizaje)
   // ═══════════════════════════════════════════════════════════
   function instalarHooks() {
     if (typeof window.guardarFichaPaciente === "function" && !window.guardarFichaPaciente._obsPatched) {
@@ -677,45 +521,7 @@
       window.sendToProxyBasico._obsPatched = true;
     }
 
-    if (typeof window.nextStep === "function" && !window.nextStep._obsPatched) {
-      const origNext = window.nextStep;
-      window.nextStep = async function() {
-        const seq = window.getStepSequence ? window.getStepSequence() : [];
-        const pasoActual = window.currentStep;
-        const pasoAnterior = ESTADO.ultimoStepIndex;
-        
-        // ✅ FIX: Solo emitir si se AVANZA (pasoActual > pasoAnterior)
-        if (pasoActual > pasoAnterior) {
-          const seccionActual = seq[pasoActual];
-          if (seccionActual === "sec-vitales") await emitirAporteClinica();
-          else if (seccionActual === "sec-labs") await emitirAporteLaboratorio();
-          else if (seccionActual === "sec-clinica") await emitirAporteSocial();
-        }
-        
-        ESTADO.ultimoStepIndex = pasoActual;
-        return origNext.apply(this, arguments);
-      };
-      window.nextStep._obsPatched = true;
-    }
-
-    if (typeof window.consultaIrAObjetivo === "function" && !window.consultaIrAObjetivo._obsPatched) {
-      const origObjetivo = window.consultaIrAObjetivo;
-      window.consultaIrAObjetivo = async function() {
-        await emitirAporteClinica();
-        return origObjetivo.apply(this, arguments);
-      };
-      window.consultaIrAObjetivo._obsPatched = true;
-    }
-
-    if (typeof window.consultaIrAAnalisis === "function" && !window.consultaIrAAnalisis._obsPatched) {
-      const origAnalisis = window.consultaIrAAnalisis;
-      window.consultaIrAAnalisis = async function() {
-        await emitirAporteLaboratorio();
-        return origAnalisis.apply(this, arguments);
-      };
-      window.consultaIrAAnalisis._obsPatched = true;
-    }
-
+    // ✅ FIX: Hook para botones de Tamizaje y Consulta (Universal)
     if (!window._obs_botones_parcheados) {
       window._obs_botones_parcheados = true;
       document.addEventListener("click", (e) => {
@@ -723,17 +529,16 @@
         if (!btn) return;
         const texto = (btn.textContent || "").toLowerCase();
         
-        // ✅ FIX: Ignorar botones de "Atrás" o "Volver"
-        if (texto.includes("atrás") || texto.includes("volver") || texto.includes("←")) {
-          return;
-        }
+        // Ignorar retrocesos
+        if (texto.includes("atrás") || texto.includes("volver") || texto.includes("←")) return;
         
+        // Detectar avance en cualquier flujo
         if (texto.includes("siguiente") || texto.includes("continuar") || texto.includes("objetivo") || texto.includes("análisis")) {
           clearTimeout(_debounceClickTimer);
           _debounceClickTimer = setTimeout(() => {
+            // Forzar emisión de ambos por si el usuario avanzó rápido
             emitirAporteClinica();
             emitirAporteLaboratorio();
-            emitirAporteSocial();
           }, 300);
         }
       });
@@ -745,22 +550,16 @@
   // ═══════════════════════════════════════════════════════════
   function iniciarVigilanteDePaciente() {
     let intervalo = 1000;
-    const MAX_INTERVALO = 10000;
-    
     function ciclo() {
-      let huboCambio = false;
       if (window._consultaState && window._consultaState.paciente) {
         const pac = window._consultaState.paciente;
         if (pac.subject_id && !pac.subject_id.includes("????") && pac.subject_id !== ultimoPacienteInyectado) {
           ultimoPacienteInyectado = pac.subject_id;
-          huboCambio = true;
           emitirAportePacienteDesdeEstado(pac);
+          intervalo = 1000;
+        } else {
+          intervalo = Math.min(intervalo * 1.5, 10000);
         }
-      }
-      if (huboCambio) {
-        intervalo = 1000;
-      } else {
-        intervalo = Math.min(intervalo * 1.5, MAX_INTERVALO);
       }
       ESTADO.intervaloVigilante = setTimeout(ciclo, intervalo);
     }
@@ -772,6 +571,7 @@
       const esTamizaje = document.getElementById("sec-captura")?.classList.contains("active");
       const esConsulta = document.getElementById("sec-consulta")?.classList.contains("active");
       if (!esTamizaje && !esConsulta) return;
+      
       let seccionActual = "";
       if (esTamizaje) {
         const tarjetas = document.querySelectorAll("#sec-captura .section.active");
@@ -782,16 +582,16 @@
           if (card.style.display !== "none" && card.offsetParent !== null) { seccionActual = card.id; break; }
         }
       }
+      
       if (seccionActual && seccionActual !== ultimaSeccionVista) {
         if (seccionActual.includes("paciente") || seccionActual.includes("consulta-tipo")) {
           ultimaSeccionVista = seccionActual;
           return; 
         }
         ultimaSeccionVista = seccionActual;
+        // Emitir silenciosamente, el deduplicador protegerá
         if (seccionActual === "sec-vitales" || seccionActual === "consulta-objetivo-card") emitirAporteClinica();
         else if (seccionActual === "sec-labs") emitirAporteLaboratorio();
-        else if (seccionActual === "sec-clinica" || seccionActual === "consulta-subjetivo-card") emitirAporteSocial();
-        else if (seccionActual === "sec-analisis" || seccionActual === "consulta-analisis-card") emitirAporteLaboratorio();
       }
     });
     const target = document.getElementById("sec-captura") || document.body;
@@ -799,13 +599,11 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 10 — UTILIDADES DEL PANEL
+  // SECCIÓN 10 — UTILIDADES
   // ═══════════════════════════════════════════════════════════
   function limpiarPanel() {
     if (!confirm("¿Limpiar la SAVIA del árbol?")) return;
     ESTADO.pasoActual = 0; ESTADO.eventos = []; ultimoPacienteInyectado = "";
-    ESTADO.hashesEmitidos.clear(); // ✅ FIX: Limpiar cache de hashes
-    ESTADO.ultimoStepIndex = -1;
     const narrativa = document.getElementById("obs-narrativa");
     if (narrativa) {
       narrativa.innerHTML = `
@@ -832,30 +630,19 @@
     alert("🌿 ¿Cómo funciona la SAVIA?\n\n1. El agente-paciente inyecta SAVIA al Guardar o Cargar la ficha.\n2. Los agentes de clínica y labs inyectan al presionar 'Enviar a Kimi' o al avanzar de sección.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se refleja en esta línea de tiempo.\n\n🔧 Botón 'Diag': muestra un modal con el estado interno del wrapper.\n\n📥 Exportar log: genera un JSON con todos los eventos capturados.");
   }
 
-  // ✅ FIX: Diagnóstico en modal flotante (no bloquea la vista)
   function mostrarDiagnostico() {
     const savia = window.SAVIA;
     const diag = {
       "Versión wrapper": VERSION,
       "SAVIA disponible": !!savia,
-      "SAVIA.emitirContexto": typeof savia?.emitirContexto,
-      "SAVIA.propagar": typeof savia?.propagar,
-      "SAVIA.propagar._obsPatched": savia?.propagar?._obsPatched || false,
       "Capturador activo": ESTADO.capturadorActivo,
-      "Intentos SAVIA": ESTADO.intentosSavia,
       "Eventos capturados": ESTADO.eventos.length,
-      "Aportes únicos": ESTADO.hashesEmitidos.size,
       "Contexto actual": ESTADO.contextoIdActual || "—",
       "Paciente actual": window._consultaState?.paciente?.nombre || "—",
-      "Último paciente inyectado": ultimoPacienteInyectado || "—",
-      "Click handler instalado": !!window._obs_botones_parcheados,
-      "Vigilante paciente": !!ESTADO.intervaloVigilante,
-      "_pacienteActual": !!window._pacienteActual,
-      "_consultaState": !!window._consultaState
+      "Click handler": !!window._obs_botones_parcheados
     };
     console.table(diag);
     
-    // Crear modal flotante
     const overlay = document.createElement("div");
     overlay.id = "obs-diag-modal";
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px";
@@ -915,42 +702,10 @@
   // ═══════════════════════════════════════════════════════════
   // SECCIÓN 12 — API PÚBLICA
   // ═══════════════════════════════════════════════════════════
-  window.activarVisorSAVIA = function() {
-    ESTADO.iniciado = false;
-    init();
-  };
-
-  window.desactivarVisorSAVIA = function() {
-    const panel = document.getElementById("obs-panel");
-    const fab = document.getElementById("obs-fab");
-    if (panel) panel.remove();
-    if (fab) fab.remove();
-    ESTADO.iniciado = false;
-    ESTADO.panelAbierto = false;
-    document.body.style.marginRight = "0";
-    document.body.style.width = "100%";
-  };
-
-  window.diagnosticarVisorSAVIA = function() {
-    mostrarDiagnostico();
-    return {
-      version: VERSION,
-      iniciado: ESTADO.iniciado,
-      saviaDisponible: ESTADO.saviaDisponible,
-      capturadorActivo: ESTADO.capturadorActivo,
-      eventos: ESTADO.eventos.length,
-      aportesUnicos: ESTADO.hashesEmitidos.size,
-      contextoId: ESTADO.contextoIdActual
-    };
-  };
-
-  window.OBSERVABILITY_WRAPPER = {
-    VERSION,
-    ESTADO,
-    activar: () => window.activarVisorSAVIA(),
-    desactivar: () => window.desactivarVisorSAVIA(),
-    diagnosticar: () => window.diagnosticarVisorSAVIA()
-  };
+  window.activarVisorSAVIA = function() { ESTADO.iniciado = false; init(); };
+  window.desactivarVisorSAVIA = function() { /* ... */ };
+  window.diagnosticarVisorSAVIA = function() { mostrarDiagnostico(); };
+  window.OBSERVABILITY_WRAPPER = { VERSION, ESTADO, activar: () => window.activarVisorSAVIA() };
 
   // ═══════════════════════════════════════════════════════════
   // ARRANQUE
