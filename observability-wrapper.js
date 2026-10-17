@@ -1,12 +1,12 @@
 // ═══════════════════════════════════════════════════════════════
-// OBSERVABILITY WRAPPER v3.0 — EcoRadAi Sprint 3
-// Panel visual del flujo de SAVIA (Verde)
+// OBSERVABILITY WRAPPER v3.1 — EcoRadAi Sprint 3
+// Panel visual del flujo de SAVIA (Verde) + Paso a Paso
 // ═══════════════════════════════════════════════════════════════
 
 (function() {
   "use strict";
 
-  console.log("[Observability] 🚀 Iniciando wrapper v3.0 (Flujo de SAVIA)...");
+  console.log("[Observability] 🚀 Iniciando wrapper v3.1 (Flujo de SAVIA paso a paso)...");
 
   const ESTADO = {
     panelAbierto: false,
@@ -15,6 +15,8 @@
     eventos: [],
     contextoIdActual: null
   };
+
+  let ultimoPacienteInyectado = "";
 
   // ═══════════════════════════════════════════════════════════
   // HELPERS
@@ -518,17 +520,33 @@
   async function emitirAporteClinica() {
     if (!window.SAVIA || !ESTADO.contextoIdActual) return;
     const clinica = {};
-    ["peso_kg|cl-peso", "talla_cm|cl-talla", "imc|cl-imc", "presion_sistolica_mmhg|cl-pas", "presion_diastolica_mmhg|cl-pad"].forEach(par => {
-      const [k, id] = par.split("|");
-      const v = leerNumero(id);
-      if (v !== null) clinica[k] = v;
-    });
-    const act = leerNumero("cl-actividad");
-    if (act !== null) clinica.habitos = { actividad_fisica_min_semana: act };
     
+    // Mapeo doble: [ID Tamizaje | ID Consulta | Nombre en JSON]
+    const mapa = [
+      ["cl-peso", "cons-vit-peso_kg", "peso_kg"],
+      ["cl-talla", "cons-vit-talla_cm", "talla_cm"],
+      ["cl-imc", "cons-vit-imc_calc", "imc"],
+      ["cl-pas", "cons-vit-ta_sistolica", "presion_sistolica_mmhg"],
+      ["cl-pad", "cons-vit-ta_diastolica", "presion_diastolica_mmhg"],
+      ["cl-fc", "cons-vit-fc", "frecuencia_cardiaca_lpm"],
+      ["cl-actividad", "cons-habito-ejercicio", "actividad_fisica"]
+    ];
+
+    mapa.forEach(([idTamizaje, idConsulta, key]) => {
+      let v = leerNumero(idTamizaje);
+      if (v === null) v = leerNumero(idConsulta); 
+      
+      if (key === "actividad_fisica") {
+        const el = document.getElementById(idConsulta);
+        if (el && el.value) clinica.habitos = { actividad_fisica_min_semana: el.value };
+      } else if (v !== null) {
+        clinica[key] = v;
+      }
+    });
+
     if (Object.keys(clinica).length === 0) return;
     await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-clinica", { contexto_id: ESTADO.contextoIdActual, clinica }, { de: "agente-clinica" });
-    console.log("[Observability] 🌿 SAVIA: Aporte Clínica inyectado");
+    console.log("[Observability] 🌿 SAVIA: Aporte Clínica inyectado (paso a paso)");
   }
 
   async function emitirAporteLaboratorio() {
@@ -539,6 +557,13 @@
       const v = leerNumero(elId);
       if (v !== null) labs[key] = v;
     });
+    
+    // En consulta, los labs también pueden venir del textarea raw o de inputs específicos
+    const rawConsulta = document.getElementById("cons-labs-raw");
+    if (rawConsulta && rawConsulta.value && Object.keys(labs).length === 0) {
+      // Si hay texto pero no valores extraídos, no lo procesamos aquí.
+    }
+
     if (Object.keys(labs).length === 0) return;
     await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-laboratorio", { contexto_id: ESTADO.contextoIdActual, labs }, { de: "agente-laboratorio" });
     console.log("[Observability] 🌿 SAVIA: Aporte Labs inyectado");
@@ -574,7 +599,6 @@
   // ═══════════════════════════════════════════════════════════
   // INSTALAR HOOKS EN EL MONOLITO (Y VIGILANTE DE MEMORIA)
   // ═══════════════════════════════════════════════════════════
-  let ultimoPacienteInyectado = ""; // Para no inyectar al mismo paciente dos veces
   
   function instalarHooks() {
     // 1. Hook para guardar ficha (paciente nuevo)
@@ -610,11 +634,11 @@
       window.sendToProxyBasico._obsPatched = true;
       console.log("[Observability] ✅ Hook: sendToProxyBasico");
     }
-        // 3. Hook para Avanzar en Tamizaje (Emite SAVIA en cada paso)
+
+    // 3. Hook para Avanzar en Tamizaje (Emite SAVIA en cada paso)
     if (typeof window.nextStep === "function" && !window.nextStep._obsPatched) {
       const origNext = window.nextStep;
       window.nextStep = async function() {
-        // Antes de avanzar, inyectamos la SAVIA de la sección actual
         const seq = window.getStepSequence ? window.getStepSequence() : [];
         const pasoActual = window.currentStep;
         const seccionActual = seq[pasoActual];
@@ -624,7 +648,6 @@
         } else if (seccionActual === "sec-labs") {
           await emitirAporteLaboratorio();
         } else if (seccionActual === "sec-clinica") {
-          // Enviar datos sociales o de escala si los hay
           await emitirAporteSocial();
         }
         
@@ -638,7 +661,7 @@
     if (typeof window.consultaIrAObjetivo === "function" && !window.consultaIrAObjetivo._obsPatched) {
       const origObjetivo = window.consultaIrAObjetivo;
       window.consultaIrAObjetivo = async function() {
-        await emitirAporteClinica(); // Emite peso, talla, etc.
+        await emitirAporteClinica();
         return origObjetivo.apply(this, arguments);
       };
       window.consultaIrAObjetivo._obsPatched = true;
@@ -648,7 +671,7 @@
     if (typeof window.consultaIrAAnalisis === "function" && !window.consultaIrAAnalisis._obsPatched) {
       const origAnalisis = window.consultaIrAAnalisis;
       window.consultaIrAAnalisis = async function() {
-        await emitirAporteLaboratorio(); // Emite los labs de la consulta
+        await emitirAporteLaboratorio();
         return origAnalisis.apply(this, arguments);
       };
       window.consultaIrAAnalisis._obsPatched = true;
@@ -657,40 +680,36 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // VIGILANTE DE MEMORIA (La solución al bug del DOM vacío)
+  // VIGILANTE DE MEMORIA
   // ═══════════════════════════════════════════════════════════
   function iniciarVigilanteDePaciente() {
     setInterval(() => {
-      // Revisamos la memoria del monolito, no el HTML
       if (window._consultaState && window._consultaState.paciente) {
         const pac = window._consultaState.paciente;
-        
-        // Validar que tenga un ID limpio y que no lo hayamos procesado ya
         if (pac.subject_id && !pac.subject_id.includes("????") && pac.subject_id !== ultimoPacienteInyectado) {
           ultimoPacienteInyectado = pac.subject_id;
           console.log("[Observability] 🎯 Vigilante detectó paciente en memoria:", pac.nombre);
           emitirAportePacienteDesdeEstado(pac);
         }
       }
-    }, 1000); // Revisar cada segundo
+    }, 1000);
   }
 
-  // Arrancar el vigilante
+  // Arrancar el vigilante y los hooks
   iniciarVigilanteDePaciente();
-
-  // Instalar hooks tradicionales
   let intentos = 0;
   const intervalHooks = setInterval(() => {
     instalarHooks();
     intentos++;
     if (intentos > 60) clearInterval(intervalHooks);
   }, 1000);
+
   // ═══════════════════════════════════════════════════════════
   // UTILIDADES
   // ═══════════════════════════════════════════════════════════
   function limpiarPanel() {
     if (!confirm("¿Limpiar la SAVIA del árbol?")) return;
-    ESTADO.pasoActual = 0; ESTADO.eventos = [];
+    ESTADO.pasoActual = 0; ESTADO.eventos = []; ultimoPacienteInyectado = "";
     document.getElementById("obs-narrativa").innerHTML = `
       <div style="position: absolute; left: 24px; top: 20px; bottom: 20px; width: 4px; background: linear-gradient(180deg, #34c759, #0071e3); border-radius: 4px; opacity: 0.15; z-index: 0"></div>
       <div id="obs-sangre-vacia" style="text-align: center; padding: 40px 20px; color: #86868b; font-size: 12px; z-index: 1; background: #f9f9fa">
@@ -713,7 +732,7 @@
   }
 
   function mostrarAyuda() {
-    alert("🌿 ¿Cómo funciona la SAVIA?\n\n1. El agente-paciente inyecta SAVIA al Guardar o Cargar la ficha.\n2. Los agentes de clínica y labs inyectan al presionar 'Enviar a Kimi'.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se refleja en esta línea de tiempo.");
+    alert("🌿 ¿Cómo funciona la SAVIA?\n\n1. El agente-paciente inyecta SAVIA al Guardar o Cargar la ficha.\n2. Los agentes de clínica y labs inyectan al presionar 'Enviar a Kimi' o al avanzar de sección.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se refleja en esta línea de tiempo.");
   }
 
   function inyectarEstilos() {
