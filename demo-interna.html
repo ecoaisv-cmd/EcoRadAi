@@ -1,0 +1,1727 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Demo Interna — Narrativa de Agentes · EcoRadAi</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --card: #fff;
+    --text: #1d1d1f;
+    --text-2: #6e6e73;
+    --text-3: #86868b;
+    --ok: #34c759;
+    --fail: #ff3b30;
+    --warn: #ff9500;
+    --accent: #0071e3;
+    --accent-light: #e8f4fd;
+    --border: #d2d2d7;
+    --corp: #1a3a5c;
+    --gold: #d4a017;
+    --raiz: #0071e3;
+    --tronco: #d4a017;
+    --savia: #34c759;
+    --fruto: #ff3b30;
+    --kimi: #7c3aed;
+    --purple-light: #faf5ff;
+    --green-light: #f0fff4;
+    --yellow-light: #fff9e6;
+    --red-light: #fff3f3;
+    --blue-light: #e8f4fd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000;
+      --card: #1c1c1e;
+      --text: #fff;
+      --text-2: #98989d;
+      --text-3: #636366;
+      --border: #38383a;
+      --accent-light: #1a3a5c;
+      --purple-light: #2a1f3d;
+      --green-light: #1a3a24;
+      --yellow-light: #3a2f1a;
+      --red-light: #3d1a1a;
+      --blue-light: #1a2a3d;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+  }
+  .header-inner {
+    max-width: 2000px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .header h1 {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+  .header .subtitle {
+    font-size: 11px;
+    color: var(--text-2);
+    margin-top: 2px;
+  }
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 100px;
+    background: var(--warn);
+    color: white;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .badge.ok { background: var(--ok); }
+  .badge.fail { background: var(--fail); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 16px;
+    padding: 16px 20px;
+    max-width: 2000px;
+    margin: 0 auto;
+    height: calc(100vh - 80px);
+  }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; height: auto; }
+    .app-frame { min-height: 500px; }
+  }
+  .app-frame {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
+    min-height: 600px;
+  }
+  .app-frame iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+  }
+  .app-frame-label {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: var(--corp);
+    color: white;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .panel {
+    overflow-y: auto;
+    padding-right: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .panel::-webkit-scrollbar { width: 8px; }
+  .panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* Botones */
+  .btn {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: none;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-success { background: var(--ok); color: white; }
+  .btn-secondary { background: var(--border); color: var(--text); }
+  .btn-warn { background: var(--warn); color: white; }
+  .btn-danger { background: var(--fail); color: white; }
+  .btn-purple { background: var(--kimi); color: white; }
+  .btn-sm { padding: 5px 10px; font-size: 10px; }
+  .btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+
+  /* Resumen superior */
+  .resumen-bar {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .resumen-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg);
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .resumen-stat .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .resumen-stat .dot.raiz { background: var(--raiz); }
+  .resumen-stat .dot.tronco { background: var(--tronco); }
+  .resumen-stat .dot.savia { background: var(--savia); }
+  .resumen-stat .dot.kimi { background: var(--kimi); }
+  .resumen-stat .dot.fruto { background: var(--fruto); }
+
+  /* Narrativa: tarjetas de paso */
+  .narrativa {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .paso-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    animation: slideIn 0.4s ease-out;
+  }
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .paso-card.raiz { border-left: 5px solid var(--raiz); }
+  .paso-card.tronco { border-left: 5px solid var(--tronco); }
+  .paso-card.savia { border-left: 5px solid var(--savia); }
+  .paso-card.kimi { border-left: 5px solid var(--kimi); }
+  .paso-card.fruto { border-left: 5px solid var(--fruto); }
+  .paso-card.error { border-left: 5px solid var(--fail); background: var(--red-light); }
+
+  .paso-header {
+    padding: 14px 18px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .paso-num {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    font-size: 14px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .paso-card.raiz .paso-num { background: var(--raiz); }
+  .paso-card.tronco .paso-num { background: var(--tronco); }
+  .paso-card.savia .paso-num { background: var(--savia); }
+  .paso-card.kimi .paso-num { background: var(--kimi); }
+  .paso-card.fruto .paso-num { background: var(--fruto); }
+
+  .paso-titulo {
+    flex: 1;
+    min-width: 0;
+  }
+  .paso-titulo h3 {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--corp);
+    margin-bottom: 2px;
+  }
+  .paso-titulo .paso-subtitulo {
+    font-size: 11px;
+    color: var(--text-2);
+    font-family: ui-monospace, monospace;
+  }
+  .paso-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+    align-self: flex-start;
+  }
+  .paso-badge.raiz { background: var(--blue-light); color: var(--raiz); }
+  .paso-badge.tronco { background: var(--yellow-light); color: #8a6a00; }
+  .paso-badge.savia { background: var(--green-light); color: #1a4a2a; }
+  .paso-badge.kimi { background: var(--purple-light); color: var(--kimi); }
+  .paso-badge.fruto { background: var(--red-light); color: #7a1a1a; }
+  .paso-badge.ok { background: var(--green-light); color: #1a4a2a; }
+  .paso-badge.error { background: var(--red-light); color: #7a1a1a; }
+
+  .paso-body {
+    padding: 16px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* Narrativa: texto explicativo */
+  .narrativa-texto {
+    color: var(--text);
+    margin-bottom: 14px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .narrativa-texto strong {
+    color: var(--corp);
+    font-weight: 700;
+  }
+  .narrativa-texto code {
+    background: var(--bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--accent);
+  }
+
+  /* Tabla de datos estructurados */
+  .tabla-datos {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 8px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .tabla-datos th {
+    background: var(--bg);
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--text-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .tabla-datos td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .tabla-datos tr:last-child td { border-bottom: none; }
+  .tabla-datos td:first-child {
+    font-weight: 600;
+    color: var(--corp);
+    width: 40%;
+  }
+  .tabla-datos td.valor {
+    font-family: ui-monospace, monospace;
+    font-weight: 700;
+    color: var(--text);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .tabla-datos td.interp {
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  /* Badges de severidad */
+  .sev-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 100px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .sev-normal { background: var(--green-light); color: #1a4a2a; }
+  .sev-leve { background: var(--yellow-light); color: #8a6a00; }
+  .sev-moderado { background: #ffe8d1; color: #8a4400; }
+  .sev-alto { background: #ffdad6; color: #7a1a1a; }
+  .sev-critico { background: var(--fail); color: white; }
+
+  /* Lista de aportes */
+  .lista-aportes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0;
+  }
+  .aporte-chip {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: var(--blue-light);
+    color: var(--raiz);
+    font-family: ui-monospace, monospace;
+  }
+
+  /* Flecha de conexión */
+  .conexion {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg);
+    border-radius: 8px;
+    font-size: 11px;
+    color: var(--text-2);
+    margin: 10px 0;
+  }
+  .conexion .arrow {
+    font-size: 14px;
+    color: var(--accent);
+    font-weight: 800;
+  }
+  .conexion code {
+    background: var(--card);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: ui-monospace, monospace;
+    font-size: 10px;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  /* Botón "ver JSON" */
+  .btn-json {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-2);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+    margin-top: 8px;
+  }
+  .btn-json:hover {
+    background: var(--accent-light);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* JSON expandible */
+  .json-panel {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+  .json-panel.show {
+    max-height: 600px;
+    overflow-y: auto;
+    margin-top: 10px;
+  }
+  .json-pre {
+    background: #1d1d1f;
+    color: #f5f5f7;
+    padding: 12px;
+    border-radius: 8px;
+    font-family: ui-monospace, monospace;
+    font-size: 10.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+  }
+
+  /* Colores JSON */
+  .json-key { color: #79c0ff; }
+  .json-string { color: #a5d6ff; }
+  .json-number { color: #79c0ff; }
+  .json-boolean { color: #ff7b72; }
+  .json-null { color: #ff7b72; }
+  .json-punct { color: #8b949e; }
+
+  /* Estado vacío */
+  .empty-state {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-3);
+    font-size: 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+  }
+  .empty-state .icon {
+    font-size: 42px;
+    margin-bottom: 10px;
+  }
+  .empty-state .titulo {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-2);
+    margin-bottom: 6px;
+  }
+  .empty-state .hint {
+    font-size: 11px;
+    line-height: 1.6;
+  }
+
+  /* Guía de pasos */
+  .guia-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 12px;
+    background: var(--accent-light);
+    border-radius: 10px;
+  }
+  .guia-step {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: white;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+
+  /* FAB de acción */
+  .fab {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 200;
+    background: var(--kimi);
+    color: white;
+    border: none;
+    padding: 14px 22px;
+    border-radius: 100px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(124,58,237,0.4);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+  }
+  .fab:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(124,58,237,0.5);
+  }
+  .fab:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-inner">
+    <div>
+      <h1>🔬 EcoRadAi — Narrativa del Flujo de Agentes</h1>
+      <div class="subtitle">Ver la historia de datos estructurados entre agentes, en tiempo real</div>
+    </div>
+    <div class="header-actions">
+      <span class="badge" id="global-badge">Esperando app…</span>
+      <button class="btn btn-secondary" onclick="resetearPanel()">
+        🔄 Limpiar
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- IFRAME CON LA APP -->
+  <aside class="app-frame">
+    <div class="app-frame-label">App real (navega aquí)</div>
+    <iframe id="app-frame" src="EcoRadAi23.4d.html"></iframe>
+  </aside>
+
+  <!-- PANEL DE NARRATIVA -->
+  <main class="panel">
+
+    <!-- BARRA DE RESUMEN -->
+    <div class="resumen-bar">
+      <span style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:0.5px">
+        📊 Eventos capturados:
+      </span>
+      <div class="resumen-stat">
+        <span class="dot raiz"></span>
+        <span>RAÍZ: <span id="count-raiz">0</span></span>
+      </div>
+      <div class="resumen-stat">
+        <span class="dot tronco"></span>
+        <span>TRONCO: <span id="count-tronco">0</span></span>
+      </div>
+      <div class="resumen-stat">
+        <span class="dot savia"></span>
+        <span>SAVIA: <span id="count-savia">0</span></span>
+      </div>
+      <div class="resumen-stat">
+        <span class="dot kimi"></span>
+        <span>KIMI: <span id="count-kimi">0</span></span>
+      </div>
+      <div class="resumen-stat">
+        <span class="dot fruto"></span>
+        <span>FRUTO: <span id="count-fruto">0</span></span>
+      </div>
+    </div>
+
+    <!-- NARRATIVA (se llena dinámicamente) -->
+    <div class="narrativa" id="narrativa">
+      <div class="empty-state">
+        <div class="icon">🎬</div>
+        <div class="titulo">Esperando que inicies el flujo</div>
+        <div class="hint">
+          Sigue estos pasos en la app (izquierda) para ver la narrativa:
+          <div class="guia-steps">
+            <span class="guia-step">1. Crear ficha de paciente</span>
+            <span class="guia-step">2. Elegir tamizaje o consulta</span>
+            <span class="guia-step">3. Llenar datos clínicos</span>
+            <span class="guia-step">4. Enviar a Kimi</span>
+            <span class="guia-step">5. Autorizar interconsultas</span>
+            <span class="guia-step">6. Firmar y generar PDFs</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- FAB DE DEMO AUTOMÁTICA -->
+<button class="fab" id="btn-auto" onclick="ejecutarDemoAutomatica()" disabled>
+  🎬 Ejecutar demo automática
+</button>
+<script type="module">
+// ═══════════════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ═══════════════════════════════════════════════════════════
+const ESTADO = {
+  win: null,
+  kernel: null,
+  SAVIA: null,
+  appLista: false,
+  pasoActual: 0,
+  eventos: [],
+  capturadorActivo: false
+};
+
+// ═══════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════
+function escapeHtml(s) {
+  if (s === null || s === undefined) return "";
+  const d = document.createElement("div");
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+function formatearJSON(obj) {
+  return JSON.stringify(obj, null, 2)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"([^"]+)":/g, '<span class="json-key">"$1"</span>:')
+    .replace(/: "([^"]*)"/g, ': <span class="json-string">"$1"</span>')
+    .replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>')
+    .replace(/: (null)/g, ': <span class="json-null">$1</span>')
+    .replace(/: (-?\d+\.?\d*)/g, ': <span class="json-number">$1</span>');
+}
+
+function formatearValor(v) {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+function formatearHora(iso) {
+  try {
+    return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  } catch { return "—"; }
+}
+
+// ═══════════════════════════════════════════════════════════
+// INTERPRETACIÓN DE VALORES CLÍNICOS
+// ═══════════════════════════════════════════════════════════
+const INTERPRETACIONES = {
+  glucosa: (v) => v >= 126 ? { sev: "critico", label: "Diabetes" }
+                    : v >= 100 ? { sev: "leve", label: "Prediabetes" }
+                    : v < 70 ? { sev: "leve", label: "Hipoglucemia" }
+                    : { sev: "normal", label: "Normal" },
+  hba1c: (v) => v >= 6.5 ? { sev: "critico", label: "Diabetes" }
+                  : v >= 5.7 ? { sev: "leve", label: "Prediabetes" }
+                  : { sev: "normal", label: "Normal" },
+  homa_ir: (v) => v >= 4 ? { sev: "critico", label: "Resistencia severa" }
+                    : v >= 2.5 ? { sev: "moderado", label: "Resistencia" }
+                    : { sev: "normal", label: "Normal" },
+  ldl: (v) => v >= 160 ? { sev: "critico", label: "Muy alto" }
+                : v >= 130 ? { sev: "moderado", label: "Alto" }
+                : v >= 100 ? { sev: "leve", label: "Límite" }
+                : { sev: "normal", label: "Óptimo" },
+  hdl: (v) => v < 40 ? { sev: "critico", label: "Bajo" }
+                : v >= 60 ? { sev: "normal", label: "Protector" }
+                : { sev: "leve", label: "Aceptable" },
+  tg: (v) => v >= 500 ? { sev: "critico", label: "Muy alto" }
+              : v >= 200 ? { sev: "moderado", label: "Alto" }
+              : v >= 150 ? { sev: "leve", label: "Límite" }
+              : { sev: "normal", label: "Normal" },
+  alt: (v) => v > 200 ? { sev: "critico", label: "Severa" }
+                : v > 80 ? { sev: "moderado", label: "Moderada" }
+                : v > 40 ? { sev: "leve", label: "Leve" }
+                : { sev: "normal", label: "Normal" },
+  imc: (v) => v >= 40 ? { sev: "critico", label: "Obesidad III" }
+                : v >= 35 ? { sev: "critico", label: "Obesidad II" }
+                : v >= 30 ? { sev: "moderado", label: "Obesidad I" }
+                : v >= 25 ? { sev: "leve", label: "Sobrepeso" }
+                : { sev: "normal", label: "Normal" },
+  presion_sistolica_mmhg: (v) => v >= 160 ? { sev: "critico", label: "HTA 2" }
+                                : v >= 140 ? { sev: "moderado", label: "HTA 1" }
+                                : v >= 130 ? { sev: "leve", label: "Elevada" }
+                                : { sev: "normal", label: "Normal" },
+  presion_diastolica_mmhg: (v) => v >= 100 ? { sev: "critico", label: "HTA 2" }
+                                  : v >= 90 ? { sev: "moderado", label: "HTA 1" }
+                                  : v >= 80 ? { sev: "leve", label: "Elevada" }
+                                  : { sev: "normal", label: "Normal" },
+  frecuencia_cardiaca_lpm: (v) => v > 100 ? { sev: "leve", label: "Taquicardia" }
+                                : v < 60 ? { sev: "leve", label: "Bradicardia" }
+                                : { sev: "normal", label: "Normal" },
+  actividad_fisica_min_semana: (v) => v >= 150 ? { sev: "normal", label: "Cumple OMS" }
+                                      : { sev: "leve", label: "Sedentario" },
+  esteatosis_grado: (v) => v >= 3 ? { sev: "critico", label: "Severa" }
+                          : v === 2 ? { sev: "moderado", label: "Moderada" }
+                          : v === 1 ? { sev: "leve", label: "Leve" }
+                          : { sev: "normal", label: "Ausente" }
+};
+
+const NOMBRES_LABS = {
+  glucosa: "Glucosa",
+  hba1c: "HbA1c",
+  homa_ir: "HOMA-IR",
+  ldl: "LDL",
+  hdl: "HDL",
+  tg: "Triglicéridos",
+  alt: "ALT",
+  ast: "AST",
+  ggt: "GGT",
+  creatinina: "Creatinina",
+  tfg: "TFG",
+  tsh: "TSH"
+};
+
+const UNIDADES_LABS = {
+  glucosa: "mg/dL",
+  hba1c: "%",
+  homa_ir: "",
+  ldl: "mg/dL",
+  hdl: "mg/dL",
+  tg: "mg/dL",
+  alt: "U/L",
+  ast: "U/L",
+  ggt: "U/L",
+  creatinina: "mg/dL",
+  tfg: "mL/min",
+  tsh: "µUI/mL"
+};
+
+function interpretarClave(clave, valor) {
+  const fn = INTERPRETACIONES[clave];
+  if (!fn) return { sev: "normal", label: "—" };
+  try {
+    return fn(Number(valor));
+  } catch {
+    return { sev: "normal", label: "—" };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER DE PASOS
+// ═══════════════════════════════════════════════════════════
+function agregarPaso(config) {
+  ESTADO.pasoActual++;
+  const n = ESTADO.pasoActual;
+
+  const narrativa = document.getElementById("narrativa");
+  // Quitar empty state si existe
+  const emptyState = narrativa.querySelector(".empty-state");
+  if (emptyState) emptyState.remove();
+
+  const card = document.createElement("div");
+  card.className = `paso-card ${config.tipo || "raiz"}`;
+  card.id = `paso-${n}`;
+
+  // Header
+  const badgeTipo = config.tipo === "raiz" ? "RAÍZ"
+                  : config.tipo === "tronco" ? "TRONCO"
+                  : config.tipo === "savia" ? "SAVIA"
+                  : config.tipo === "kimi" ? "KIMI"
+                  : config.tipo === "fruto" ? "FRUTO"
+                  : "";
+
+  card.innerHTML = `
+    <div class="paso-header">
+      <div class="paso-num">${n}</div>
+      <div class="paso-titulo">
+        <h3>${escapeHtml(config.titulo)}</h3>
+        <div class="paso-subtitulo">${escapeHtml(config.subtitulo || "")}</div>
+      </div>
+      <span class="paso-badge ${config.tipo}">${badgeTipo}</span>
+    </div>
+    <div class="paso-body" id="paso-body-${n}">
+      ${config.html || ""}
+    </div>
+  `;
+
+  narrativa.appendChild(card);
+
+  // Scroll suave al nuevo paso
+  setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "nearest" }), 100);
+
+  // Actualizar contador
+  actualizarContadores();
+}
+
+function actualizarContadores() {
+  const eventos = ESTADO.eventos;
+  const counts = {
+    raiz: eventos.filter(e => e.tipo === "raiz").length,
+    tronco: eventos.filter(e => e.tipo === "tronco").length,
+    savia: eventos.filter(e => e.tipo === "savia").length,
+    kimi: eventos.filter(e => e.tipo === "kimi").length,
+    fruto: eventos.filter(e => e.tipo === "fruto").length
+  };
+  document.getElementById("count-raiz").textContent = counts.raiz;
+  document.getElementById("count-tronco").textContent = counts.tronco;
+  document.getElementById("count-savia").textContent = counts.savia;
+  document.getElementById("count-kimi").textContent = counts.kimi;
+  document.getElementById("count-fruto").textContent = counts.fruto;
+}
+
+// Helper: crear botón "ver JSON"
+function botonJSON(json, idUnico) {
+  const jsonStr = formatearJSON(json);
+  return `
+    <button class="btn-json" onclick="toggleJSON('${idUnico}')">
+      🔍 Ver JSON completo
+    </button>
+    <div class="json-panel" id="json-${idUnico}">
+      <pre class="json-pre">${jsonStr}</pre>
+    </div>
+  `;
+}
+
+window.toggleJSON = function(id) {
+  const panel = document.getElementById(`json-${id}`);
+  if (panel) panel.classList.toggle("show");
+};
+
+// ═══════════════════════════════════════════════════════════
+// RENDER: APORTES DE AGENTES RAÍZ
+// ═══════════════════════════════════════════════════════════
+
+function renderAportePaciente(payload, evento) {
+  const subject = payload.subject || payload;
+  ESTADO.eventos.push({ tipo: "raiz", evento });
+
+  const html = `
+    <div class="narrativa-texto">
+      El agente <code>agente-paciente</code> procesó los datos demográficos del paciente
+      y los aporta a SAVIA:
+    </div>
+    <table class="tabla-datos">
+      <tbody>
+        <tr><td>Nombre</td><td class="valor">${escapeHtml(subject.nombre || "—")}</td><td></td></tr>
+        <tr><td>ID</td><td class="valor">${escapeHtml(subject.subject_id || "—")}</td><td></td></tr>
+        <tr><td>Edad</td><td class="valor">${escapeHtml(String(subject.edad || "—"))} años</td><td></td></tr>
+        <tr><td>Sexo</td><td class="valor">${escapeHtml(subject.sexo || "—")}</td><td></td></tr>
+        <tr><td>Departamento</td><td class="valor">${escapeHtml(subject.departamento || "—")}</td><td></td></tr>
+        <tr><td>Empresa</td><td class="valor">${escapeHtml(subject.empresa || "—")}</td><td></td></tr>
+      </tbody>
+    </table>
+    <div class="conexion">
+      <span class="arrow">→</span>
+      <span>Emite: <code>savia:aporte-paciente</code></span>
+    </div>
+    ${botonJSON(payload, "raiz-paciente-" + Date.now())}
+  `;
+
+  agregarPaso({
+    tipo: "raiz",
+    titulo: "El agente-paciente aporta datos demográficos",
+    subtitulo: `savia:aporte-paciente · ${formatearHora(evento.timestamp || new Date().toISOString())}`,
+    html
+  });
+}
+
+function renderAporteClinica(payload, evento) {
+  const clinica = payload.clinica || payload;
+  ESTADO.eventos.push({ tipo: "raiz", evento });
+
+  let filas = "";
+  const campos = [
+    { key: "imc", label: "IMC" },
+    { key: "presion_sistolica_mmhg", label: "PA sistólica" },
+    { key: "presion_diastolica_mmhg", label: "PA diastólica" },
+    { key: "frecuencia_cardiaca_lpm", label: "FC" },
+    { key: "peso_kg", label: "Peso" },
+    { key: "talla_cm", label: "Talla" },
+    { key: "circunferencia_cintura_cm", label: "Cintura" }
+  ];
+
+  campos.forEach(c => {
+    if (clinica[c.key] !== undefined && clinica[c.key] !== null) {
+      const interp = interpretarClave(c.key, clinica[c.key]);
+      const unidad = c.key === "imc" ? "kg/m²" : c.key.includes("presion") ? "mmHg" : c.key === "frecuencia" ? "lpm" : "";
+      filas += `<tr>
+        <td>${c.label}</td>
+        <td class="valor">${escapeHtml(String(clinica[c.key]))} ${unidad}</td>
+        <td class="interp"><span class="sev-badge sev-${interp.sev}">${interp.label}</span></td>
+      </tr>`;
+    }
+  });
+
+  if (clinica.habitos) {
+    if (clinica.habitos.actividad_fisica_min_semana !== undefined) {
+      const interp = interpretarClave("actividad_fisica_min_semana", clinica.habitos.actividad_fisica_min_semana);
+      filas += `<tr>
+        <td>Actividad física</td>
+        <td class="valor">${clinica.habitos.actividad_fisica_min_semana} min/sem</td>
+        <td class="interp"><span class="sev-badge sev-${interp.sev}">${interp.label}</span></td>
+      </tr>`;
+    }
+  }
+
+  const html = `
+    <div class="narrativa-texto">
+      El agente <code>agente-clinica</code> procesó los signos vitales y datos antropométricos:
+    </div>
+    <table class="tabla-datos">
+      <thead>
+        <tr><th>Dato</th><th style="text-align:right">Valor</th><th style="text-align:center">Interpretación</th></tr>
+      </thead>
+      <tbody>${filas || '<tr><td colspan="3" style="text-align:center;color:var(--text-3)">Sin datos</td></tr>'}</tbody>
+    </table>
+    <div class="conexion">
+      <span class="arrow">→</span>
+      <span>Emite: <code>savia:aporte-clinica</code></span>
+    </div>
+    ${botonJSON(payload, "raiz-clinica-" + Date.now())}
+  `;
+
+  agregarPaso({
+    tipo: "raiz",
+    titulo: "El agente-clinica aporta signos vitales y antropometría",
+    subtitulo: `savia:aporte-clinica · ${formatearHora(evento.timestamp || new Date().toISOString())}`,
+    html
+  });
+}
+
+function renderAporteLaboratorio(payload, evento) {
+  const labs = payload.labs || payload;
+  ESTADO.eventos.push({ tipo: "raiz", evento });
+
+  let filas = "";
+  let totalAlterados = 0;
+  Object.keys(labs).forEach(key => {
+    if (labs[key] === null || labs[key] === undefined) return;
+    const nombre = NOMBRES_LABS[key] || key;
+    const unidad = UNIDADES_LABS[key] || "";
+    const interp = interpretarClave(key, labs[key]);
+    if (interp.sev !== "normal") totalAlterados++;
+    filas += `<tr>
+      <td>${nombre}</td>
+      <td class="valor">${escapeHtml(String(labs[key]))} ${unidad}</td>
+      <td class="interp"><span class="sev-badge sev-${interp.sev}">${interp.label}</span></td>
+    </tr>`;
+  });
+
+  const html = `
+    <div class="narrativa-texto">
+      El agente <code>agente-laboratorio</code> procesó el reporte de laboratorio.
+      <strong>${Object.keys(labs).length} exámenes</strong> procesados,
+      <strong>${totalAlterados} alterados</strong>:
+    </div>
+    <table class="tabla-datos">
+      <thead>
+        <tr><th>Examen</th><th style="text-align:right">Valor</th><th style="text-align:center">Interpretación</th></tr>
+      </thead>
+      <tbody>${filas}</tbody>
+    </table>
+    <div class="conexion">
+      <span class="arrow">→</span>
+      <span>Emite: <code>savia:aporte-laboratorio</code></span>
+    </div>
+    ${botonJSON(payload, "raiz-lab-" + Date.now())}
+  `;
+
+  agregarPaso({
+    tipo: "raiz",
+    titulo: "El agente-laboratorio aporta resultados de laboratorio",
+    subtitulo: `savia:aporte-laboratorio · ${formatearHora(evento.timestamp || new Date().toISOString())}`,
+    html
+  });
+}
+
+function renderAporteImagen(payload, evento) {
+  const imagen = payload.imagen || payload;
+  ESTADO.eventos.push({ tipo: "raiz", evento });
+
+  let filas = "";
+  Object.keys(imagen).forEach(key => {
+    if (imagen[key] === null || imagen[key] === undefined) return;
+    const interp = interpretarClave(key, imagen[key]);
+    filas += `<tr>
+      <td>${escapeHtml(key.replace(/_/g, " "))}</td>
+      <td class="valor">${escapeHtml(String(imagen[key]))}</td>
+      <td class="interp"><span class="sev-badge sev-${interp.sev}">${interp.label}</span></td>
+    </tr>`;
+  });
+
+  const html = `
+    <div class="narrativa-texto">
+      El agente <code>agente-imagen</code> procesó los hallazgos ecográficos:
+    </div>
+    <table class="tabla-datos">
+      <thead><tr><th>Hallazgo</th><th style="text-align:right">Valor</th><th style="text-align:center">Interpretación</th></tr></thead>
+      <tbody>${filas || '<tr><td colspan="3" style="text-align:center;color:var(--text-3)">Sin hallazgos</td></tr>'}</tbody>
+    </table>
+    <div class="conexion">
+      <span class="arrow">→</span>
+      <span>Emite: <code>savia:aporte-imagen</code></span>
+    </div>
+    ${botonJSON(payload, "raiz-img-" + Date.now())}
+  `;
+
+  agregarPaso({
+    tipo: "raiz",
+    titulo: "El agente-imagen aporta hallazgos ecográficos",
+    subtitulo: `savia:aporte-imagen · ${formatearHora(evento.timestamp || new Date().toISOString())}`,
+    html
+  });
+}
+
+function renderAporteSocial(payload, evento) {
+  const social = payload.social || payload;
+  ESTADO.eventos.push({ tipo: "raiz", evento });
+
+  let filas = "";
+  Object.keys(social).forEach(key => {
+    if (social[key] === null || social[key] === undefined) return;
+    filas += `<tr>
+      <td>${escapeHtml(key.replace(/_/g, " "))}</td>
+      <td class="valor">${escapeHtml(String(social[key]))}</td>
+      <td></td>
+    </tr>`;
+  });
+
+  const html = `
+    <div class="narrativa-texto">
+      El agente <code>agente-trabajo-social</code> aportó datos socioeconómicos:
+    </div>
+    <table class="tabla-datos">
+      <tbody>${filas || '<tr><td colspan="3" style="text-align:center;color:var(--text-3)">Sin datos</td></tr>'}</tbody>
+    </table>
+    <div class="conexion">
+      <span class="arrow">→</span>
+      <span>Emite: <code>savia:aporte-social</code></span>
+    </div>
+    ${botonJSON(payload, "raiz-social-" + Date.now())}
+  `;
+
+  agregarPaso({
+    tipo: "raiz",
+    titulo: "El agente-trabajo-social aporta datos socioeconómicos",
+    subtitulo: `savia:aporte-social · ${formatearHora(evento.timestamp || new Date().toISOString())}`,
+    html
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER: SAVIA RAÍZ CONSOLIDADA
+// ═══════════════════════════════════════════════════════════
+
+function renderSaviaRaiz(payload, evento) {
+  ESTADO.eventos.push({ tipo: "savia", evento });
+
+  const contextId = payload.contexto_id || "—";
+  const subject = payload.subject || {};
+  const labs = payload.labs || {};
+  const clinica = payload.clinica || {};
+  const numLabs = Object.keys(labs).length;
+  const numClinica = Object.keys(clinica).length;
+
+  // Detectar interconsultas sugeridas
+  const icSugeridas = (payload.raw?._json_estructurado?.interconsultas_sugeridas)
+                    || payload.interconsultas_sugeridas
+                    || [];
+  const chips = icSugeridas.map(ic => `<span class="aporte-chip">${escapeHtml(ic.especialista)} · ${ic.prioridad}</span>`).join("");
+
+  const html = `
+    <div class="narrativa-texto">
+      La <code>agente-savia-consolidadora</code> recibió los <strong>5 aportes</strong>
+      de los agentes RAÍZ y los consolidó en un único objeto SAVIA.
+      <strong>Este es el contexto completo que se enviará a Kimi.</strong>
+    </div>
+
+    <div style="background:var(--green-light);border-radius:8px;padding:12px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:#1a4a2a;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">
+        📦 SAVIA RAÍZ consolidada
+      </div>
+      <table class="tabla-datos" style="margin:0">
+        <tbody>
+          <tr><td>Contexto ID</td><td class="valor">${escapeHtml(contextId)}</td><td></td></tr>
+          <tr><td>Paciente</td><td class="valor">${escapeHtml(subject.nombre || "—")}</td><td></td></tr>
+          <tr><td>Labs</td><td class="valor">${numLabs} exámenes</td><td></td></tr>
+          <tr><td>Clínica</td><td class="valor">${numClinica} campos</td><td></td></tr>
+          <tr><td>Interconsultas</td><td class="valor">${icSugeridas.length} sugeridas</td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    ${icSugeridas.length > 0 ? `
+      <div class="narrativa-texto"><strong>Interconsultas detectadas por la IA:</strong></div>
+      <div class="lista-aportes">${chips}</div>
+    ` : ""}
+
+    <div class="conexion">
+      <span class="arrow">→</span>
+      <span>Emite: <code>savia:raiz:contexto-unificado</code></span>
+    </div>
+    ${botonJSON(payload, "savia-raiz-" + Date.now())}
+  `;
+
+  agregarPaso({
+    tipo: "savia",
+    titulo: "La consolidadora emite SAVIA RAÍZ con los 5 aportes",
+    subtitulo: `savia:raiz:contexto-unificado · ${formatearHora(evento.timestamp || new Date().toISOString())}`,
+    html
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER: COORDINADOR
+// ═══════════════════════════════════════════════════════════
+
+function renderCoordinadorInforme(payload, evento) {
+  ESTADO.eventos.push({ tipo: "tronco", evento });
+
+  const informe = payload.informe || payload.narrativa || "";
+  const icSugeridas = payload.interconsultas_sugeridas || [];
+  const informeCorto = informe.length > 500 ? informe.substring(0, 500) + "..." : informe;
+
+  const html = `
+    <div class="narrativa-texto">
+      El <code>agente-coordinador</code> recibió SAVIA RAÍZ, procesó el informe y emitió
+      <strong>savia:tronco:informe-kimi</strong> con el informe base + interconsultas sugeridas.
+    </div>
+
+    <div style="background:var(--yellow-light);border-radius:8px;padding:12px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:#8a6a00;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">
+        📋 Informe TRONCO emitido
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.6">
+        ${escapeHtml(informeCorto) || "<em>Sin narrativa</em>"}
+      </div>
+    </div>
+
+    ${icSugeridas.length > 0 ? `
+      <div class="narrativa-texto"><strong>Interconsultas sugeridas (${icSugeridas.length}):</strong></div>
+      <table class="tabla-datos">
+        <thead><tr><th>Especialista</th><th style="text-align:center">Prioridad</th><th>Justificación</th></tr></thead>
+        <tbody>
+          ${icSugeridas.map(ic => `
+            <tr>
+              <td>${escapeHtml(ic.especialista || "—")}</td>
+              <td class="interp"><span class="sev-badge sev-${ic.prioridad === "alta" ? "critico" : ic.prioridad === "media" ? "leve" : "normal"}">${escapeHtml(ic.prioridad || "media")}</span></td>
+              <td>${escapeHtml(ic.justificacion || "—")}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    ` : ""}
+
+    <div class="conexion">
+      <span class="arrow">→</span>
+      <span>Emite: <code>savia:tronco:informe-kimi</code></span>
+    </div>
+    ${botonJSON(payload, "coord-info-" + Date.now())}
+  `;
+
+  agregarPaso({
+    tipo: "tronco",
+    titulo: "El coordinador emite el informe TRONCO",
+    subtitulo: `savia:tronco:informe-kimi · ${formatearHora(evento.timestamp || new Date().toISOString())}`,
+    html
+  });
+}
+
+function renderCoordinadorSolicitud(payload, evento) {
+  ESTADO.eventos.push({ tipo: "tronco", evento });
+
+  const especialista = payload.especialista || "—";
+  const contextoId = payload.contexto_id || "—";
+
+  const html = `
+    <div class="narrativa-texto">
+      El <code>agente-coordinador</code> solicita al especialista
+      <strong>${escapeHtml(especialista)}</strong> que analice el caso.
+    </div>
+    <div class="conexion">
+      <span class="arrow">→</span>
+      <span>Emite: <code>savia:solicitar-analisis</code> para <strong>${escapeHtml(especialista)}</strong></span>
+    </div>
+    <div style="font-size:11px;color:var(--text-2);padding:8px 0">
+      <strong>Contexto ID:</strong> <code style="background:var(--bg);padding:2px 6px;border-radius:4px">${escapeHtml(contextoId)}</code>
+    </div>
+    ${botonJSON(payload, "coord-sol-" + Date.now())}
+  `;
+
+  agregarPaso({
+    tipo: "tronco",
+    titulo: `El coordinador solicita análisis a ${especialista}`,
+    subtitulo: `savia:solicitar-analisis · ${formatearHora(evento.timestamp || new Date().toISOString())}`,
+    html
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER: ESPECIALISTAS
+// ═══════════════════════════════════════════════════════════
+
+function renderEspecialistaRespuesta(payload, evento) {
+  ESTADO.eventos.push({ tipo: "tronco", evento });
+
+  const especialista = payload.especialista || "—";
+  const nombre = payload.nombre || especialista;
+  const resultado = payload.resultado || payload;
+  const error = payload.error;
+
+  if (error) {
+    const html = `
+      <div class="narrativa-texto">
+        El especialista <strong>${escapeHtml(nombre)}</strong> encontró un error:
+      </div>
+      <div style="background:var(--red-light);border-left:3px solid var(--fail);padding:10px 14px;border-radius:0 8px 8px 0;font-size:12px;color:#7a1a1a">
+        ${escapeHtml(error)}
+      </div>
+      ${botonJSON(payload, "esp-err-" + Date.now())}
+    `;
+    agregarPaso({
+      tipo: "tronco",
+      titulo: `El especialista ${nombre} reportó un error`,
+      subtitulo: `especialista:respuesta · ${formatearHora(evento.timestamp || new Date().toISOString())}`,
+      html
+    });
+    return;
+  }
+
+  // Extraer campos comunes del resultado
+  let campos = "";
+  const camposComunes = [
+    { key: "resumen", label: "Resumen" },
+    { key: "diagnostico", label: "Diagnóstico" },
+    { key: "diagnostico_nutricional", label: "Diagnóstico nutricional" },
+    { key: "riesgo_cv", label: "Riesgo CV" },
+    { key: "clasificacion_glucemica", label: "Clasificación glucémica" },
+    { key: "kdigo_g", label: "KDIGO G" },
+    { key: "kdigo_a", label: "KDIGO A" },
+    { key: "esteatosis_grado", label: "Esteatosis grado" },
+    { key: "birads_max", label: "BI-RADS máx" },
+    { key: "etdrs_max", label: "ETDRS máx" },
+    { key: "confianza", label: "Confianza" },
+    { key: "banderas_rojas", label: "Banderas rojas" }
+  ];
+
+  camposComunes.forEach(c => {
+    if (resultado[c.key] !== undefined && resultado[c.key] !== null && resultado[c.key] !== "") {
+      const v = resultado[c.key];
+      const vStr = Array.isArray(v) ? v.join(", ") : (typeof v === "object" ? JSON.stringify(v) : String(v));
+      campos += `<tr><td>${c.label}</td><td class="valor" colspan="2">${escapeHtml(vStr.substring(0, 200))}${vStr.length > 200 ? "..." : ""}</td></tr>`;
+    }
+  });
+
+  const html = `
+    <div class="narrativa-texto">
+      El especialista <strong>${escapeHtml(nombre)}</strong>
+      (${escapeHtml(payload.rol || "—")}) respondió con su análisis:
+    </div>
+    <table class="tabla-datos">
+      <tbody>
+        ${campos || '<tr><td colspan="3" style="text-align:center;color:var(--text-3)">Respuesta recibida (ver JSON completo)</td></tr>'}
+      </tbody>
+    </table>
+    <div class="conexion">
+      <span class="arrow">→</span>
+      <span>Emite: <code>especialista:respuesta</code> para ${escapeHtml(especialista)}</span>
+    </div>
+    ${botonJSON(payload, "esp-" + especialista + "-" + Date.now())}
+  `;
+
+  agregarPaso({
+    tipo: "tronco",
+    titulo: `El especialista ${nombre} emitió su análisis`,
+    subtitulo: `especialista:respuesta · ${formatearHora(evento.timestamp || new Date().toISOString())}`,
+    html
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER: PLAN INTEGRADO (FRUTO)
+// ═══════════════════════════════════════════════════════════
+
+function renderPlanIntegrado(payload, evento) {
+  ESTADO.eventos.push({ tipo: "fruto", evento });
+
+  const plan = payload.plan || payload.plan_integrado || payload || {};
+  const secciones = Object.keys(plan);
+
+  let tabla = "";
+  secciones.forEach(k => {
+    const v = plan[k];
+    let vStr = "";
+    if (Array.isArray(v)) vStr = `${v.length} elementos`;
+    else if (typeof v === "object") vStr = `${Object.keys(v).length} campos`;
+    else vStr = String(v).substring(0, 100);
+
+    tabla += `<tr><td>${escapeHtml(k.replace(/_/g, " "))}</td><td class="valor">${escapeHtml(vStr)}</td><td></td></tr>`;
+  });
+
+  const html = `
+    <div class="narrativa-texto">
+      El <code>agente-coordinador</code> consolidó las respuestas de todos los especialistas
+      en un <strong>plan único</strong> y lo emitió.
+      <strong>Este es el fruto final del árbol de agentes.</strong>
+    </div>
+    <div style="background:var(--red-light);border-radius:8px;padding:12px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:#7a1a1a;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">
+        🍎 Plan integrado (${secciones.length} secciones)
+      </div>
+      <table class="tabla-datos" style="margin:0">
+        <tbody>${tabla}</tbody>
+      </table>
+    </div>
+    <div class="conexion">
+      <span class="arrow">→</span>
+      <span>Emite: <code>savia:tronco:plan-integrado</code></span>
+    </div>
+    ${botonJSON(payload, "plan-int-" + Date.now())}
+  `;
+
+  agregarPaso({
+    tipo: "fruto",
+    titulo: "El coordinador emite el plan integrado final",
+    subtitulo: `savia:tronco:plan-integrado · ${formatearHora(evento.timestamp || new Date().toISOString())}`,
+    html
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// DETECCIÓN DE EVENTOS
+// ═══════════════════════════════════════════════════════════
+
+function procesarEvento(evento) {
+  if (!evento || !evento.tipo) return;
+
+  const tipo = evento.tipo;
+  const payload = evento.payload || {};
+
+  try {
+    // Aportes RAÍZ
+    if (tipo === "savia:aporte-paciente") return renderAportePaciente(payload, evento);
+    if (tipo === "savia:aporte-clinica") return renderAporteClinica(payload, evento);
+    if (tipo === "savia:aporte-laboratorio") return renderAporteLaboratorio(payload, evento);
+    if (tipo === "savia:aporte-imagen") return renderAporteImagen(payload, evento);
+    if (tipo === "savia:aporte-social") return renderAporteSocial(payload, evento);
+
+    // SAVIA RAÍZ
+    if (tipo === "savia:raiz:contexto-unificado") return renderSaviaRaiz(payload, evento);
+
+    // Coordinador
+    if (tipo === "savia:tronco:informe-kimi") return renderCoordinadorInforme(payload, evento);
+    if (tipo === "savia:solicitar-analisis") return renderCoordinadorSolicitud(payload, evento);
+
+    // Especialistas
+    if (tipo === "especialista:respuesta") return renderEspecialistaRespuesta(payload, evento);
+
+    // Plan integrado
+    if (tipo === "savia:tronco:plan-integrado") return renderPlanIntegrado(payload, evento);
+
+  } catch (e) {
+    console.error("[Narrativa] Error procesando evento", tipo, e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// CAPTURA DE EVENTOS
+// ═══════════════════════════════════════════════════════════
+
+function instalarCapturador() {
+  if (ESTADO.capturadorActivo) return true;
+
+  const savia = ESTADO.SAVIA;
+  if (!savia || typeof savia.propagar !== "function") {
+    return false;
+  }
+
+  const origPropagar = savia.propagar;
+  savia.propagar = function(evento) {
+    try {
+      procesarEvento(evento);
+    } catch (e) {
+      console.warn("[Narrativa] Error en capturador:", e);
+    }
+    return origPropagar.apply(this, arguments);
+  };
+
+  ESTADO.capturadorActivo = true;
+  console.log("[Narrativa] ✅ Capturador instalado en savia.propagar");
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════
+// DEMO AUTOMÁTICA
+// ═══════════════════════════════════════════════════════════
+
+async function ejecutarDemoAutomatica() {
+  if (!ESTADO.appLista) {
+    alert("El kernel aún no está listo. Espera a que cargue.");
+    return;
+  }
+
+  const btn = document.getElementById("btn-auto");
+  btn.disabled = true;
+  btn.textContent = "⏳ Ejecutando…";
+
+  resetearPanel();
+
+  const savia = ESTADO.SAVIA;
+  const contextoId = `SAV-DEMO-${Date.now()}`;
+
+  try {
+    // 1) Aporte del paciente
+    await savia.emitirContexto(contextoId, "savia:aporte-paciente", {
+      contexto_id: contextoId,
+      subject: {
+        subject_id: "PAC-DEMO-" + Date.now(),
+        nombre: "María Elena Rodríguez",
+        edad: 42,
+        sexo: "Femenino",
+        departamento: "San Salvador",
+        municipio: "San Salvador",
+        empresa: "Empresa Demo S.A."
+      }
+    }, { de: "agente-paciente" });
+    await new Promise(r => setTimeout(r, 600));
+
+    // 2) Aporte de clínica
+    await savia.emitirContexto(contextoId, "savia:aporte-clinica", {
+      contexto_id: contextoId,
+      clinica: {
+        imc: 31.2,
+        presion_sistolica_mmhg: 138,
+        presion_diastolica_mmhg: 88,
+        frecuencia_cardiaca_lpm: 82,
+        peso_kg: 82,
+        talla_cm: 162,
+        circunferencia_cintura_cm: 96,
+        habitos: { actividad_fisica_min_semana: 90 }
+      }
+    }, { de: "agente-clinica" });
+    await new Promise(r => setTimeout(r, 600));
+
+    // 3) Aporte de laboratorio
+    await savia.emitirContexto(contextoId, "savia:aporte-laboratorio", {
+      contexto_id: contextoId,
+      labs: {
+        glucosa: 118,
+        hba1c: 5.9,
+        homa_ir: 3.1,
+        ldl: 145,
+        hdl: 38,
+        tg: 180,
+        alt: 48
+      }
+    }, { de: "agente-laboratorio" });
+    await new Promise(r => setTimeout(r, 600));
+
+    // 4) Aporte de imagen
+    await savia.emitirContexto(contextoId, "savia:aporte-imagen", {
+      contexto_id: contextoId,
+      imagen: {
+        higado_esteatosis_grado: 2,
+        rinon_derecho_longitud_cm: 10.5,
+        rinon_izquierdo_longitud_cm: 10.2
+      }
+    }, { de: "agente-imagen" });
+    await new Promise(r => setTimeout(r, 600));
+
+    // 5) Aporte social
+    await savia.emitirContexto(contextoId, "savia:aporte-social", {
+      contexto_id: contextoId,
+      social: {
+        nivel_educativo: "universitario",
+        ocupacion: "Administradora",
+        estado_civil: "casada",
+        numero_hijos: 2
+      }
+    }, { de: "agente-trabajo-social" });
+    await new Promise(r => setTimeout(r, 600));
+
+    // 6) SAVIA RAÍZ manual (simula consolidadora)
+    await savia.emitirContexto(contextoId, "savia:raiz:contexto-unificado", {
+      contexto_id: contextoId,
+      case_id: `ECO-DEMO-${Date.now()}`,
+      origen: "tamizaje",
+      subject: {
+        subject_id: "PAC-DEMO-" + Date.now(),
+        nombre: "María Elena Rodríguez",
+        edad: 42,
+        sexo: "Femenino",
+        departamento: "San Salvador",
+        empresa: "Empresa Demo S.A."
+      },
+      encounter: {
+        estudio: "corporativo_metabolico",
+        fecha: new Date().toLocaleDateString("es-ES")
+      },
+      labs: {
+        glucosa: 118, hba1c: 5.9, homa_ir: 3.1, ldl: 145, hdl: 38, tg: 180, alt: 48
+      },
+      clinica: {
+        imc: 31.2, presion_sistolica_mmhg: 138, presion_diastolica_mmhg: 88,
+        habitos: { actividad_fisica_min_semana: 90 }
+      },
+      raw: {
+        _json_estructurado: {
+          interconsultas_sugeridas: [
+            { especialista: "nutricionista", prioridad: "alta", justificacion: "IMC 31.2 + HOMA-IR 3.1" },
+            { especialista: "endocrinologo", prioridad: "alta", justificacion: "HbA1c 5.9% prediabetes" }
+          ]
+        }
+      }
+    }, { de: "agente-savia-consolidadora" });
+    await new Promise(r => setTimeout(r, 800));
+
+    // 7) Simular respuesta del coordinador (informe TRONCO)
+    await savia.emitirContexto(contextoId, "savia:tronco:informe-kimi", {
+      contexto_id: contextoId,
+      informe: "Paciente femenina de 42 años con síndrome metabólico. Presenta obesidad grado I (IMC 31.2), hipertensión arterial estadio 1 (138/88), resistencia a la insulina (HOMA-IR 3.1), dislipidemia mixta (LDL 145, HDL 38, TG 180) y esteatosis hepática moderada. Se recomienda intervención nutricional, ejercicio y seguimiento endocrinológico.",
+      interconsultas_sugeridas: [
+        { especialista: "nutricionista", prioridad: "alta", justificacion: "IMC 31.2 + HOMA-IR 3.1" },
+        { especialista: "endocrinologo", prioridad: "alta", justificacion: "HbA1c 5.9% prediabetes" }
+      ]
+    }, { de: "agente-coordinador" });
+    await new Promise(r => setTimeout(r, 800));
+
+    // 8) Coordinador solicita a especialistas
+    for (const esp of ["nutricionista", "endocrinologo"]) {
+      await savia.emitirContexto(contextoId, "savia:solicitar-analisis", {
+        contexto_id: contextoId,
+        especialista: esp,
+        savia_raw: { subject: { nombre: "María Elena Rodríguez", edad: 42 } }
+      }, { de: "agente-coordinador" });
+      await new Promise(r => setTimeout(r, 400));
+    }
+
+    // 9) Especialistas responden (simulado)
+    await savia.emitirContexto(contextoId, "especialista:respuesta", {
+      contexto_id: contextoId,
+      especialista: "nutricionista",
+      nombre: "IA-Nutricionista",
+      rol: "Nutrición",
+      resultado: {
+        resumen: "Paciente con obesidad grado I y resistencia a la insulina. Requiere plan hipocalórico con déficit de 500 kcal/día.",
+        diagnostico_nutricional: "Obesidad grado I con resistencia a la insulina",
+        meta_peso: "Reducir 7% del peso en 6 meses (5.7 kg)",
+        banderas_rojas: ["HbA1c en rango prediabetes"],
+        confianza: 0.85
+      }
+    }, { de: "especialista-nutricionista" });
+    await new Promise(r => setTimeout(r, 600));
+
+    await savia.emitirContexto(contextoId, "especialista:respuesta", {
+      contexto_id: contextoId,
+      especialista: "endocrinologo",
+      nombre: "IA-Endocrinólogo",
+      rol: "Endocrinología",
+      resultado: {
+        resumen: "Paciente con prediabetes (HbA1c 5.9%) y resistencia a la insulina. Se recomienda metformina 850 mg cada 12h + cambios de estilo de vida.",
+        clasificacion_glucemica: "Prediabetes",
+        indicacion_metformina: true,
+        metas_glucemicas: { hba1c: "<5.7%", glucosa_ayunas: "<100 mg/dL" },
+        banderas_rojas: [],
+        confianza: 0.90
+      }
+    }, { de: "especialista-endocrinologo" });
+    await new Promise(r => setTimeout(r, 800));
+
+    // 10) Plan integrado (fruto)
+    await savia.emitirContexto(contextoId, "savia:tronco:plan-integrado", {
+      contexto_id: contextoId,
+      plan: {
+        diagnostico: "Síndrome metabólico con obesidad grado I, prediabetes, HTA estadio 1 y dislipidemia mixta",
+        farmacologico: [
+          { farmaco: "Metformina", dosis: "850 mg", via: "oral", frecuencia: "cada 12h", duracion: "90 días", indicacion: "Prediabetes + resistencia a la insulina" }
+        ],
+        no_farmacologico: [
+          { categoria: "nutricion", intervencion: "Plan hipocalórico con déficit 500 kcal/día", meta: "Reducir 7% del peso en 6 meses" },
+          { categoria: "ejercicio", intervencion: "150 min/semana de actividad aeróbica moderada", meta: "Mejorar sensibilidad a la insulina" }
+        ],
+        metas: [
+          { metrica: "peso_kg", valor_actual: 82, valor_meta: 76.3, plazo_dias: 180 },
+          { metrica: "hba1c_pct", valor_actual: 5.9, valor_meta: 5.6, plazo_dias: 90 },
+          { metrica: "ldl_mg_dl", valor_actual: 145, valor_meta: 100, plazo_dias: 90 }
+        ],
+        laboratorios: [
+          { estudio: "HbA1c", plazo_dias: 90, motivo: "Seguimiento prediabetes" },
+          { estudio: "Perfil lipídico completo", plazo_dias: 90, motivo: "Seguimiento dislipidemia" }
+        ],
+        seguimiento: {
+          proxima_cita: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+          intervalo_dias: 30,
+          metricas_a_monitorear: ["peso_kg", "hba1c_pct", "ldl_mg_dl"]
+        }
+      }
+    }, { de: "agente-coordinador" });
+
+    btn.disabled = false;
+    btn.textContent = "🎬 Ejecutar demo automática";
+
+  } catch (e) {
+    console.error("[Demo automática]", e);
+    alert("Error en demo: " + e.message);
+    btn.disabled = false;
+    btn.textContent = "🎬 Ejecutar demo automática";
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// RESET
+// ═══════════════════════════════════════════════════════════
+function resetearPanel() {
+  ESTADO.pasoActual = 0;
+  ESTADO.eventos = [];
+  const narrativa = document.getElementById("narrativa");
+  narrativa.innerHTML = `
+    <div class="empty-state">
+      <div class="icon">🎬</div>
+      <div class="titulo">Esperando que inicies el flujo</div>
+      <div class="hint">
+        Sigue estos pasos en la app (izquierda) para ver la narrativa:
+        <div class="guia-steps">
+          <span class="guia-step">1. Crear ficha de paciente</span>
+          <span class="guia-step">2. Elegir tamizaje o consulta</span>
+          <span class="guia-step">3. Llenar datos clínicos</span>
+          <span class="guia-step">4. Enviar a Kimi</span>
+          <span class="guia-step">5. Autorizar interconsultas</span>
+          <span class="guia-step">6. Firmar y generar PDFs</span>
+        </div>
+      </div>
+    </div>
+  `;
+  actualizarContadores();
+}
+
+// ═══════════════════════════════════════════════════════════
+// INICIALIZACIÓN
+// ═══════════════════════════════════════════════════════════
+async function esperarKernel() {
+  const frame = document.getElementById("app-frame");
+  const win = frame.contentWindow;
+  if (!win) return false;
+
+  ESTADO.win = win;
+
+  const inicio = Date.now();
+  while (Date.now() - inicio < 120000) {
+    try {
+      if (win.kernel && win.kernel.agentes && win.kernel.agentes.size === 45 && win.SAVIA) {
+        ESTADO.kernel = win.kernel;
+        ESTADO.SAVIA = win.SAVIA;
+        ESTADO.appLista = true;
+        return true;
+      }
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 500));
+  }
+  return false;
+}
+
+async function init() {
+  const ok = await esperarKernel();
+  if (!ok) {
+    document.getElementById("global-badge").textContent = "❌ Timeout";
+    document.getElementById("global-badge").className = "badge fail";
+    return;
+  }
+
+  document.getElementById("global-badge").textContent = `✅ ${ESTADO.kernel.agentes.size} agentes`;
+  document.getElementById("global-badge").className = "badge ok";
+
+  // Instalar capturador
+  instalarCapturador();
+
+  // Habilitar demo automática
+  document.getElementById("btn-auto").disabled = false;
+}
+
+window.ejecutarDemoAutomatica = ejecutarDemoAutomatica;
+window.resetearPanel = resetearPanel;
+window.toggleJSON = toggleJSON;
+
+const frame = document.getElementById("app-frame");
+frame.addEventListener("load", () => {
+  console.log("[Narrativa] iframe cargado");
+  setTimeout(init, 500);
+});
+</script>
+</body>
+</html>  
