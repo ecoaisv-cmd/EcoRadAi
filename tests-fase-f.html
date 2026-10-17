@@ -278,20 +278,15 @@ function agregarPasoVisual(testId, ok, nombre, mensaje) {
 // ═══════════════════════════════════════════════════════════
 async function ejecutarTest(test) {
   setStatus(test.id, "running", "Ejecutando…");
-
-  // Monkey-patch del reporte para reflejar pasos en la UI
   const reporte = await test.fn();
-
   setStatus(
     test.id,
     reporte.ok ? "ok" : "fail",
     reporte.ok ? `OK · ${reporte.duracion_ms}ms` : "Falló"
   );
-
   if (reporte.pasos) {
     reporte.pasos.forEach(p => agregarPasoVisual(test.id, p.ok, p.nombre, p.mensaje));
   }
-
   ESTADO.resultados[test.id] = reporte;
   return reporte;
 }
@@ -310,7 +305,6 @@ async function ejecutarTodos() {
   document.getElementById("btn-ejecutar-todos").disabled = true;
   document.getElementById("btn-limpiar").disabled = true;
 
-  // Limpiar pasos
   TESTS.forEach(t => {
     const steps = document.getElementById(`steps-${t.id}`);
     if (steps) { steps.innerHTML = ""; steps.classList.remove("show"); }
@@ -368,7 +362,6 @@ function toggleLog() {
   const box = document.getElementById("log-box");
   box.classList.toggle("show");
   if (box.classList.contains("show")) {
-    // Capturar console.log en el log-box
     if (!window._logInterceptado) {
       window._logInterceptado = true;
       const orig = console.log;
@@ -385,10 +378,20 @@ function toggleLog() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// EXPONER FUNCIONES AL WINDOW
+// Los módulos ES6 tienen scope cerrado, así que las funciones
+// declaradas aquí NO son accesibles desde onclick="..."
+// ═══════════════════════════════════════════════════════════
+window.ejecutarTodos = ejecutarTodos;
+window.limpiar = limpiar;
+window.toggleLog = toggleLog;
+
+// ═══════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════
 renderLista();
 console.log("[Runner Fase F] Cargado. Tests disponibles:", TESTS.map(t => t.id));
+console.log("[Runner Fase F] Funciones expuestas: ejecutarTodos, limpiar, toggleLog");
 </script>
 
 </body>
