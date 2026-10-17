@@ -32,6 +32,106 @@ import { agenteCoordinador } from "../agentes/tronco/coordinador.js";
 import { agenteInvestigador } from "../agentes/tronco/investigador.js";
 import { agenteAdministrador } from "../agentes/tronco/administrador.js";
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SPRINT 3 FASE E — 30 ESPECIALISTAS
+// ═══════════════════════════════════════════════════════════════════════════
+// Cada especialista:
+//   - Escucha savia:solicitar-analisis filtrado por su key
+//   - Llama a Kimi con PROMPTS_INTERCONSULTA[key]
+//   - Emite especialista:respuesta al coordinador
+//   - Se suscribe a SAVIA en su init()
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── Imports ───
+import { agenteEspecialistaNutricionista }          from "../agentes/tronco/especialistas/nutricionista.js";
+import { agenteEspecialistaFisico }                 from "../agentes/tronco/especialistas/fisico.js";
+import { agenteEspecialistaPsicologo }              from "../agentes/tronco/especialistas/psicologo.js";
+import { agenteEspecialistaCardiologo }             from "../agentes/tronco/especialistas/cardiologo.js";
+import { agenteEspecialistaEndocrinologo }          from "../agentes/tronco/especialistas/endocrinologo.js";
+import { agenteEspecialistaNefrologo }              from "../agentes/tronco/especialistas/nefrologo.js";
+import { agenteEspecialistaHepatologo }             from "../agentes/tronco/especialistas/hepatologo.js";
+import { agenteEspecialistaGinecologo }             from "../agentes/tronco/especialistas/ginecologo.js";
+import { agenteEspecialistaMastologo }              from "../agentes/tronco/especialistas/mastologo.js";
+import { agenteEspecialistaPediatra }               from "../agentes/tronco/especialistas/pediatra.js";
+import { agenteEspecialistaInternista }             from "../agentes/tronco/especialistas/internista.js";
+import { agenteEspecialistaRadiologo }              from "../agentes/tronco/especialistas/radiologo.js";
+import { agenteEspecialistaNeurologo }              from "../agentes/tronco/especialistas/neurologo.js";
+import { agenteEspecialistaNeurologoPediatrico }    from "../agentes/tronco/especialistas/neurologo_pediatrico.js";
+import { agenteEspecialistaPsiquiatraInfantil }     from "../agentes/tronco/especialistas/psiquiatra_infantil.js";
+import { agenteEspecialistaFonoaudiologo }          from "../agentes/tronco/especialistas/fonoaudiologo.js";
+import { agenteEspecialistaTerapistaOcupacional }   from "../agentes/tronco/especialistas/terapista_ocupacional.js";
+import { agenteEspecialistaNeuropsicologo }         from "../agentes/tronco/especialistas/neuropsicologo.js";
+import { agenteEspecialistaPsiquiatra }             from "../agentes/tronco/especialistas/psiquiatra.js";
+import { agenteEspecialistaNeumologo }              from "../agentes/tronco/especialistas/neumologo.js";
+import { agenteEspecialistaAlergologo }             from "../agentes/tronco/especialistas/alergologo.js";
+import { agenteEspecialistaTerapistaRespiratorio }  from "../agentes/tronco/especialistas/terapista_respiratorio.js";
+import { agenteEspecialistaTraumatologo }           from "../agentes/tronco/especialistas/traumatologo.js";
+import { agenteEspecialistaReumatologo }            from "../agentes/tronco/especialistas/reumatologo.js";
+import { agenteEspecialistaFisioterapeuta }         from "../agentes/tronco/especialistas/fisioterapeuta.js";
+import { agenteEspecialistaDermatologo }            from "../agentes/tronco/especialistas/dermatologo.js";
+import { agenteEspecialistaOcupacional }            from "../agentes/tronco/especialistas/ocupacional.js";
+import { agenteEspecialistaUrologo }                from "../agentes/tronco/especialistas/urologo.js";
+import { agenteEspecialistaOncologo }               from "../agentes/tronco/especialistas/oncologo.js";
+import { agenteEspecialistaOftalmologo }            from "../agentes/tronco/especialistas/oftalmologo.js";
+
+// ─── Array de especialistas ───
+const especialistasFaseE = [
+  agenteEspecialistaNutricionista,
+  agenteEspecialistaFisico,
+  agenteEspecialistaPsicologo,
+  agenteEspecialistaCardiologo,
+  agenteEspecialistaEndocrinologo,
+  agenteEspecialistaNefrologo,
+  agenteEspecialistaHepatologo,
+  agenteEspecialistaGinecologo,
+  agenteEspecialistaMastologo,
+  agenteEspecialistaPediatra,
+  agenteEspecialistaInternista,
+  agenteEspecialistaRadiologo,
+  agenteEspecialistaNeurologo,
+  agenteEspecialistaNeurologoPediatrico,
+  agenteEspecialistaPsiquiatraInfantil,
+  agenteEspecialistaFonoaudiologo,
+  agenteEspecialistaTerapistaOcupacional,
+  agenteEspecialistaNeuropsicologo,
+  agenteEspecialistaPsiquiatra,
+  agenteEspecialistaNeumologo,
+  agenteEspecialistaAlergologo,
+  agenteEspecialistaTerapistaRespiratorio,
+  agenteEspecialistaTraumatologo,
+  agenteEspecialistaReumatologo,
+  agenteEspecialistaFisioterapeuta,
+  agenteEspecialistaDermatologo,
+  agenteEspecialistaOcupacional,
+  agenteEspecialistaUrologo,
+  agenteEspecialistaOncologo,
+  agenteEspecialistaOftalmologo
+];
+
+// ─── Registro masivo ───
+console.log(`[Kernel] Registrando ${especialistasFaseE.length} especialistas (Fase E)...`);
+let especialistasRegistrados = 0;
+for (const esp of especialistasFaseE) {
+  try {
+    await kernel.registrar(esp);
+    especialistasRegistrados++;
+  } catch (e) {
+    console.error(`[Kernel] Error registrando ${esp.id}:`, e.message);
+  }
+}
+console.log(`[Kernel] ✓ ${especialistasRegistrados}/${especialistasFaseE.length} especialistas registrados`);
+
+// ─── Resumen final del kernel ───
+const health = kernel.health ? kernel.health() : null;
+if (health) {
+  console.log("%c[Kernel] ═══════════════════════════════════════════════", "color:#0071e3;font-weight:bold");
+  console.log("%c[Kernel] Estado final del Sprint 3:", "color:#0071e3;font-weight:bold");
+  console.log(`  Agentes registrados: ${health.agentes_registrados}`);
+  console.log(`  Agentes activos:     ${health.agentes_activos}`);
+  console.log(`  Por capa:`, health.por_capa || {});
+  console.log("%c[Kernel] ═══════════════════════════════════════════════", "color:#0071e3;font-weight:bold");
+}
+
 async function bootstrap() {
   console.log("═══════════════════════════════════════════════════");
   console.log("🚀 KERNEL — Inicializando sistema de agentes v1.2");
