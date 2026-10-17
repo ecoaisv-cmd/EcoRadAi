@@ -5,7 +5,15 @@
 
 (function() {
   "use strict";
-
+  // ═══════════════════════════════════════════════════════════
+  // ESCUDO: Ignorar errores de librerías externas caídas (docx, qrcode)
+  // ═══════════════════════════════════════════════════════════
+  window.addEventListener("error", (e) => {
+    if (e.message && (e.message.includes("docx") || e.message.includes("qrcode"))) {
+      e.preventDefault(); // Silenciar error
+      return true;
+    }
+  }, true);
   console.log("[Observability] 🚀 Iniciando wrapper v3.1 (Flujo de SAVIA paso a paso)...");
 
   const ESTADO = {
