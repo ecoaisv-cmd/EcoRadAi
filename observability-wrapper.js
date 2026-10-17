@@ -628,24 +628,41 @@
       console.log("[Observability] ✅ Hook: guardarFichaPaciente");
     }
 
-        // 2. Hook para seleccionar paciente existente (NUEVO FIX)
+           // 2. Hook para seleccionar paciente existente
     if (typeof window.seleccionarPacienteConsulta === "function" && !window.seleccionarPacienteConsulta._obsPatched) {
       const orig = window.seleccionarPacienteConsulta;
       window.seleccionarPacienteConsulta = async function() {
-        try {
-          const r = await orig.apply(this, arguments);
-          // Esperar 1.5s para que el monolito termine de guardar y el ID limpio esté listo
-          setTimeout(emitirAportePaciente, 1500); 
-          return r;
-        } catch (e) {
-          console.warn("[Observability] El monolito falló al seleccionar paciente, pero el wrapper continúa.", e.message);
-          // Aunque el monolito falle, intentamos capturar el paciente de todas formas
-          setTimeout(emitirAportePaciente, 1500);
-          // No relanzamos el error para que no rompa la promesa
+        // 1. Ejecutamos la función original del monolito (que ahora ya no fallará)
+        const r = await orig.apply(this, arguments);
+        
+        // 2. Leemos inmediatamente el paciente del estado global
+        if (window._consultaState && window._consultaState.paciente) {
+          const pac = window._consultaState.paciente;
+          
+          if (window.SAVIA) {
+            // Creamos el contexto y emitimos la sangre
+            const ctxId = `SAV-RAIZ-${pac.subject_id}-${Date.now()}`;
+            window._obsContextoIdActual = ctxId; // Guardar para los demás agentes
+            
+            window.SAVIA.emitirContexto(ctxId, "savia:aporte-paciente", {
+              contexto_id: ctxId,
+              subject: {
+                subject_id: pac.subject_id,
+                nombre: pac.nombre,
+                edad: pac.edad,
+                sexo: pac.sexo,
+                departamento: pac.departamento,
+                empresa: pac.empresa || "Sin empresa"
+              }
+            }, { de: "agente-paciente" }).then(() => {
+              console.log("[Observability] 🩸 Sangre: Paciente cargado inyectado");
+            }).catch(e => console.warn(e));
+          }
         }
+        return r;
       };
       window.seleccionarPacienteConsulta._obsPatched = true;
-      console.log("[Observability] ✅ Hook: seleccionarPacienteConsulta");
+      console.log("[Observability] ✅ Hook: seleccionarPacienteConsulta (Blindado)");
     }
 
     // 3. Hook para enviar a Kimi (dispara clínica y labs)
