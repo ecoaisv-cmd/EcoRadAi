@@ -549,24 +549,34 @@
     console.log("[Observability] 🌿 SAVIA: Aporte Clínica inyectado (paso a paso)");
   }
 
-  async function emitirAporteLaboratorio() {
+    async function emitirAporteLaboratorio() {
     if (!window.SAVIA || !ESTADO.contextoIdActual) return;
     const labs = {};
-    const ids = { "lab-glucosa":"glucosa", "lab-hba1c":"hba1c", "lab-insulina":"insulina", "lab-homa":"homa_ir", "lab-ct":"ct", "lab-ldl":"ldl", "lab-hdl":"hdl", "lab-tg":"tg", "lab-alt":"alt", "lab-creatinina":"creatinina", "lab-tfg":"tfg" };
-    Object.entries(ids).forEach(([elId, key]) => {
-      const v = leerNumero(elId);
+    
+    // Mapeo dual: [ID Tamizaje | ID Consulta | Nombre en JSON]
+    const mapa = [
+      ["lab-glucosa", "cons-lab-glucosa", "glucosa"],
+      ["lab-hba1c", "cons-lab-hba1c", "hba1c"],
+      ["lab-insulina", "cons-lab-insulina", "insulina"],
+      ["lab-homa", "cons-lab-homa", "homa_ir"],
+      ["lab-ct", "cons-lab-ct", "ct"],
+      ["lab-ldl", "cons-lab-ldl", "ldl"],
+      ["lab-hdl", "cons-lab-hdl", "hdl"],
+      ["lab-tg", "cons-lab-tg", "tg"],
+      ["lab-alt", "cons-lab-alt", "alt"],
+      ["lab-creatinina", "cons-lab-creatinina", "creatinina"],
+      ["lab-tfg", "cons-lab-tfg", "tfg"]
+    ];
+
+    mapa.forEach(([idTamizaje, idConsulta, key]) => {
+      let v = leerNumero(idTamizaje);
+      if (v === null) v = leerNumero(idConsulta);
       if (v !== null) labs[key] = v;
     });
-    
-    // En consulta, los labs también pueden venir del textarea raw o de inputs específicos
-    const rawConsulta = document.getElementById("cons-labs-raw");
-    if (rawConsulta && rawConsulta.value && Object.keys(labs).length === 0) {
-      // Si hay texto pero no valores extraídos, no lo procesamos aquí.
-    }
 
     if (Object.keys(labs).length === 0) return;
     await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-laboratorio", { contexto_id: ESTADO.contextoIdActual, labs }, { de: "agente-laboratorio" });
-    console.log("[Observability] 🌿 SAVIA: Aporte Labs inyectado");
+    console.log("[Observability] 🌿 SAVIA: Aporte Labs inyectado (paso a paso)");
   }
 
   async function emitirSaviaRaiz() {
@@ -703,7 +713,76 @@
     intentos++;
     if (intentos > 60) clearInterval(intervalHooks);
   }, 1000);
+  // ═══════════════════════════════════════════════════════════
+  // VIGILANTE DE SECCIONES (Detecta cambios de pantalla)
+  // ═══════════════════════════════════════════════════════════
+  let ultimaSeccionVista = "";
 
+  function iniciarVigilanteDeSecciones() {
+    const observer = new MutationObserver(() => {
+      // 1. Detectar si estamos en Tamizaje o Consulta
+      const esTamizaje = document.getElementById("sec-captura")?.classList.contains("active");
+      const esConsulta = document.getElementById("sec-consulta")?.classList.contains("active");
+      
+      if (!esTamizaje && !esConsulta) return;
+
+      let seccionActual = "";
+      
+      if (esTamizaje) {
+        // Buscar qué tarjeta de tamizaje está visible
+        const tarjetas = document.querySelectorAll("#sec-captura .section.active");
+        if (tarjetas.length > 0) seccionActual = tarjetas[0].id;
+      } else if (esConsulta) {
+        // Buscar qué tarjeta de consulta está visible
+        const tarjetas = document.querySelectorAll("#sec-consulta .card");
+        for (let card of tarjetas) {
+          if (card.style.display !== "none" && card.offsetParent !== null) {
+            seccionActual = card.id;
+            break;
+          }
+        }
+      }
+
+      // Si cambiamos de sección (y no estamos en la de paciente)
+      if (seccionActual && seccionActual !== ultimaSeccionVista) {
+        // Ignorar las secciones donde no hay datos clínicos que inyectar
+        if (seccionActual.includes("paciente") || seccionActual.includes("consulta-tipo")) {
+          ultimaSeccionVista = seccionActual;
+          return; 
+        }
+
+        console.log(`[Observability] 👁️ Cambio de sección detectado: ${seccionActual}`);
+        ultimaSeccionVista = seccionActual;
+
+        // Disparar el aporte correspondiente
+        if (seccionActual === "sec-vitales" || seccionActual === "consulta-objetivo-card") {
+          emitirAporteClinica();
+        } 
+        else if (seccionActual === "sec-labs") {
+          emitirAporteLaboratorio();
+        }
+        else if (seccionActual === "sec-clinica" || seccionActual === "consulta-subjetivo-card") {
+          emitirAporteSocial();
+        }
+        else if (seccionActual === "sec-analisis" || seccionActual === "consulta-analisis-card") {
+          emitirAporteLaboratorio(); // Por si metieron labs directos
+        }
+      }
+    });
+
+    observer.observe(document.body, { 
+      childList: true, 
+      subtree: true, 
+      attributes: true, 
+      attributeFilter: ['class', 'style'] 
+    });
+    console.log("[Observability] ✅ Vigilante de Secciones (DOM) activado");
+  }
+
+  // Arrancar los vigilantes
+  iniciarVigilanteDePaciente();
+  iniciarVigilanteDeSecciones(); // <--- Nueva línea
+  
   // ═══════════════════════════════════════════════════════════
   // UTILIDADES
   // ═══════════════════════════════════════════════════════════
