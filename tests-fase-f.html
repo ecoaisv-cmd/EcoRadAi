@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Tests Fase F — Sprint 3 · EcoRadAi</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --card: #fff;
+    --text: #1d1d1f;
+    --text-2: #6e6e73;
+    --ok: #34c759;
+    --fail: #ff3b30;
+    --warn: #ff9500;
+    --accent: #0071e3;
+    --border: #d2d2d7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000;
+      --card: #1c1c1e;
+      --text: #fff;
+      --text-2: #98989d;
+      --border: #38383a;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+    line-height: 1.5;
+    padding-bottom: 80px;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.5px; }
+  .subtitle { font-size: 13px; color: var(--text-2); margin-bottom: 20px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 20px;
+    border-radius: 12px;
+    border: none;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-success { background: var(--ok); color: white; }
+  .btn-secondary { background: var(--border); color: var(--text); }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .test-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    gap: 12px;
+  }
+  .test-item.running { border-color: var(--accent); background: rgba(0, 113, 227, 0.05); }
+  .test-item.ok { border-color: var(--ok); background: rgba(52, 199, 89, 0.05); }
+  .test-item.fail { border-color: var(--fail); background: rgba(255, 59, 48, 0.05); }
+  .test-info { flex: 1; min-width: 0; }
+  .test-name { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+  .test-desc { font-size: 12px; color: var(--text-2); }
+  .test-steps {
+    margin-top: 8px;
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    color: var(--text-2);
+    max-height: 200px;
+    overflow-y: auto;
+    display: none;
+  }
+  .test-steps.show { display: block; }
+  .test-steps .step-ok { color: var(--ok); }
+  .test-steps .step-fail { color: var(--fail); }
+  .test-status {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 100px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .test-status.pending { background: var(--border); color: var(--text-2); }
+  .test-status.running { background: var(--accent); color: white; }
+  .test-status.ok { background: var(--ok); color: white; }
+  .test-status.fail { background: var(--fail); color: white; }
+  .resumen {
+    display: flex;
+    gap: 16px;
+    padding: 16px;
+    background: var(--card);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .resumen-item { flex: 1; text-align: center; }
+  .resumen-num { font-size: 28px; font-weight: 800; }
+  .resumen-label { font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; }
+  .log-box {
+    background: #000;
+    color: #0f0;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    padding: 14px;
+    border-radius: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    display: none;
+  }
+  .log-box.show { display: block; }
+  .nota {
+    padding: 12px 16px;
+    background: rgba(255, 149, 0, 0.1);
+    border-left: 4px solid var(--warn);
+    border-radius: 0 8px 8px 0;
+    font-size: 12px;
+    line-height: 1.6;
+    margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>🧪 Tests Fase F — Sprint 3</h1>
+  <p class="subtitle">Tests end-to-end del árbol de agentes · 45 agentes · 3 flujos verificados</p>
+
+  <div class="nota">
+    <strong>ℹ️ Antes de ejecutar:</strong> esta página debe abrirse <strong>dentro del contexto de la app</strong>.
+    Abre primero <code>EcoRadAi23.4d.html</code>, espera a que el kernel esté listo (45 agentes), y luego abre
+    esta página o navega a ella desde la misma pestaña. Si abres esta página en una pestaña nueva sin sesión,
+    los tests fallarán porque <code>window.kernel</code> y <code>window.SAVIA</code> no existirán.
+  </div>
+
+  <div class="resumen">
+    <div class="resumen-item">
+      <div class="resumen-num" id="res-total">3</div>
+      <div class="resumen-label">Tests</div>
+    </div>
+    <div class="resumen-item">
+      <div class="resumen-num" id="res-ok" style="color: var(--ok)">0</div>
+      <div class="resumen-label">OK</div>
+    </div>
+    <div class="resumen-item">
+      <div class="resumen-num" id="res-fail" style="color: var(--fail)">0</div>
+      <div class="resumen-label">Fallos</div>
+    </div>
+    <div class="resumen-item">
+      <div class="resumen-num" id="res-time">0s</div>
+      <div class="resumen-label">Duración</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-ejecutar-todos" onclick="ejecutarTodos()">
+        ▶️ Ejecutar todos los tests
+      </button>
+      <button class="btn btn-secondary" id="btn-limpiar" onclick="limpiar()">
+        🧹 Limpiar
+      </button>
+      <button class="btn btn-secondary" onclick="toggleLog()">
+        📋 Ver log
+      </button>
+    </div>
+
+    <div id="tests-lista">
+      <!-- Los tests se generan aquí -->
+    </div>
+
+    <div class="log-box" id="log-box"></div>
+  </div>
+
+</div>
+
+<script type="module">
+import { testKernel45 } from "./js/tests/fase-f/test-kernel-45.js";
+import { testFlujoTamizaje } from "./js/tests/fase-f/test-flujo-tamizaje.js";
+import { testFlujoConsulta } from "./js/tests/fase-f/test-flujo-consulta.js";
+
+// ═══════════════════════════════════════════════════════════
+// DEFINICIÓN DE TESTS
+// ═══════════════════════════════════════════════════════════
+const TESTS = [
+  {
+    id: "kernel-45",
+    nombre: "Test 1 — Kernel con 45 agentes",
+    descripcion: "Verifica 30 especialistas + 3 maestros + suscripciones",
+    fn: testKernel45,
+    tarda: false
+  },
+  {
+    id: "flujo-tamizaje",
+    nombre: "Test 2 — Flujo de tamizaje",
+    descripcion: "SAVIA RAÍZ → coordinador → especialistas → plan integrado (llama a Kimi)",
+    fn: testFlujoTamizaje,
+    tarda: true
+  },
+  {
+    id: "flujo-consulta",
+    nombre: "Test 3 — Flujo de consulta SOAP",
+    descripcion: "Sugerencias → decisión → plan integrado (no llama a Kimi)",
+    fn: testFlujoConsulta,
+    tarda: false
+  }
+];
+
+// ═══════════════════════════════════════════════════════════
+// ESTADO
+// ═══════════════════════════════════════════════════════════
+const ESTADO = {
+  corriendo: false,
+  inicio: 0,
+  resultados: {}
+};
+
+// ═══════════════════════════════════════════════════════════
+// RENDER INICIAL
+// ═══════════════════════════════════════════════════════════
+function renderLista() {
+  const cont = document.getElementById("tests-lista");
+  cont.innerHTML = TESTS.map(t => `
+    <div class="test-item pending" id="test-${t.id}" data-test="${t.id}">
+      <div class="test-info">
+        <div class="test-name">${t.nombre}</div>
+        <div class="test-desc">${t.descripcion}${t.tarda ? " · <strong style='color:var(--warn)'>puede tardar 2-3 min</strong>" : ""}</div>
+        <div class="test-steps" id="steps-${t.id}"></div>
+      </div>
+      <span class="test-status pending" id="status-${t.id}">Pendiente</span>
+    </div>
+  `).join("");
+}
+
+function setStatus(testId, status, texto) {
+  const el = document.getElementById(`status-${testId}`);
+  const item = document.getElementById(`test-${testId}`);
+  if (!el || !item) return;
+  el.className = `test-status ${status}`;
+  el.textContent = texto;
+  item.className = `test-item ${status}`;
+}
+
+function agregarPasoVisual(testId, ok, nombre, mensaje) {
+  const el = document.getElementById(`steps-${testId}`);
+  if (!el) return;
+  el.classList.add("show");
+  const div = document.createElement("div");
+  div.className = ok ? "step-ok" : "step-fail";
+  div.textContent = `${ok ? "✓" : "✗"} ${nombre}${mensaje ? " — " + mensaje : ""}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════════════
+// EJECUCIÓN
+// ═══════════════════════════════════════════════════════════
+async function ejecutarTest(test) {
+  setStatus(test.id, "running", "Ejecutando…");
+
+  // Monkey-patch del reporte para reflejar pasos en la UI
+  const reporte = await test.fn();
+
+  setStatus(
+    test.id,
+    reporte.ok ? "ok" : "fail",
+    reporte.ok ? `OK · ${reporte.duracion_ms}ms` : "Falló"
+  );
+
+  if (reporte.pasos) {
+    reporte.pasos.forEach(p => agregarPasoVisual(test.id, p.ok, p.nombre, p.mensaje));
+  }
+
+  ESTADO.resultados[test.id] = reporte;
+  return reporte;
+}
+
+async function ejecutarTodos() {
+  if (ESTADO.corriendo) return;
+  if (!window.kernel || !window.SAVIA) {
+    alert("⚠️ El kernel y SAVIA no están disponibles.\n\nAbre primero EcoRadAi23.4d.html, espera a que el kernel cargue (45 agentes), y luego vuelve a esta página.");
+    return;
+  }
+
+  ESTADO.corriendo = true;
+  ESTADO.inicio = Date.now();
+  ESTADO.resultados = {};
+
+  document.getElementById("btn-ejecutar-todos").disabled = true;
+  document.getElementById("btn-limpiar").disabled = true;
+
+  // Limpiar pasos
+  TESTS.forEach(t => {
+    const steps = document.getElementById(`steps-${t.id}`);
+    if (steps) { steps.innerHTML = ""; steps.classList.remove("show"); }
+    setStatus(t.id, "pending", "Pendiente");
+  });
+
+  let ok = 0;
+  let fail = 0;
+
+  for (const test of TESTS) {
+    try {
+      const reporte = await ejecutarTest(test);
+      if (reporte.ok) ok++;
+      else fail++;
+    } catch (e) {
+      console.error(`[Runner] Excepción en ${test.id}:`, e);
+      setStatus(test.id, "fail", "Excepción");
+      agregarPasoVisual(test.id, false, "Excepción", e.message);
+      fail++;
+    }
+    actualizarResumen(ok, fail);
+  }
+
+  const duracion = Math.round((Date.now() - ESTADO.inicio) / 1000);
+  document.getElementById("res-time").textContent = `${duracion}s`;
+  actualizarResumen(ok, fail);
+
+  ESTADO.corriendo = false;
+  document.getElementById("btn-ejecutar-todos").disabled = false;
+  document.getElementById("btn-limpiar").disabled = false;
+
+  console.log(`\n═══════════════════════════════════════════`);
+  console.log(`  RESULTADO FINAL FASE F`);
+  console.log(`  OK: ${ok} / ${TESTS.length}`);
+  console.log(`  Fallos: ${fail}`);
+  console.log(`  Duración: ${duracion}s`);
+  console.log(`═══════════════════════════════════════════\n`);
+}
+
+function actualizarResumen(ok, fail) {
+  document.getElementById("res-ok").textContent = ok;
+  document.getElementById("res-fail").textContent = fail;
+}
+
+function limpiar() {
+  if (ESTADO.corriendo) return;
+  ESTADO.resultados = {};
+  renderLista();
+  document.getElementById("res-ok").textContent = "0";
+  document.getElementById("res-fail").textContent = "0";
+  document.getElementById("res-time").textContent = "0s";
+}
+
+function toggleLog() {
+  const box = document.getElementById("log-box");
+  box.classList.toggle("show");
+  if (box.classList.contains("show")) {
+    // Capturar console.log en el log-box
+    if (!window._logInterceptado) {
+      window._logInterceptado = true;
+      const orig = console.log;
+      console.log = function(...args) {
+        orig.apply(console, args);
+        const texto = args.map(a =>
+          typeof a === "object" ? JSON.stringify(a) : String(a)
+        ).join(" ");
+        box.textContent += texto + "\n";
+        box.scrollTop = box.scrollHeight;
+      };
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+renderLista();
+console.log("[Runner Fase F] Cargado. Tests disponibles:", TESTS.map(t => t.id));
+</script>
+
+</body>
+</html>
