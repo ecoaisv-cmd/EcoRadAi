@@ -1,24 +1,22 @@
 // ═══════════════════════════════════════════════════════════════
-// OBSERVABILITY WRAPPER v7.0 — EcoRadAi Sprint 3
-// Lógica: Escucha pasiva del Kernel. NO lee el DOM.
-// Pinta lo que los agentes reales (RAÍZ, TRONCO, FRUTO) emiten.
+// OBSERVABILITY WRAPPER v9.0 — EcoRadAi Sprint 3
+// Lógica: Observador Pasivo (Escucha al Kernel)
+// Render: Narrativa Clínica + JSON Opcional (Colapsable)
 // ═══════════════════════════════════════════════════════════════
 
 (function() {
   "use strict";
 
-  const VERSION = "7.0";
+  const VERSION = "9.0";
   const ESTADO = {
     panelAbierto: false,
     capturadorActivo: false,
-    pasoActual: 0,
     eventos: [],
     contextoIdActual: null,
-    iniciado: false,
-    saviaDisponible: false
+    iniciado: false
   };
 
-  console.log(`%c[Observability] 🚀 Visor v${VERSION} (Modo Escucha) cargando...`, "background:#0071e3;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
+  console.log(`%c[Observability] 🚀 Visor v${VERSION} (Modo Narrativa) cargando...`, "background:#0071e3;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
 
   // ═══════════════════════════════════════════════════════════
   // SECCIÓN 1 — ESCUDO Y HELPERS
@@ -40,7 +38,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 2 — UI INJECTION
+  // SECCIÓN 2 — UI INJECTION (Panel del Visor)
   // ═══════════════════════════════════════════════════════════
   function inyectarBotonFlotante() {
     if (document.getElementById("obs-fab")) return;
@@ -125,12 +123,11 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 3 — ACTIVAR ESCUCHA (¡El núcleo del visor!)
+  // SECCIÓN 3 — CAPTURA MULTICANAL
   // ═══════════════════════════════════════════════════════════
   async function activarCapturador() {
     if (ESTADO.capturadorActivo) return;
 
-    // Esperar a que el kernel exponga SAVIA
     let intentos = 0;
     while (!window.SAVIA && intentos < 60) {
       await new Promise(r => setTimeout(r, 1000));
@@ -143,19 +140,33 @@
       return;
     }
 
-    // Engancharse al bus de SAVIA
-    const saviaOriginal = window.SAVIA.propagar;
-    window.SAVIA.propagar = function(evento) {
-      // 1. Pintar el evento en el visor
-      try { procesarEvento(evento); } catch (e) { console.warn("[Observability] Error pintando evento:", e); }
-      // 2. Dejar que el Kernel siga procesando normalmente
-      return saviaOriginal.apply(this, arguments);
-    };
-    
+    const metodos = ["propagar", "emitir", "enviar", "publicar"];
+    metodos.forEach(metodo => {
+      if (typeof window.SAVIA[metodo] === "function" && !window.SAVIA[metodo]._obsPatched) {
+        const original = window.SAVIA[metodo];
+        window.SAVIA[metodo] = function(evento) {
+          try { procesarEvento(evento); } catch (e) { console.warn("[Observability] Error:", e); }
+          return original.apply(this, arguments);
+        };
+        window.SAVIA[metodo]._obsPatched = true;
+      }
+    });
+
+    if (typeof window.SAVIA.emitirContexto === "function" && !window.SAVIA.emitirContexto._obsPatched) {
+      const origEmitir = window.SAVIA.emitirContexto;
+      window.SAVIA.emitirContexto = async function(contextoId, tipo, payload, meta) {
+        ESTADO.contextoIdActual = contextoId;
+        try {
+          procesarEvento({ tipo, payload, de: meta?.de || "agente", timestamp: new Date().toISOString() });
+        } catch (e) {}
+        return origEmitir.apply(this, arguments);
+      };
+      window.SAVIA.emitirContexto._obsPatched = true;
+    }
+
     ESTADO.capturadorActivo = true;
     const badge = document.getElementById("obs-badge");
     if (badge) { badge.textContent = "✅ Activo"; badge.style.background = "rgba(52,199,89,0.6)"; }
-    console.log("[Observability] ✅ Visor enganchado al bus de eventos de SAVIA");
   }
 
   function procesarEvento(evento) {
@@ -163,25 +174,20 @@
     const tipo = evento.tipo;
     const payload = evento.payload || {};
 
-    // Mapeo de eventos del Kernel a funciones de pintado
     try {
-      if (tipo === "savia:aporte-paciente") return renderPaciente(payload, evento);
-      if (tipo === "savia:aporte-clinica") return renderClinica(payload, evento);
-      if (tipo === "savia:aporte-laboratorio") return renderLaboratorio(payload, evento);
-      if (tipo === "savia:raiz:contexto-unificado") return renderSaviaRaiz(payload, evento);
-      if (tipo === "savia:tronco:informe-kimi") return renderTronco(payload, evento);
-      if (tipo === "especialista:respuesta") return renderEspecialista(payload, evento);
-      if (tipo === "savia:tronco:plan-integrado") return renderPlan(payload, evento);
+      if (tipo.includes("raiz") || tipo.includes("aporte")) return renderRaiz(tipo, payload, evento);
+      if (tipo.includes("tronco") || tipo.includes("especialista") || tipo.includes("medico")) return renderTronco(tipo, payload, evento);
+      if (tipo.includes("fruto") || tipo.includes("plan")) return renderFruto(tipo, payload, evento);
     } catch (e) {
-      console.error("[Observability] Error procesando", tipo, e);
+      console.error("[Observability] Error pintando", tipo, e);
     }
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 4 — PINTADO DE EVENTOS (UI)
+  // SECCIÓN 4 — RENDERIZADO NARRATIVO
   // ═══════════════════════════════════════════════════════════
+  
   function agregarPaso(config) {
-    ESTADO.pasoActual++;
     const narrativa = document.getElementById("obs-narrativa");
     if (!narrativa) return;
     const empty = document.getElementById("obs-sangre-vacia");
@@ -193,6 +199,17 @@
     const badgeColor = config.badgeColor || config.color || "#34c759";
     const color = config.color || "#34c759";
 
+    // Botón opcional para ver el JSON crudo
+    const jsonBtnHTML = config.rawJSON ? `
+      <div style="margin-top: 10px;">
+        <button onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'" 
+                style="background: none; border: 1px dashed #ccc; color: #666; font-size: 9px; padding: 2px 6px; border-radius: 4px; cursor: pointer; width: 100%;">
+          { } Ver JSON crudo
+        </button>
+        <pre style="display: none; margin-top: 4px; background: #f5f5f5; padding: 8px; border-radius: 4px; font-size: 9px; max-height: 150px; overflow: auto; white-space: pre-wrap; word-break: break-all;">${escapeHtml(JSON.stringify(config.rawJSON, null, 2))}</pre>
+      </div>
+    ` : "";
+
     card.innerHTML = `
       <div style="padding: 12px 16px; background: ${color}11; border-bottom: 1px solid ${color}22; display: flex; align-items: flex-start; gap: 12px; position: relative">
         <div style="position: absolute; left: -31px; top: 14px; width: 16px; height: 16px; border-radius: 50%; background: ${color}; border: 3px solid white; box-shadow: 0 0 0 2px ${color}44; z-index: 2"></div>
@@ -202,7 +219,10 @@
         </div>
         <span style="font-size: 9px; font-weight: 800; padding: 4px 10px; border-radius: 100px; text-transform: uppercase; background: ${badgeColor}; color: white; flex-shrink: 0; letter-spacing: 0.5px">${config.badge || ""}</span>
       </div>
-      <div style="padding: 16px; font-size: 12px; line-height: 1.6">${config.html || ""}</div>
+      <div style="padding: 16px; font-size: 12px; line-height: 1.6; color: #333;">
+        ${config.html || ""}
+        ${jsonBtnHTML}
+      </div>
     `;
 
     narrativa.appendChild(card);
@@ -218,52 +238,101 @@
     });
   }
 
-  function renderPaciente(payload, evento) {
-    const s = payload.subject || payload;
+  // ─── RENDER: RAÍZ ───
+  function renderRaiz(tipo, payload, evento) {
     ESTADO.eventos.push({ tipo: "raiz", evento });
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Paciente", subtitulo: `savia:aporte-paciente · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;"><strong>${escapeHtml(s.nombre)}</strong> (${escapeHtml(s.subject_id)})</div>` });
-  }
+    
+    let titulo = "Agente de Captura";
+    let narrativa = "";
 
-  function renderClinica(payload, evento) {
-    const c = payload.clinica || payload;
-    ESTADO.eventos.push({ tipo: "raiz", evento });
-    let filas = "";
-    Object.keys(c).forEach(k => {
-      if (c[k] === null || c[k] === undefined || typeof c[k] === 'object') return;
-      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${c[k]}</td></tr>`;
+    if (tipo.includes("paciente")) {
+      titulo = "Registro de Paciente";
+      narrativa = `Se ha capturado la identidad de <strong>${payload.subject?.nombre || "Paciente"}</strong> (ID: ${payload.subject?.subject_id || "—"}), de ${payload.subject?.edad || "—"} años, sexo ${payload.subject?.sexo || "—"}.`;
+    } 
+    else if (tipo.includes("subjetivo")) {
+      titulo = "Anamnesis (Subjetivo)";
+      narrativa = `<strong>Motivo:</strong> ${payload.subjetivo?.motivo || "No especificado"}.<br><strong>Enfermedad actual:</strong> ${payload.subjetivo?.enfermedad_actual || "—"}.`;
+    }
+    else if (tipo.includes("clinica")) {
+      titulo = "Signos Vitales y Antropometría";
+      const c = payload.clinica || payload;
+      let filas = "";
+      if (c.peso_kg) filas += `Peso: ${c.peso_kg}kg `;
+      if (c.talla_cm) filas += `| Talla: ${c.talla_cm}cm `;
+      if (c.imc) filas += `| IMC: ${c.imc} `;
+      if (c.presion_sistolica_mmhg) filas += `| PA: ${c.presion_sistolica_mmhg}/${c.presion_diastolica_mmhg || "—"} mmHg `;
+      if (c.frecuencia_cardiaca_lpm) filas += `| FC: ${c.frecuencia_cardiaca_lpm} lpm`;
+      narrativa = filas || "Se capturaron datos clínicos.";
+    }
+    else if (tipo.includes("examen")) {
+      titulo = "Examen Físico";
+      narrativa = `Se registraron hallazgos en ${Object.keys(payload.examen_fisico || {}).length} regiones anatómicas.`;
+    }
+    else if (tipo.includes("laboratorio")) {
+      titulo = "Resultados de Laboratorio";
+      const l = payload.labs || payload;
+      narrativa = `Se han recibido ${Object.keys(l).length} exámenes. Destacan: ` + Object.entries(l).slice(0, 3).map(([k, v]) => `<strong>${k}</strong>: ${v}`).join(", ") + "...";
+    }
+    else if (tipo.includes("contexto-unificado")) {
+      titulo = "Consolidación de SAVIA RAÍZ";
+      narrativa = `El agente consolidador ha unificado todos los aportes en un solo contexto clínico, listo para ser enviado al TRONCO.`;
+      ESTADO.eventos.push({ tipo: "savia", evento }); // Sumar al contador SAVIA
+    }
+
+    agregarPaso({ 
+      color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", 
+      titulo, subtitulo: `${evento.de || 'agente'} · ${formatearHora(evento.timestamp)}`, 
+      html: `<div style="font-size:12px; line-height:1.5;">${narrativa}</div>`,
+      rawJSON: payload
     });
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Clínica", subtitulo: `savia:aporte-clinica · ${formatearHora(evento.timestamp)}`, html: `<table style="width:100%;font-size:11px;border-collapse:collapse;">${filas}</table>` });
   }
 
-  function renderLaboratorio(payload, evento) {
-    const l = payload.labs || payload;
-    ESTADO.eventos.push({ tipo: "raiz", evento });
-    let filas = "";
-    Object.keys(l).forEach(k => {
-      if (l[k] === null || l[k] === undefined) return;
-      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${l[k]}</td></tr>`;
+  // ─── RENDER: TRONCO ───
+  function renderTronco(tipo, payload, evento) {
+    ESTADO.eventos.push({ tipo: "tronco", evento });
+    
+    let titulo = "Procesamiento TRONCO";
+    let narrativa = "";
+
+    if (tipo.includes("informe-kimi")) {
+      titulo = "Análisis del Coordinador";
+      narrativa = `El coordinador ha procesado la SAVIA con Kimi y ha generado el informe base. Se detectaron <strong>${payload.interconsultas_sugeridas?.length || 0}</strong> interconsultas sugeridas.`;
+    }
+    else if (tipo.includes("especialista")) {
+      titulo = `Análisis de Especialista: ${payload.especialista || "—"}`;
+      narrativa = `El agente especialista ha revisado el caso y emitió su diagnóstico: <em>"${payload.resultado?.resumen || payload.resumen || "Análisis completado."}"</em>`;
+    }
+    else if (tipo.includes("medico")) {
+      titulo = "Validación del Médico";
+      narrativa = `El médico validador ha revisado el caso y autorizado el plan de acción.`;
+    }
+
+    agregarPaso({ 
+      color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", 
+      titulo, subtitulo: `${evento.de || 'agente'} · ${formatearHora(evento.timestamp)}`, 
+      html: `<div style="font-size:12px; line-height:1.5;">${narrativa}</div>`,
+      rawJSON: payload
     });
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Laboratorio", subtitulo: `savia:aporte-laboratorio · ${formatearHora(evento.timestamp)}`, html: `<table style="width:100%;font-size:11px;border-collapse:collapse;">${filas}</table>` });
   }
 
-  function renderSaviaRaiz(payload, evento) {
-    ESTADO.eventos.push({ tipo: "savia", evento });
-    agregarPaso({ color: "#34c759", badge: "SAVIA", badgeColor: "#34c759", titulo: "Consolidación RAÍZ", subtitulo: `savia:raiz:contexto-unificado · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Contexto unificado generado con éxito.</div>` });
-  }
-
-  function renderTronco(payload, evento) {
-    ESTADO.eventos.push({ tipo: "tronco", evento });
-    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: "Coordinador (Informe Kimi)", subtitulo: `savia:tronco:informe-kimi · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Análisis del coordinador completado.</div>` });
-  }
-
-  function renderEspecialista(payload, evento) {
-    ESTADO.eventos.push({ tipo: "tronco", evento });
-    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: `Especialista: ${payload.especialista || "—"}`, subtitulo: `especialista:respuesta · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Análisis recibido.</div>` });
-  }
-
-  function renderPlan(payload, evento) {
+  // ─── RENDER: FRUTO ───
+  function renderFruto(tipo, payload, evento) {
     ESTADO.eventos.push({ tipo: "fruto", evento });
-    agregarPaso({ color: "#ff3b30", badge: "FRUTO", badgeColor: "#ff3b30", titulo: "Plan Integrado Final", subtitulo: `savia:tronco:plan-integrado · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Plan generado con éxito.</div>` });
+    
+    let titulo = "Generación de FRUTO";
+    let narrativa = "";
+
+    if (tipo.includes("plan")) {
+      titulo = "Plan Integrado Final";
+      narrativa = `El tejido ha consolidado el diagnóstico y los planes de los especialistas en un <strong>Plan Farmacológico y No Farmacológico</strong> listo para el paciente.`;
+    }
+
+    agregarPaso({ 
+      color: "#ff3b30", badge: "FRUTO", badgeColor: "#ff3b30", 
+      titulo, subtitulo: `${evento.de || 'agente'} · ${formatearHora(evento.timestamp)}`, 
+      html: `<div style="font-size:12px; line-height:1.5;">${narrativa}</div>`,
+      rawJSON: payload
+    });
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -271,7 +340,7 @@
   // ═══════════════════════════════════════════════════════════
   function limpiarPanel() {
     if (!confirm("¿Limpiar la SAVIA del árbol?")) return;
-    ESTADO.pasoActual = 0; ESTADO.eventos = [];
+    ESTADO.eventos = [];
     const narrativa = document.getElementById("obs-narrativa");
     if (narrativa) {
       narrativa.innerHTML = `
@@ -295,13 +364,14 @@
   }
 
   function mostrarAyuda() {
-    alert("🌿 ¿Cómo funciona la SAVIA?\n\nEl Visor es un observador pasivo. Se engancha al bus de eventos del Kernel (window.SAVIA.propagar) y pinta los eventos que los agentes emiten:\n\n- RAÍZ: aporta datos crudos (paciente, clínica, labs).\n- TRONCO: Coordinador y Especialistas analizan.\n- FRUTO: Plan Integrado Final.\n\nTodo se refleja en esta línea de tiempo.");
+    alert("🌿 ¿Cómo funciona la SAVIA?\n\nEl Visor es un observador pasivo. Se engancha a los canales del Kernel (window.SAVIA) y pinta cada evento que los agentes emiten de forma narrativa.\n\nSi necesitas ver los datos crudos que viajan por la SAVIA, haz clic en '{ } Ver JSON crudo' dentro de cada tarjeta.");
   }
 
   function mostrarDiagnostico() {
     const diag = {
       "Versión wrapper": VERSION,
       "SAVIA disponible": !!window.SAVIA,
+      "Canales enganchados": ["propagar", "emitir", "enviar", "publicar", "emitirContexto"].filter(m => window.SAVIA?.[m]?._obsPatched).join(", ") || "Ninguno",
       "Capturador activo": ESTADO.capturadorActivo,
       "Eventos capturados": ESTADO.eventos.length,
       "Contexto actual": ESTADO.contextoIdActual || "—",
@@ -353,7 +423,7 @@
     
     setTimeout(activarCapturador, 2000);
     
-    console.log(`%c[Observability] ✅ Visor v${VERSION} inicializado. Escuchando el bus de SAVIA.`, "background:#34c759;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
+    console.log(`%c[Observability] ✅ Visor v${VERSION} inicializado. Esperando eventos del Kernel.`, "background:#34c759;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
   }
 
   if (document.readyState === "loading") {
