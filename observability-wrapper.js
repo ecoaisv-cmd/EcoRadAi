@@ -572,8 +572,10 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // INSTALAR HOOKS EN EL MONOLITO
+  // INSTALAR HOOKS EN EL MONOLITO (Y VIGILANTE DE MEMORIA)
   // ═══════════════════════════════════════════════════════════
+  let ultimoPacienteInyectado = ""; // Para no inyectar al mismo paciente dos veces
+  
   function instalarHooks() {
     // 1. Hook para guardar ficha (paciente nuevo)
     if (typeof window.guardarFichaPaciente === "function" && !window.guardarFichaPaciente._obsPatched) {
@@ -581,7 +583,13 @@
       window.guardarFichaPaciente = async function() {
         const r = await orig.apply(this, arguments);
         setTimeout(() => {
-          if (window._consultaState?.paciente) emitirAportePacienteDesdeEstado(window._consultaState.paciente);
+          if (window._consultaState?.paciente) {
+            const pac = window._consultaState.paciente;
+            if (pac.subject_id && !pac.subject_id.includes("????") && pac.subject_id !== ultimoPacienteInyectado) {
+              ultimoPacienteInyectado = pac.subject_id;
+              emitirAportePacienteDesdeEstado(pac);
+            }
+          }
         }, 1500); 
         return r;
       };
@@ -589,24 +597,7 @@
       console.log("[Observability] ✅ Hook: guardarFichaPaciente");
     }
 
-    // 2. Hook para seleccionar paciente existente (A PRUEBA DE BALAS)
-    if (typeof window.seleccionarPacienteConsulta === "function" && !window.seleccionarPacienteConsulta._obsPatched) {
-      const orig = window.seleccionarPacienteConsulta;
-      window.seleccionarPacienteConsulta = async function() {
-        try {
-          await orig.apply(this, arguments);
-        } catch (e) {
-          console.warn("[Observability] Error interno del monolito neutralizado:", e.message);
-        }
-        setTimeout(() => {
-          if (window._consultaState?.paciente) emitirAportePacienteDesdeEstado(window._consultaState.paciente);
-        }, 1500); 
-      };
-      window.seleccionarPacienteConsulta._obsPatched = true;
-      console.log("[Observability] ✅ Hook: seleccionarPacienteConsulta");
-    }
-
-    // 3. Hook para enviar a Kimi (dispara clínica y labs)
+    // 2. Hook para enviar a Kimi (dispara clínica y labs)
     if (typeof window.sendToProxyBasico === "function" && !window.sendToProxyBasico._obsPatched) {
       const orig = window.sendToProxyBasico;
       window.sendToProxyBasico = async function() {
@@ -621,13 +612,35 @@
     }
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // VIGILANTE DE MEMORIA (La solución al bug del DOM vacío)
+  // ═══════════════════════════════════════════════════════════
+  function iniciarVigilanteDePaciente() {
+    setInterval(() => {
+      // Revisamos la memoria del monolito, no el HTML
+      if (window._consultaState && window._consultaState.paciente) {
+        const pac = window._consultaState.paciente;
+        
+        // Validar que tenga un ID limpio y que no lo hayamos procesado ya
+        if (pac.subject_id && !pac.subject_id.includes("????") && pac.subject_id !== ultimoPacienteInyectado) {
+          ultimoPacienteInyectado = pac.subject_id;
+          console.log("[Observability] 🎯 Vigilante detectó paciente en memoria:", pac.nombre);
+          emitirAportePacienteDesdeEstado(pac);
+        }
+      }
+    }, 1000); // Revisar cada segundo
+  }
+
+  // Arrancar el vigilante
+  iniciarVigilanteDePaciente();
+
+  // Instalar hooks tradicionales
   let intentos = 0;
   const intervalHooks = setInterval(() => {
     instalarHooks();
     intentos++;
     if (intentos > 60) clearInterval(intervalHooks);
   }, 1000);
-
   // ═══════════════════════════════════════════════════════════
   // UTILIDADES
   // ═══════════════════════════════════════════════════════════
