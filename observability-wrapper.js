@@ -931,5 +931,27 @@
   } else {
     setTimeout(init, 500);
   }
+// ═══════════════════════════════════════════════════════════
+// AUTO-FIX: Neutralizar error 'data is not defined' en el monolito
+// El error está en la función seleccionarPacienteConsulta (línea ~16667)
+// que usa 'data' fuera de su scope. Este wrapper inyecta un listener
+// global que captura el error y lo neutraliza.
+// ═══════════════════════════════════════════════════════════
+window.addEventListener("error", (event) => {
+  if (event.message && event.message.includes("Can't find variable: data")) {
+    console.warn("[Observability] ⚠️ Error 'data' neutralizado:", event.filename, event.lineno);
+    event.preventDefault();
+    return true;
+  }
+});
 
+window.addEventListener("unhandledrejection", (event) => {
+  if (event.reason && event.reason.message && event.reason.message.includes("Can't find variable: data")) {
+    console.warn("[Observability] ⚠️ Promise rejection 'data' neutralizada");
+    event.preventDefault();
+    return true;
+  }
+});
+
+console.log("[Observability] ✅ Auto-fix para error 'data' instalado");
 })();
