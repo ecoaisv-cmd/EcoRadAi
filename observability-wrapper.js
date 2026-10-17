@@ -1,12 +1,12 @@
 // ═══════════════════════════════════════════════════════════════
-// OBSERVABILITY WRAPPER v2.0 — EcoRadAi Sprint 3
-// Inyecta un panel visual del flujo sanguíneo (SAVIA)
+// OBSERVABILITY WRAPPER v3.0 — EcoRadAi Sprint 3
+// Panel visual del flujo de SAVIA (Verde)
 // ═══════════════════════════════════════════════════════════════
 
 (function() {
   "use strict";
 
-  console.log("[Observability] 🚀 Iniciando wrapper v2.0 (Sangre Fluyendo)...");
+  console.log("[Observability] 🚀 Iniciando wrapper v3.0 (Flujo de SAVIA)...");
 
   const ESTADO = {
     panelAbierto: false,
@@ -41,38 +41,18 @@
     return d.innerHTML;
   }
 
-  function formatearJSON(obj) {
-    return JSON.stringify(obj, null, 2)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"([^"]+)":/g, '<span style="color:#79c0ff">"$1"</span>:')
-      .replace(/: "([^"]*)"/g, ': <span style="color:#a5d6ff">"$1"</span>')
-      .replace(/: (true|false)/g, ': <span style="color:#ff7b72">$1</span>')
-      .replace(/: (null)/g, ': <span style="color:#ff7b72">$1</span>')
-      .replace(/: (-?\d+\.?\d*)/g, ': <span style="color:#79c0ff">$1</span>');
-  }
-
   function formatearHora(iso) {
     try {
       return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     } catch { return "—"; }
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // LECTURA DE CAMPOS
-  // ═══════════════════════════════════════════════════════════
-  function leerCampo(id) {
+  function leerNumero(id) {
     const el = document.getElementById(id);
     if (!el) return null;
     const val = el.value;
-    return val === "" ? null : val;
-  }
-
-  function leerNumero(id) {
-    const v = leerCampo(id);
-    if (v === null) return null;
-    const n = parseFloat(v);
+    if (val === "") return null;
+    const n = parseFloat(val);
     return isNaN(n) ? null : n;
   }
 
@@ -135,13 +115,13 @@
     if (document.getElementById("obs-fab")) return;
     const fab = document.createElement("button");
     fab.id = "obs-fab";
-    fab.innerHTML = "🔬";
-    fab.title = "Observabilidad (Flujo Sanguíneo)";
+    fab.innerHTML = "🌿"; // Icono de SAVIA
+    fab.title = "Observabilidad (Flujo de SAVIA)";
     fab.style.cssText = `
       position: fixed; bottom: 90px; right: 20px; width: 56px; height: 56px;
-      border-radius: 50%; background: linear-gradient(135deg, #7c3aed, #0071e3);
+      border-radius: 50%; background: linear-gradient(135deg, #34c759, #0071e3);
       color: white; border: none; font-size: 24px; cursor: pointer;
-      box-shadow: 0 8px 24px rgba(124,58,237,0.4); z-index: 99998;
+      box-shadow: 0 8px 24px rgba(52,199,89,0.4); z-index: 99998;
       transition: all 0.3s ease; display: flex; align-items: center; justify-content: center;
     `;
     fab.addEventListener("click", togglePanel);
@@ -154,16 +134,16 @@
     panel.id = "obs-panel";
     panel.style.cssText = `
       position: fixed; top: 0; right: -400px; width: 380px; height: 100vh;
-      background: #f5f5f7; border-left: 2px solid #0071e3;
+      background: #f5f5f7; border-left: 2px solid #34c759;
       box-shadow: -8px 0 32px rgba(0,0,0,0.2); z-index: 99999;
       transition: right 0.3s ease; display: flex; flex-direction: column;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1d1d1f;
     `;
 
     panel.innerHTML = `
-      <div style="padding: 14px 18px; background: linear-gradient(135deg, #1a3a5c, #0071e3); color: white; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0">
+      <div style="padding: 14px 18px; background: linear-gradient(135deg, #1a3a5c, #34c759); color: white; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0">
         <div>
-          <div style="font-size: 14px; font-weight: 800; letter-spacing: -0.3px">🩸 Flujo Sanguíneo (SAVIA)</div>
+          <div style="font-size: 14px; font-weight: 800; letter-spacing: -0.3px">🌿 Flujo de SAVIA</div>
           <div style="font-size: 11px; opacity: 0.85; margin-top: 2px">Sprint 3 · Árbol de agentes</div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center">
@@ -192,16 +172,16 @@
       </div>
 
       <div id="obs-narrativa" style="flex: 1; overflow-y: auto; padding: 14px; background: #f9f9fa; display: flex; flex-direction: column; gap: 16px; position: relative">
-        <div style="position: absolute; left: 24px; top: 20px; bottom: 20px; width: 4px; background: linear-gradient(180deg, #0071e3, #34c759, #ff3b30); border-radius: 4px; opacity: 0.15; z-index: 0"></div>
+        <div style="position: absolute; left: 24px; top: 20px; bottom: 20px; width: 4px; background: linear-gradient(180deg, #34c759, #0071e3); border-radius: 4px; opacity: 0.15; z-index: 0"></div>
         <div id="obs-sangre-vacia" style="text-align: center; padding: 40px 20px; color: #86868b; font-size: 12px; z-index: 1; background: #f9f9fa">
-          <div style="font-size: 42px; margin-bottom: 10px">🩸</div>
-          <div style="font-size: 13px; font-weight: 700; color: #6e6e73; margin-bottom: 6px">El torrente sanguíneo está vacío</div>
-          <div style="font-size: 11px; line-height: 1.6">Navega el monolito para inyectar SAVIA.<br>Cada agente soltará su aporte y verás los datos fluir.</div>
+          <div style="font-size: 42px; margin-bottom: 10px">🌿</div>
+          <div style="font-size: 13px; font-weight: 700; color: #6e6e73; margin-bottom: 6px">El árbol está listo</div>
+          <div style="font-size: 11px; line-height: 1.6">Navega el monolito para que los agentes empiecen a aportar SAVIA.</div>
         </div>
       </div>
 
       <div style="padding: 10px 18px; background: white; border-top: 1px solid #d2d2d7; display: flex; gap: 6px; justify-content: space-between; flex-shrink: 0">
-        <button id="obs-export" style="flex: 1; padding: 8px; background: #0071e3; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer">📥 Exportar log</button>
+        <button id="obs-export" style="flex: 1; padding: 8px; background: #34c759; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer">📥 Exportar log</button>
         <button id="obs-help" style="flex: 1; padding: 8px; background: #d2d2d7; color: #1d1d1f; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer">❓ Ayuda</button>
       </div>
     `;
@@ -279,7 +259,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // RENDER UI (Flujo Sanguíneo)
+  // RENDER UI (Línea de Tiempo de SAVIA)
   // ═══════════════════════════════════════════════════════════
   function tablaDatos(filas, thead) {
     return `
@@ -306,7 +286,6 @@
 
   function agregarPaso(config) {
     ESTADO.pasoActual++;
-    const n = ESTADO.pasoActual;
     const narrativa = document.getElementById("obs-narrativa");
     const empty = document.getElementById("obs-sangre-vacia");
     if (empty) empty.remove();
@@ -319,8 +298,8 @@
       margin-left: 20px; overflow: hidden;
     `;
 
-    const badgeColor = config.badgeColor || config.color || "#0071e3";
-    const color = config.color || "#0071e3";
+    const badgeColor = config.badgeColor || config.color || "#34c759";
+    const color = config.color || "#34c759";
 
     card.innerHTML = `
       <div style="padding: 12px 16px; background: ${color}11; border-bottom: 1px solid ${color}22; display: flex; align-items: flex-start; gap: 12px; position: relative">
@@ -364,13 +343,12 @@
       <tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">ID</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; text-align: right">${escapeHtml(s.subject_id || "—")}</td></tr>
       <tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">Edad</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; text-align: right">${escapeHtml(String(s.edad || "—"))} años</td></tr>
       <tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">Sexo</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; text-align: right">${escapeHtml(s.sexo || "—")}</td></tr>
-      <tr><td style="padding: 5px 10px; font-weight: 600; color: #1a3a5c">Empresa</td><td style="padding: 5px 10px; font-family: monospace; text-align: right">${escapeHtml(s.empresa || "—")}</td></tr>
     `;
     agregarPaso({
-      color: "#0071e3", badge: "RAÍZ", badgeColor: "#0071e3",
+      color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3",
       titulo: "Aporte Paciente (Demografía)",
       subtitulo: `savia:aporte-paciente · ${formatearHora(evento.timestamp)}`,
-      html: `${tablaDatos(filas)}<div style="margin-top:8px; font-size:10px; color:#0071e3; font-weight:700;">🩸 Sangre inyectada al torrente</div>`
+      html: `${tablaDatos(filas)}<div style="margin-top:8px; font-size:10px; color:#34c759; font-weight:700;">🌿 SAVIA inyectada al árbol</div>`
     });
   }
 
@@ -378,14 +356,14 @@
     const c = payload.clinica || payload;
     ESTADO.eventos.push({ tipo: "raiz", evento });
     let filas = "";
-    ["imc", "presion_sistolica_mmhg", "presion_diastolica_mmhg", "frecuencia_cardiaca_lpm", "peso_kg", "talla_cm"].forEach(k => {
+    ["imc", "presion_sistolica_mmhg", "presion_diastolica_mmhg", "frecuencia_cardiaca_lpm"].forEach(k => {
       if (c[k] !== undefined && c[k] !== null) {
         const i = interpretarClave(k, c[k]);
         filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${c[k]}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; text-align: center">${sevBadge(i.sev, i.label)}</td></tr>`;
       }
     });
     agregarPaso({
-      color: "#0071e3", badge: "RAÍZ", badgeColor: "#0071e3",
+      color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3",
       titulo: "Aporte Clínica (Signos Vitales)",
       subtitulo: `savia:aporte-clinica · ${formatearHora(evento.timestamp)}`,
       html: `${tablaDatos(filas, ["Dato", "Valor", "Estado"])}`
@@ -402,7 +380,7 @@
       filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${NOMBRES_LABS[k] || k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${labs[k]} ${UNIDADES_LABS[k]||""}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; text-align: center">${sevBadge(i.sev, i.label)}</td></tr>`;
     });
     agregarPaso({
-      color: "#0071e3", badge: "RAÍZ", badgeColor: "#0071e3",
+      color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3",
       titulo: "Aporte Laboratorio",
       subtitulo: `savia:aporte-laboratorio · ${formatearHora(evento.timestamp)}`,
       html: `${tablaDatos(filas, ["Examen", "Valor", "Estado"])}`
@@ -419,7 +397,7 @@
     });
     if(!filas) return;
     agregarPaso({
-      color: "#0071e3", badge: "RAÍZ", badgeColor: "#0071e3",
+      color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3",
       titulo: "Aporte Imagen",
       subtitulo: `savia:aporte-imagen · ${formatearHora(evento.timestamp)}`,
       html: `${tablaDatos(filas)}`
@@ -436,7 +414,7 @@
     });
     if(!filas) return;
     agregarPaso({
-      color: "#0071e3", badge: "RAÍZ", badgeColor: "#0071e3",
+      color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3",
       titulo: "Aporte Trabajo Social",
       subtitulo: `savia:aporte-social · ${formatearHora(evento.timestamp)}`,
       html: `${tablaDatos(filas)}`
@@ -451,14 +429,13 @@
     
     agregarPaso({
       color: "#34c759", badge: "SAVIA", badgeColor: "#34c759",
-      titulo: "Corazón: SAVIA RAÍZ Consolidada",
+      titulo: "Consolidación: SAVIA RAÍZ",
       subtitulo: `savia:raiz:contexto-unificado · ${formatearHora(evento.timestamp)}`,
       html: `
-        <div style="margin-bottom: 10px; color: #333; font-size: 12px">La consolidadora unió los 5 aportes en un solo contexto para Kimi.</div>
+        <div style="margin-bottom: 10px; color: #333; font-size: 12px">La consolidadora unió los aportes en un solo contexto.</div>
         <div style="background:#f0fff4; border-radius:8px; padding:10px; font-size:11px; border:1px solid #34c75944">
           <strong>Paciente:</strong> ${escapeHtml(s.nombre)}<br>
           <strong>Labs:</strong> ${Object.keys(payload.labs||{}).length} exámenes<br>
-          <strong>Clínica:</strong> ${Object.keys(payload.clinica||{}).length} campos<br>
           <strong>Sugerencias IA:</strong> ${ics.length} interconsultas<br>
           ${chips ? `<div style="margin-top:6px">${chips}</div>` : ""}
         </div>
@@ -520,38 +497,22 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // INYECTORES DE SANGRE (Hooks del Monolito)
+  // INYECTORES DE SAVIA (Hooks del Monolito)
   // ═══════════════════════════════════════════════════════════
   
-  async function emitirAportePaciente() {
-    if (!window.SAVIA) return;
-    
-    const nombre = leerCampo("ficha-nombre");
-    let subjectId = leerCampo("ficha-subject_id");
-    
-    // Fix del ID ????
-    if (subjectId && subjectId.includes("????")) {
-      await new Promise(r => setTimeout(r, 1000));
-      subjectId = leerCampo("ficha-subject_id");
-    }
-
-    if (!nombre || !subjectId) return;
-    
-    const edad = leerCampo("ficha-edad");
-    const sexo = leerCampo("ficha-sexo");
-    const empresaSelect = document.getElementById("ficha-empresa_id");
-    const empresaTexto = empresaSelect?.selectedOptions?.[0]?.textContent || "";
-    
-    ESTADO.contextoIdActual = `SAV-RAIZ-${subjectId}-${Date.now()}`;
-    
-    await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-paciente", {
-      contexto_id: ESTADO.contextoIdActual,
-      subject: {
-        subject_id: subjectId, nombre: nombre, edad: edad ? parseInt(edad) : null,
-        sexo: sexo, departamento: leerCampo("ficha-departamento"), empresa: empresaTexto || null
-      }
-    }, { de: "agente-paciente" });
-    console.log("[Observability] 🩸 Sangre: Aporte Paciente inyectado");
+  async function emitirAportePacienteDesdeEstado(pac) {
+    if (!window.SAVIA || !pac) return;
+    ESTADO.contextoIdActual = `SAV-RAIZ-${pac.subject_id}-${Date.now()}`;
+    try {
+      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-paciente", {
+        contexto_id: ESTADO.contextoIdActual,
+        subject: {
+          subject_id: pac.subject_id, nombre: pac.nombre, edad: pac.edad,
+          sexo: pac.sexo, departamento: pac.departamento, empresa: pac.empresa || null
+        }
+      }, { de: "agente-paciente" });
+      console.log("[Observability] 🌿 SAVIA: Aporte Paciente inyectado");
+    } catch(e) { console.warn(e); }
   }
 
   async function emitirAporteClinica() {
@@ -567,7 +528,7 @@
     
     if (Object.keys(clinica).length === 0) return;
     await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-clinica", { contexto_id: ESTADO.contextoIdActual, clinica }, { de: "agente-clinica" });
-    console.log("[Observability] 🩸 Sangre: Aporte Clínica inyectado");
+    console.log("[Observability] 🌿 SAVIA: Aporte Clínica inyectado");
   }
 
   async function emitirAporteLaboratorio() {
@@ -580,14 +541,13 @@
     });
     if (Object.keys(labs).length === 0) return;
     await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-laboratorio", { contexto_id: ESTADO.contextoIdActual, labs }, { de: "agente-laboratorio" });
-    console.log("[Observability] 🩸 Sangre: Aporte Labs inyectado");
+    console.log("[Observability] 🌿 SAVIA: Aporte Labs inyectado");
   }
 
   async function emitirSaviaRaiz() {
     if (!window.SAVIA || !ESTADO.contextoIdActual) return;
-    const nombre = leerCampo("ficha-nombre");
-    const subjectId = leerCampo("ficha-subject_id");
-    if (!nombre || !subjectId) return;
+    const pac = window._consultaState?.paciente || {};
+    if (!pac.nombre || !pac.subject_id) return;
     
     let icSugeridas = [];
     try {
@@ -596,12 +556,11 @@
       if (m) icSugeridas = JSON.parse(m[1].trim()).interconsultas_sugeridas || [];
     } catch (e) {}
 
-    // Fix: Empaquetar el JSON para que el coordinador lo lea
     await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:raiz:contexto-unificado", {
       contexto_id: ESTADO.contextoIdActual,
       case_id: `ECO-OBS-${Date.now()}`,
       origen: "tamizaje",
-      subject: { subject_id: subjectId, nombre: nombre, edad: parseInt(leerCampo("ficha-edad")) || null, sexo: leerCampo("ficha-sexo") },
+      subject: { subject_id: pac.subject_id, nombre: pac.nombre, edad: pac.edad, sexo: pac.sexo },
       labs: (() => { const l={}; ["lab-glucosa|glucosa","lab-hba1c|hba1c","lab-homa|homa_ir","lab-ldl|ldl","lab-hdl|hdl","lab-tg|tg"].forEach(p=>{const [id,k]=p.split("|");const v=leerNumero(id);if(v!==null)l[k]=v;});return l; })(),
       clinica: { imc: leerNumero("cl-imc"), presion_sistolica_mmhg: leerNumero("cl-pas") },
       raw: {
@@ -609,7 +568,7 @@
         interconsultas_sugeridas: icSugeridas
       }
     }, { de: "agente-savia-consolidadora" });
-    console.log("[Observability] 🩸 Sangre: SAVIA RAÍZ bombeada");
+    console.log("[Observability] 🌿 SAVIA: SAVIA RAÍZ consolidada");
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -621,48 +580,30 @@
       const orig = window.guardarFichaPaciente;
       window.guardarFichaPaciente = async function() {
         const r = await orig.apply(this, arguments);
-        setTimeout(emitirAportePaciente, 800); // Esperar a que se guarde
+        setTimeout(() => {
+          if (window._consultaState?.paciente) emitirAportePacienteDesdeEstado(window._consultaState.paciente);
+        }, 1500); 
         return r;
       };
       window.guardarFichaPaciente._obsPatched = true;
       console.log("[Observability] ✅ Hook: guardarFichaPaciente");
     }
 
-           // 2. Hook para seleccionar paciente existente
+    // 2. Hook para seleccionar paciente existente (A PRUEBA DE BALAS)
     if (typeof window.seleccionarPacienteConsulta === "function" && !window.seleccionarPacienteConsulta._obsPatched) {
       const orig = window.seleccionarPacienteConsulta;
       window.seleccionarPacienteConsulta = async function() {
-        // 1. Ejecutamos la función original del monolito (que ahora ya no fallará)
-        const r = await orig.apply(this, arguments);
-        
-        // 2. Leemos inmediatamente el paciente del estado global
-        if (window._consultaState && window._consultaState.paciente) {
-          const pac = window._consultaState.paciente;
-          
-          if (window.SAVIA) {
-            // Creamos el contexto y emitimos la sangre
-            const ctxId = `SAV-RAIZ-${pac.subject_id}-${Date.now()}`;
-            window._obsContextoIdActual = ctxId; // Guardar para los demás agentes
-            
-            window.SAVIA.emitirContexto(ctxId, "savia:aporte-paciente", {
-              contexto_id: ctxId,
-              subject: {
-                subject_id: pac.subject_id,
-                nombre: pac.nombre,
-                edad: pac.edad,
-                sexo: pac.sexo,
-                departamento: pac.departamento,
-                empresa: pac.empresa || "Sin empresa"
-              }
-            }, { de: "agente-paciente" }).then(() => {
-              console.log("[Observability] 🩸 Sangre: Paciente cargado inyectado");
-            }).catch(e => console.warn(e));
-          }
+        try {
+          await orig.apply(this, arguments);
+        } catch (e) {
+          console.warn("[Observability] Error interno del monolito neutralizado:", e.message);
         }
-        return r;
+        setTimeout(() => {
+          if (window._consultaState?.paciente) emitirAportePacienteDesdeEstado(window._consultaState.paciente);
+        }, 1500); 
       };
       window.seleccionarPacienteConsulta._obsPatched = true;
-      console.log("[Observability] ✅ Hook: seleccionarPacienteConsulta (Blindado)");
+      console.log("[Observability] ✅ Hook: seleccionarPacienteConsulta");
     }
 
     // 3. Hook para enviar a Kimi (dispara clínica y labs)
@@ -678,21 +619,8 @@
       window.sendToProxyBasico._obsPatched = true;
       console.log("[Observability] ✅ Hook: sendToProxyBasico");
     }
-
-    // 4. Hook para generar informe base (refuerza SAVIA RAÍZ)
-    if (typeof window.generarInformeBase === "function" && !window.generarInformeBase._obsPatched) {
-      const orig = window.generarInformeBase;
-      window.generarInformeBase = async function() {
-        const r = await orig.apply(this, arguments);
-        setTimeout(emitirSaviaRaiz, 500);
-        return r;
-      };
-      window.generarInformeBase._obsPatched = true;
-      console.log("[Observability] ✅ Hook: generarInformeBase");
-    }
   }
 
-  // Reintentar instalar hooks cada 1s por si el monolito tarda en cargar
   let intentos = 0;
   const intervalHooks = setInterval(() => {
     instalarHooks();
@@ -701,17 +629,17 @@
   }, 1000);
 
   // ═══════════════════════════════════════════════════════════
-  // UTILIDADES DE UI (Limpiar, Exportar, Ayuda)
+  // UTILIDADES
   // ═══════════════════════════════════════════════════════════
   function limpiarPanel() {
-    if (!confirm("¿Limpiar el torrente sanguíneo?")) return;
+    if (!confirm("¿Limpiar la SAVIA del árbol?")) return;
     ESTADO.pasoActual = 0; ESTADO.eventos = [];
     document.getElementById("obs-narrativa").innerHTML = `
-      <div style="position: absolute; left: 24px; top: 20px; bottom: 20px; width: 4px; background: linear-gradient(180deg, #0071e3, #34c759, #ff3b30); border-radius: 4px; opacity: 0.15; z-index: 0"></div>
+      <div style="position: absolute; left: 24px; top: 20px; bottom: 20px; width: 4px; background: linear-gradient(180deg, #34c759, #0071e3); border-radius: 4px; opacity: 0.15; z-index: 0"></div>
       <div id="obs-sangre-vacia" style="text-align: center; padding: 40px 20px; color: #86868b; font-size: 12px; z-index: 1; background: #f9f9fa">
-        <div style="font-size: 42px; margin-bottom: 10px">🩸</div>
-        <div style="font-size: 13px; font-weight: 700; color: #6e6e73; margin-bottom: 6px">El torrente sanguíneo está vacío</div>
-        <div style="font-size: 11px; line-height: 1.6">Navega el monolito para inyectar SAVIA.<br>Cada agente soltará su aporte y verás los datos fluir.</div>
+        <div style="font-size: 42px; margin-bottom: 10px">🌿</div>
+        <div style="font-size: 13px; font-weight: 700; color: #6e6e73; margin-bottom: 6px">El árbol está listo</div>
+        <div style="font-size: 11px; line-height: 1.6">Navega el monolito para que los agentes empiecen a aportar SAVIA.</div>
       </div>
     `;
     actualizarContadores();
@@ -723,17 +651,14 @@
     }));
     const blob = new Blob([JSON.stringify(log, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `observability-log-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = `observability-savia-${new Date().toISOString().slice(0, 10)}.json`; a.click();
     URL.revokeObjectURL(url);
   }
 
   function mostrarAyuda() {
-    alert("🩸 ¿Cómo funciona la SAVIA?\n\nLos agentes no emiten datos con cada tecla que presionas, sino en bloques (al Guardar ficha y al Enviar a Kimi).\n\n1. El agente-paciente inyecta la sangre cuando guardas o cargas la ficha.\n2. Los agentes de clínica y labs inyectan cuando presionas 'Enviar a Kimi'.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se reflejará en esta línea de tiempo.");
+    alert("🌿 ¿Cómo funciona la SAVIA?\n\n1. El agente-paciente inyecta SAVIA al Guardar o Cargar la ficha.\n2. Los agentes de clínica y labs inyectan al presionar 'Enviar a Kimi'.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se refleja en esta línea de tiempo.");
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // ANIMACIONES Y ARRANQUE
-  // ═══════════════════════════════════════════════════════════
   function inyectarEstilos() {
     if (document.getElementById("obs-styles")) return;
     const style = document.createElement("style");
