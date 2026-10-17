@@ -1,13 +1,13 @@
 // ═══════════════════════════════════════════════════════════════
-// OBSERVABILITY WRAPPER v5.3 — EcoRadAi Sprint 3
-// FIX: Captura de Subjetivo, Examen Físico, Consolidado (DOM Scraping)
-//      Soporte completo para Tamizaje y Consulta
+// OBSERVABILITY WRAPPER v7.0 — EcoRadAi Sprint 3
+// Lógica: Escucha pasiva del Kernel. NO lee el DOM.
+// Pinta lo que los agentes reales (RAÍZ, TRONCO, FRUTO) emiten.
 // ═══════════════════════════════════════════════════════════════
 
 (function() {
   "use strict";
 
-  const VERSION = "5.3";
+  const VERSION = "7.0";
   const ESTADO = {
     panelAbierto: false,
     capturadorActivo: false,
@@ -15,45 +15,17 @@
     eventos: [],
     contextoIdActual: null,
     iniciado: false,
-    saviaDisponible: false,
-    intervaloVigilante: null,
-    intentosSavia: 0,
-    ultimoEventoEmitido: ""
+    saviaDisponible: false
   };
 
-  let ultimoPacienteInyectado = "";
-  let ultimaSeccionVista = "";
-  let _debounceClickTimer = null;
-
-  console.log(`%c[Observability] 🚀 Wrapper v${VERSION} cargando...`, "background:#0071e3;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
+  console.log(`%c[Observability] 🚀 Visor v${VERSION} (Modo Escucha) cargando...`, "background:#0071e3;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
 
   // ═══════════════════════════════════════════════════════════
   // SECCIÓN 1 — ESCUDO Y HELPERS
   // ═══════════════════════════════════════════════════════════
   window.addEventListener("error", (e) => {
     if (e.message && (e.message.includes("docx") || e.message.includes("qrcode"))) { e.preventDefault(); return true; }
-    if (e.target && e.target.tagName === "SCRIPT") {
-      const src = (e.target.src || "").toLowerCase();
-      if (src.includes("docx") || src.includes("qrcode")) { e.preventDefault(); return true; }
-    }
   }, true);
-
-  async function esperarSavia(maxIntentos = 60, intervaloMs = 1000) {
-    return new Promise((resolve) => {
-      let intentos = 0;
-      const interval = setInterval(() => {
-        intentos++;
-        if (window.SAVIA && typeof window.SAVIA.propagar === "function") {
-          clearInterval(interval);
-          ESTADO.saviaDisponible = true;
-          resolve(window.SAVIA);
-        } else if (intentos >= maxIntentos) {
-          clearInterval(interval);
-          resolve(null);
-        }
-      }, intervaloMs);
-    });
-  }
 
   function escapeHtml(s) {
     if (s === null || s === undefined) return "";
@@ -63,30 +35,8 @@
   }
 
   function formatearHora(iso) {
-    try { return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" }); } 
+    try { return new Date(iso || Date.now()).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" }); } 
     catch { return "—"; }
-  }
-
-  function leerNumero(id) {
-    const el = document.getElementById(id);
-    if (!el) return null;
-    const val = el.value;
-    if (val === "") return null;
-    const n = parseFloat(val);
-    return isNaN(n) ? null : n;
-  }
-
-  function leerTexto(id) {
-    const el = document.getElementById(id);
-    return el ? el.value.trim() : "";
-  }
-
-  function esEventoDuplicado(tipo, datos) {
-    const firma = tipo + "|" + JSON.stringify(datos);
-    if (ESTADO.ultimoEventoEmitido === firma) return true;
-    ESTADO.ultimoEventoEmitido = firma;
-    setTimeout(() => { ESTADO.ultimoEventoEmitido = ""; }, 2000);
-    return false;
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -175,32 +125,37 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 3 — CAPTURADOR Y RENDER
+  // SECCIÓN 3 — ACTIVAR ESCUCHA (¡El núcleo del visor!)
   // ═══════════════════════════════════════════════════════════
   async function activarCapturador() {
     if (ESTADO.capturadorActivo) return;
 
-    const savia = await esperarSavia(60, 1000);
-    
-    if (!savia) {
+    // Esperar a que el kernel exponga SAVIA
+    let intentos = 0;
+    while (!window.SAVIA && intentos < 60) {
+      await new Promise(r => setTimeout(r, 1000));
+      intentos++;
+    }
+
+    if (!window.SAVIA) {
       const badge = document.getElementById("obs-badge");
       if (badge) { badge.textContent = "⚠️ Sin SAVIA"; badge.style.background = "rgba(255,149,0,0.6)"; }
-      ESTADO.capturadorActivo = true;
       return;
     }
 
-    if (savia.propagar._obsPatched) { ESTADO.capturadorActivo = true; return; }
-
-    const origPropagar = savia.propagar;
-    savia.propagar = function(evento) {
-      try { procesarEvento(evento); } catch (e) { console.warn("[Observability] Error procesando evento:", e); }
-      return origPropagar.apply(this, arguments);
+    // Engancharse al bus de SAVIA
+    const saviaOriginal = window.SAVIA.propagar;
+    window.SAVIA.propagar = function(evento) {
+      // 1. Pintar el evento en el visor
+      try { procesarEvento(evento); } catch (e) { console.warn("[Observability] Error pintando evento:", e); }
+      // 2. Dejar que el Kernel siga procesando normalmente
+      return saviaOriginal.apply(this, arguments);
     };
-    savia.propagar._obsPatched = true;
+    
     ESTADO.capturadorActivo = true;
-
     const badge = document.getElementById("obs-badge");
     if (badge) { badge.textContent = "✅ Activo"; badge.style.background = "rgba(52,199,89,0.6)"; }
+    console.log("[Observability] ✅ Visor enganchado al bus de eventos de SAVIA");
   }
 
   function procesarEvento(evento) {
@@ -208,20 +163,23 @@
     const tipo = evento.tipo;
     const payload = evento.payload || {};
 
+    // Mapeo de eventos del Kernel a funciones de pintado
     try {
-      if (tipo === "savia:aporte-paciente") return renderAportePaciente(payload, evento);
-      if (tipo === "savia:aporte-clinica") return renderAporteClinica(payload, evento);
-      if (tipo === "savia:aporte-laboratorio") return renderAporteLaboratorio(payload, evento);
+      if (tipo === "savia:aporte-paciente") return renderPaciente(payload, evento);
+      if (tipo === "savia:aporte-clinica") return renderClinica(payload, evento);
+      if (tipo === "savia:aporte-laboratorio") return renderLaboratorio(payload, evento);
       if (tipo === "savia:raiz:contexto-unificado") return renderSaviaRaiz(payload, evento);
-      if (tipo === "savia:tronco:informe-kimi") return renderCoordinadorInforme(payload, evento);
-      if (tipo === "especialista:respuesta") return renderEspecialistaRespuesta(payload, evento);
-      if (tipo === "savia:tronco:plan-integrado") return renderPlanIntegrado(payload, evento);
-      if (tipo === "medico:decision-interconsultas") return renderDecisionMedico(payload, evento);
+      if (tipo === "savia:tronco:informe-kimi") return renderTronco(payload, evento);
+      if (tipo === "especialista:respuesta") return renderEspecialista(payload, evento);
+      if (tipo === "savia:tronco:plan-integrado") return renderPlan(payload, evento);
     } catch (e) {
       console.error("[Observability] Error procesando", tipo, e);
     }
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // SECCIÓN 4 — PINTADO DE EVENTOS (UI)
+  // ═══════════════════════════════════════════════════════════
   function agregarPaso(config) {
     ESTADO.pasoActual++;
     const narrativa = document.getElementById("obs-narrativa");
@@ -260,25 +218,13 @@
     });
   }
 
-  function tablaDatos(filas, thead) {
-    return `
-      <div style="overflow-x: auto; margin: 8px 0; border-radius: 8px; border: 1px solid #e8e8ed;">
-        <table style="width: 100%; border-collapse: collapse; font-size: 11px; min-width: 250px;">
-          ${thead ? `<thead><tr style="background: #f9f9fa">${thead.map(h => `<th style="padding: 8px 12px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; color: #86868b; border-bottom: 1px solid #e8e8ed">${h}</th>`).join("")}</tr></thead>` : ""}
-          <tbody style="background: white">${filas}</tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  // RENDERS ESPECÍFICOS
-  function renderAportePaciente(payload, evento) {
+  function renderPaciente(payload, evento) {
     const s = payload.subject || payload;
     ESTADO.eventos.push({ tipo: "raiz", evento });
     agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Paciente", subtitulo: `savia:aporte-paciente · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;"><strong>${escapeHtml(s.nombre)}</strong> (${escapeHtml(s.subject_id)})</div>` });
   }
 
-  function renderAporteClinica(payload, evento) {
+  function renderClinica(payload, evento) {
     const c = payload.clinica || payload;
     ESTADO.eventos.push({ tipo: "raiz", evento });
     let filas = "";
@@ -286,328 +232,46 @@
       if (c[k] === null || c[k] === undefined || typeof c[k] === 'object') return;
       filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${c[k]}</td></tr>`;
     });
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Clínica", subtitulo: `savia:aporte-clinica · ${formatearHora(evento.timestamp)}`, html: tablaDatos(filas, ["Dato", "Valor"]) });
+    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Clínica", subtitulo: `savia:aporte-clinica · ${formatearHora(evento.timestamp)}`, html: `<table style="width:100%;font-size:11px;border-collapse:collapse;">${filas}</table>` });
   }
 
-  function renderAporteLaboratorio(payload, evento) {
-    const labs = payload.labs || payload;
+  function renderLaboratorio(payload, evento) {
+    const l = payload.labs || payload;
     ESTADO.eventos.push({ tipo: "raiz", evento });
     let filas = "";
-    Object.keys(labs).forEach(k => {
-      if (labs[k] === null || labs[k] === undefined) return;
-      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${labs[k]}</td></tr>`;
+    Object.keys(l).forEach(k => {
+      if (l[k] === null || l[k] === undefined) return;
+      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${l[k]}</td></tr>`;
     });
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Laboratorio", subtitulo: `savia:aporte-laboratorio · ${formatearHora(evento.timestamp)}`, html: tablaDatos(filas, ["Examen", "Valor"]) });
+    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Laboratorio", subtitulo: `savia:aporte-laboratorio · ${formatearHora(evento.timestamp)}`, html: `<table style="width:100%;font-size:11px;border-collapse:collapse;">${filas}</table>` });
   }
 
   function renderSaviaRaiz(payload, evento) {
     ESTADO.eventos.push({ tipo: "savia", evento });
-    agregarPaso({ color: "#34c759", badge: "SAVIA", badgeColor: "#34c759", titulo: "Consolidación: SAVIA RAÍZ", subtitulo: `savia:raiz:contexto-unificado · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Contexto unificado generado con éxito.</div>` });
+    agregarPaso({ color: "#34c759", badge: "SAVIA", badgeColor: "#34c759", titulo: "Consolidación RAÍZ", subtitulo: `savia:raiz:contexto-unificado · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Contexto unificado generado con éxito.</div>` });
   }
 
-  function renderCoordinadorInforme(payload, evento) {
+  function renderTronco(payload, evento) {
     ESTADO.eventos.push({ tipo: "tronco", evento });
-    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: "Cerebro: Informe TRONCO", subtitulo: `savia:tronco:informe-kimi · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Procesamiento completado.</div>` });
+    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: "Coordinador (Informe Kimi)", subtitulo: `savia:tronco:informe-kimi · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Análisis del coordinador completado.</div>` });
   }
 
-  function renderEspecialistaRespuesta(payload, evento) {
+  function renderEspecialista(payload, evento) {
     ESTADO.eventos.push({ tipo: "tronco", evento });
-    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: `Órgano: ${payload.especialista || "Especialista"}`, subtitulo: `especialista:respuesta · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Análisis recibido.</div>` });
+    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: `Especialista: ${payload.especialista || "—"}`, subtitulo: `especialista:respuesta · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Análisis recibido.</div>` });
   }
 
-  function renderPlanIntegrado(payload, evento) {
+  function renderPlan(payload, evento) {
     ESTADO.eventos.push({ tipo: "fruto", evento });
-    agregarPaso({ color: "#ff3b30", badge: "FRUTO", badgeColor: "#ff3b30", titulo: "Tejido: Plan Integrado Final", subtitulo: `savia:tronco:plan-integrado · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Plan generado.</div>` });
-  }
-
-  function renderDecisionMedico(payload, evento) {
-    ESTADO.eventos.push({ tipo: "tronco", evento });
-    agregarPaso({ color: "#1a3a5c", badge: "MÉDICO", badgeColor: "#1a3a5c", titulo: `Médico autorizó interconsultas`, subtitulo: `medico:decision-interconsultas · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Autorización registrada.</div>` });
+    agregarPaso({ color: "#ff3b30", badge: "FRUTO", badgeColor: "#ff3b30", titulo: "Plan Integrado Final", subtitulo: `savia:tronco:plan-integrado · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Plan generado con éxito.</div>` });
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 4 — INYECTORES (DOM SCRAPING)
-  // ═══════════════════════════════════════════════════════════
-  
-  // Extrae TODO el contexto clínico posible del DOM
-  function extraerContextoClinicoCompleto() {
-    const contexto = { subjetivo: {}, objetivo: {}, analisis: {}, plan: {}, clinica: {}, labs: {} };
-    
-    // --- Subjetivo ---
-    contexto.subjetivo.motivo = leerTexto("cons-motivo") || leerTexto("e-motivo");
-    contexto.subjetivo.enfermedad_actual = leerTexto("cons-enfermedad-actual");
-    contexto.subjetivo.eva = leerNumero("cons-eva");
-    contexto.subjetivo.evolucion = leerTexto("cons-evolucion");
-    contexto.subjetivo.alergias = leerTexto("cons-alergias");
-    contexto.subjetivo.medicamentos = leerTexto("cons-medicamentos");
-    contexto.subjetivo.habitos = {
-      tabaco: leerTexto("cons-habito-tabaco"),
-      alcohol: leerTexto("cons-habito-alcohol"),
-      ejercicio: leerTexto("cons-habito-ejercicio"),
-      sueno: leerTexto("cons-habito-sueno")
-    };
-    
-    // --- Objetivo (Signos Vitales) ---
-    const mapaVitales = [
-      ["cl-peso", "cons-vit-peso_kg", "peso_kg"], 
-      ["cl-talla", "cons-vit-talla_cm", "talla_cm"],
-      ["cl-imc", "cons-vit-imc_calc", "imc"], 
-      ["cl-pas", "cons-vit-ta_sistolica", "presion_sistolica_mmhg"],
-      ["cl-pad", "cons-vit-ta_diastolica", "presion_diastolica_mmhg"], 
-      ["cl-fc", "cons-vit-fc", "frecuencia_cardiaca_lpm"],
-      ["cl-fr", "cons-vit-fr", "frecuencia_respiratoria_rpm"],
-      ["cl-temp", "cons-vit-temperatura", "temperatura_c"],
-      ["cl-sato2", "cons-vit-sato2", "saturacion_o2_pct"]
-    ];
-    mapaVitales.forEach(([idTamizaje, idConsulta, key]) => {
-      let v = leerNumero(idTamizaje);
-      if (v === null) v = leerNumero(idConsulta); 
-      if (v !== null) contexto.clinica[key] = v;
-    });
-
-    // --- Objetivo (Examen Físico) ---
-    const examenFisico = {};
-    document.querySelectorAll("[id^='cons-ef-']").forEach(el => {
-      if (el.value.trim()) examenFisico[el.id.replace("cons-ef-", "")] = el.value.trim();
-    });
-    contexto.objetivo.examen_fisico = examenFisico;
-    
-    // --- Objetivo (Labs) ---
-    const mapaLabs = [
-      ["lab-glucosa", "cons-lab-glucosa", "glucosa"], 
-      ["lab-hba1c", "cons-lab-hba1c", "hba1c"],
-      ["lab-insulina", "cons-lab-insulina", "insulina"], 
-      ["lab-homa", "cons-lab-homa", "homa_ir"],
-      ["lab-ct", "cons-lab-ct", "ct"], 
-      ["lab-ldl", "cons-lab-ldl", "ldl"],
-      ["lab-hdl", "cons-lab-hdl", "hdl"], 
-      ["lab-tg", "cons-lab-tg", "tg"],
-      ["lab-alt", "cons-lab-alt", "alt"], 
-      ["lab-creatinina", "cons-lab-creatinina", "creatinina"],
-      ["lab-tfg", "cons-lab-tfg", "tfg"]
-    ];
-    mapaLabs.forEach(([idTamizaje, idConsulta, key]) => {
-      let v = leerNumero(idTamizaje);
-      if (v === null) v = leerNumero(idConsulta);
-      if (v !== null) contexto.labs[key] = v;
-    });
-
-    // --- Análisis ---
-    contexto.analisis.impresion = leerTexto("cons-impresion-final");
-    contexto.analisis.riesgo = leerTexto("cons-nivel-riesgo");
-    
-    // --- Plan ---
-    contexto.plan.educacion = leerTexto("cons-educacion");
-
-    return contexto;
-  }
-
-  async function emitirAportePacienteDesdeEstado(pac) {
-    if (!window.SAVIA || !pac) return;
-    if (esEventoDuplicado("paciente", pac)) return;
-    ESTADO.contextoIdActual = `SAV-RAIZ-${pac.subject_id}-${Date.now()}`;
-    try {
-      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-paciente", {
-        contexto_id: ESTADO.contextoIdActual,
-        subject: { subject_id: pac.subject_id, nombre: pac.nombre, edad: pac.edad, sexo: pac.sexo, departamento: pac.departamento, empresa: pac.empresa || null }
-      }, { de: "agente-paciente" });
-    } catch(e) { console.warn(e); }
-  }
-
-  async function emitirAporteSubjetivo() {
-    if (!window.SAVIA || !ESTADO.contextoIdActual) return;
-    const ctx = extraerContextoClinicoCompleto();
-    if (Object.keys(ctx.subjetivo).length === 0) return;
-    if (esEventoDuplicado("subjetivo", ctx.subjetivo)) return;
-    try {
-      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-subjetivo", { contexto_id: ESTADO.contextoIdActual, subjetivo: ctx.subjetivo }, { de: "agente-clinica" });
-    } catch(e) { console.warn(e); }
-  }
-
-  async function emitirAporteClinica() {
-    if (!window.SAVIA || !ESTADO.contextoIdActual) return;
-    const ctx = extraerContextoClinicoCompleto();
-    if (Object.keys(ctx.clinica).length === 0) return;
-    if (esEventoDuplicado("clinica", ctx.clinica)) return;
-    try {
-      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-clinica", { contexto_id: ESTADO.contextoIdActual, clinica: ctx.clinica }, { de: "agente-clinica" });
-    } catch(e) { console.warn(e); }
-  }
-
-  async function emitirAporteExamenFisico() {
-    if (!window.SAVIA || !ESTADO.contextoIdActual) return;
-    const ctx = extraerContextoClinicoCompleto();
-    if (Object.keys(ctx.objetivo.examen_fisico).length === 0) return;
-    if (esEventoDuplicado("examen_fisico", ctx.objetivo.examen_fisico)) return;
-    try {
-      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-examen-fisico", { contexto_id: ESTADO.contextoIdActual, examen_fisico: ctx.objetivo.examen_fisico }, { de: "agente-clinica" });
-    } catch(e) { console.warn(e); }
-  }
-
-  async function emitirAporteLaboratorio() {
-    if (!window.SAVIA || !ESTADO.contextoIdActual) return;
-    const ctx = extraerContextoClinicoCompleto();
-    if (Object.keys(ctx.labs).length === 0) return;
-    if (esEventoDuplicado("labs", ctx.labs)) return;
-    try {
-      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-laboratorio", { contexto_id: ESTADO.contextoIdActual, labs: ctx.labs }, { de: "agente-laboratorio" });
-    } catch(e) { console.warn(e); }
-  }
-
-  async function emitirSaviaRaiz() {
-    if (!window.SAVIA || !ESTADO.contextoIdActual) return;
-    const pac = window._consultaState?.paciente || {};
-    if (!pac.nombre || !pac.subject_id) return;
-    
-    if (esEventoDuplicado("savia_raiz", pac.subject_id)) return;
-    
-    // Extraer TODO el contexto antes de enviar a Kimi
-    const ctx = extraerContextoClinicoCompleto();
-    
-    let icSugeridas = [];
-    try {
-      const aiResponse = document.getElementById("ai-response-text")?.textContent || "";
-      const m = aiResponse.match(/===JSON_ESTRUCTURADO===([\s\S]*?)===FIN_JSON===/);
-      if (m) icSugeridas = JSON.parse(m[1].trim()).interconsultas_sugeridas || [];
-    } catch (e) {}
-    
-    try {
-      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:raiz:contexto-unificado", {
-        contexto_id: ESTADO.contextoIdActual, 
-        case_id: `ECO-OBS-${Date.now()}`, 
-        origen: "consulta",
-        subject: { subject_id: pac.subject_id, nombre: pac.nombre, edad: pac.edad, sexo: pac.sexo },
-        subjetivo: ctx.subjetivo,
-        clinica: ctx.clinica,
-        examen_fisico: ctx.objetivo.examen_fisico,
-        labs: ctx.labs,
-        analisis: ctx.analisis,
-        raw: { _json_estructurado: { interconsultas_sugeridas: icSugeridas } }
-      }, { de: "agente-savia-consolidadora" });
-    } catch(e) { console.warn(e); }
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 5 — HOOKS Y VIGILANTES
-  // ═══════════════════════════════════════════════════════════
-  function instalarHooks() {
-    if (typeof window.guardarFichaPaciente === "function" && !window.guardarFichaPaciente._obsPatched) {
-      const orig = window.guardarFichaPaciente;
-      window.guardarFichaPaciente = async function() {
-        const r = await orig.apply(this, arguments);
-        setTimeout(() => {
-          if (window._consultaState?.paciente) {
-            const pac = window._consultaState.paciente;
-            if (pac.subject_id && !pac.subject_id.includes("????") && pac.subject_id !== ultimoPacienteInyectado) {
-              ultimoPacienteInyectado = pac.subject_id;
-              emitirAportePacienteDesdeEstado(pac);
-            }
-          }
-        }, 1500); 
-        return r;
-      };
-      window.guardarFichaPaciente._obsPatched = true;
-    }
-
-    // Hook crítico para enviar TODO antes de Kimi
-    if (typeof window.sendToProxyBasico === "function" && !window.sendToProxyBasico._obsPatched) {
-      const orig = window.sendToProxyBasico;
-      window.sendToProxyBasico = async function() {
-        await emitirAporteSubjetivo();
-        await emitirAporteClinica();
-        await emitirAporteExamenFisico();
-        await emitirAporteLaboratorio();
-        const r = await orig.apply(this, arguments);
-        setTimeout(emitirSaviaRaiz, 1000);
-        return r;
-      };
-      window.sendToProxyBasico._obsPatched = true;
-    }
-
-    // Hook para detectar avance en Tamizaje y Consulta
-    if (!window._obs_botones_parcheados) {
-      window._obs_botones_parcheados = true;
-      document.addEventListener("click", (e) => {
-        const btn = e.target.closest("button");
-        if (!btn) return;
-        const texto = (btn.textContent || "").toLowerCase();
-        
-        if (texto.includes("atrás") || texto.includes("volver") || texto.includes("←")) return;
-        
-        if (texto.includes("siguiente") || texto.includes("continuar") || texto.includes("objetivo") || texto.includes("análisis")) {
-          clearTimeout(_debounceClickTimer);
-          _debounceClickTimer = setTimeout(() => {
-            emitirAporteSubjetivo();
-            emitirAporteClinica();
-            emitirAporteExamenFisico();
-            emitirAporteLaboratorio();
-          }, 300);
-        }
-      });
-    }
-  }
-
-  function iniciarVigilanteDePaciente() {
-    let intervalo = 1000;
-    function ciclo() {
-      if (window._consultaState && window._consultaState.paciente) {
-        const pac = window._consultaState.paciente;
-        if (pac.subject_id && !pac.subject_id.includes("????") && pac.subject_id !== ultimoPacienteInyectado) {
-          ultimoPacienteInyectado = pac.subject_id;
-          emitirAportePacienteDesdeEstado(pac);
-          intervalo = 1000;
-        } else {
-          intervalo = Math.min(intervalo * 1.5, 10000);
-        }
-      }
-      ESTADO.intervaloVigilante = setTimeout(ciclo, intervalo);
-    }
-    ciclo();
-  }
-
-  function iniciarVigilanteDeSecciones() {
-    const observer = new MutationObserver(() => {
-      const esTamizaje = document.getElementById("sec-captura")?.classList.contains("active");
-      const esConsulta = document.getElementById("sec-consulta")?.classList.contains("active");
-      if (!esTamizaje && !esConsulta) return;
-      
-      let seccionActual = "";
-      if (esTamizaje) {
-        const tarjetas = document.querySelectorAll("#sec-captura .section.active");
-        if (tarjetas.length > 0) seccionActual = tarjetas[0].id;
-      } else if (esConsulta) {
-        const tarjetas = document.querySelectorAll("#sec-consulta .card");
-        for (let card of tarjetas) {
-          if (card.style.display !== "none" && card.offsetParent !== null) { seccionActual = card.id; break; }
-        }
-      }
-      
-      if (seccionActual && seccionActual !== ultimaSeccionVista) {
-        if (seccionActual.includes("paciente") || seccionActual.includes("consulta-tipo")) {
-          ultimaSeccionVista = seccionActual;
-          return; 
-        }
-        ultimaSeccionVista = seccionActual;
-        
-        // Al cambiar de sección, forzar la captura de todo
-        if (seccionActual === "sec-vitales" || seccionActual === "consulta-objetivo-card") {
-           emitirAporteClinica();
-           emitirAporteExamenFisico();
-        }
-        else if (seccionActual === "sec-labs") emitirAporteLaboratorio();
-        else if (seccionActual === "consulta-subjetivo-card") emitirAporteSubjetivo();
-      }
-    });
-    const target = document.getElementById("sec-captura") || document.body;
-    observer.observe(target, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 6 — UTILIDADES Y DIAGNÓSTICO
+  // SECCIÓN 5 — UTILIDADES
   // ═══════════════════════════════════════════════════════════
   function limpiarPanel() {
     if (!confirm("¿Limpiar la SAVIA del árbol?")) return;
-    ESTADO.pasoActual = 0; ESTADO.eventos = []; ultimoPacienteInyectado = "";
+    ESTADO.pasoActual = 0; ESTADO.eventos = [];
     const narrativa = document.getElementById("obs-narrativa");
     if (narrativa) {
       narrativa.innerHTML = `
@@ -631,19 +295,17 @@
   }
 
   function mostrarAyuda() {
-    alert("🌿 ¿Cómo funciona la SAVIA?\n\n1. El agente-paciente inyecta SAVIA al Guardar o Cargar la ficha.\n2. Los agentes de clínica, subjetivo, físico y labs inyectan al presionar 'Enviar a Kimi' o al avanzar de sección.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se refleja en esta línea de tiempo.\n\n📥 Exportar log: genera un JSON con todos los eventos capturados.");
+    alert("🌿 ¿Cómo funciona la SAVIA?\n\nEl Visor es un observador pasivo. Se engancha al bus de eventos del Kernel (window.SAVIA.propagar) y pinta los eventos que los agentes emiten:\n\n- RAÍZ: aporta datos crudos (paciente, clínica, labs).\n- TRONCO: Coordinador y Especialistas analizan.\n- FRUTO: Plan Integrado Final.\n\nTodo se refleja en esta línea de tiempo.");
   }
 
   function mostrarDiagnostico() {
-    const savia = window.SAVIA;
     const diag = {
       "Versión wrapper": VERSION,
-      "SAVIA disponible": !!savia,
+      "SAVIA disponible": !!window.SAVIA,
       "Capturador activo": ESTADO.capturadorActivo,
       "Eventos capturados": ESTADO.eventos.length,
       "Contexto actual": ESTADO.contextoIdActual || "—",
-      "Paciente actual": window._consultaState?.paciente?.nombre || "—",
-      "Click handler": !!window._obs_botones_parcheados
+      "Paciente actual": window._consultaState?.paciente?.nombre || "—"
     };
     console.table(diag);
     
@@ -671,7 +333,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 7 — INICIALIZACIÓN
+  // SECCIÓN 6 — INICIALIZACIÓN
   // ═══════════════════════════════════════════════════════════
   function inyectarEstilos() {
     if (document.getElementById("obs-styles")) return;
@@ -689,28 +351,15 @@
     try { inyectarBotonFlotante(); } catch (e) {}
     try { inyectarPanel(); } catch (e) {}
     
-    setTimeout(activarCapturador, 3000);
-    try { iniciarVigilanteDePaciente(); } catch (e) {}
-    try { iniciarVigilanteDeSecciones(); } catch (e) {}
+    setTimeout(activarCapturador, 2000);
     
-    let intentos = 0;
-    const intervalHooks = setInterval(() => {
-      try { instalarHooks(); } catch (e) {}
-      intentos++;
-      if (intentos > 60) clearInterval(intervalHooks);
-    }, 1000);
-    
-    console.log(`%c[Observability] ✅ Wrapper v${VERSION} inicializado`, "background:#34c759;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
+    console.log(`%c[Observability] ✅ Visor v${VERSION} inicializado. Escuchando el bus de SAVIA.`, "background:#34c759;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 8 — ARRANQUE
-  // ═══════════════════════════════════════════════════════════
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => setTimeout(init, 500));
   } else {
     setTimeout(init, 500);
   }
 
-  console.log(`%c[Observability] Wrapper v${VERSION} cargado.`, "background:#0071e3;color:white;padding:4px 8px;border-radius:4px;font-size:11px");
 })();
