@@ -115,7 +115,7 @@
     if (document.getElementById("obs-fab")) return;
     const fab = document.createElement("button");
     fab.id = "obs-fab";
-    fab.innerHTML = "🌿"; // Icono de SAVIA
+    fab.innerHTML = "🔬"; // Icono de Microscopio
     fab.title = "Observabilidad (Flujo de SAVIA)";
     fab.style.cssText = `
       position: fixed; bottom: 90px; right: 20px; width: 56px; height: 56px;
@@ -609,6 +609,50 @@
       };
       window.sendToProxyBasico._obsPatched = true;
       console.log("[Observability] ✅ Hook: sendToProxyBasico");
+    }
+        // 3. Hook para Avanzar en Tamizaje (Emite SAVIA en cada paso)
+    if (typeof window.nextStep === "function" && !window.nextStep._obsPatched) {
+      const origNext = window.nextStep;
+      window.nextStep = async function() {
+        // Antes de avanzar, inyectamos la SAVIA de la sección actual
+        const seq = window.getStepSequence ? window.getStepSequence() : [];
+        const pasoActual = window.currentStep;
+        const seccionActual = seq[pasoActual];
+
+        if (seccionActual === "sec-vitales") {
+          await emitirAporteClinica();
+        } else if (seccionActual === "sec-labs") {
+          await emitirAporteLaboratorio();
+        } else if (seccionActual === "sec-clinica") {
+          // Enviar datos sociales o de escala si los hay
+          await emitirAporteSocial();
+        }
+        
+        return origNext.apply(this, arguments);
+      };
+      window.nextStep._obsPatched = true;
+      console.log("[Observability] ✅ Hook: nextStep (Tamizaje paso a paso)");
+    }
+
+    // 4. Hook para Avanzar en Consulta SOAP (Emite SAVIA en cada paso)
+    if (typeof window.consultaIrAObjetivo === "function" && !window.consultaIrAObjetivo._obsPatched) {
+      const origObjetivo = window.consultaIrAObjetivo;
+      window.consultaIrAObjetivo = async function() {
+        await emitirAporteClinica(); // Emite peso, talla, etc.
+        return origObjetivo.apply(this, arguments);
+      };
+      window.consultaIrAObjetivo._obsPatched = true;
+      console.log("[Observability] ✅ Hook: consultaIrAObjetivo");
+    }
+
+    if (typeof window.consultaIrAAnalisis === "function" && !window.consultaIrAAnalisis._obsPatched) {
+      const origAnalisis = window.consultaIrAAnalisis;
+      window.consultaIrAAnalisis = async function() {
+        await emitirAporteLaboratorio(); // Emite los labs de la consulta
+        return origAnalisis.apply(this, arguments);
+      };
+      window.consultaIrAAnalisis._obsPatched = true;
+      console.log("[Observability] ✅ Hook: consultaIrAAnalisis");
     }
   }
 
