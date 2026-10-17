@@ -696,7 +696,23 @@
       console.log("[Observability] ✅ Hook: consultaIrAAnalisis");
     }
   }
-
+    // 5. Hook Universal para botones de "Siguiente" o "Continuar"
+    if (!window._obs_botones_parcheados) {
+      window._obs_botones_parcheados = true;
+      document.addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        
+        const texto = (btn.textContent || "").toLowerCase();
+        if (texto.includes("siguiente") || texto.includes("continuar") || texto.includes("objetivo") || texto.includes("análisis")) {
+          // Disparamos los aportes en el momento exacto del clic
+          emitirAporteClinica();
+          emitirAporteLaboratorio();
+          emitirAporteSocial();
+        }
+      });
+      console.log("[Observability] ✅ Hook: Botones Siguiente (Universal)");
+    }
   // ═══════════════════════════════════════════════════════════
   // VIGILANTE DE MEMORIA
   // ═══════════════════════════════════════════════════════════
@@ -721,7 +737,48 @@
     intentos++;
     if (intentos > 60) clearInterval(intervalHooks);
   }, 1000);
+ 
+  
   // ═══════════════════════════════════════════════════════════
+  // UTILIDADES
+  // ═══════════════════════════════════════════════════════════
+  function limpiarPanel() {
+    if (!confirm("¿Limpiar la SAVIA del árbol?")) return;
+    ESTADO.pasoActual = 0; ESTADO.eventos = []; ultimoPacienteInyectado = "";
+    document.getElementById("obs-narrativa").innerHTML = `
+      <div style="position: absolute; left: 24px; top: 20px; bottom: 20px; width: 4px; background: linear-gradient(180deg, #34c759, #0071e3); border-radius: 4px; opacity: 0.15; z-index: 0"></div>
+      <div id="obs-sangre-vacia" style="text-align: center; padding: 40px 20px; color: #86868b; font-size: 12px; z-index: 1; background: #f9f9fa">
+        <div style="font-size: 42px; margin-bottom: 10px">🌿</div>
+        <div style="font-size: 13px; font-weight: 700; color: #6e6e73; margin-bottom: 6px">El árbol está listo</div>
+        <div style="font-size: 11px; line-height: 1.6">Navega el monolito para que los agentes empiecen a aportar SAVIA.</div>
+      </div>
+    `;
+    actualizarContadores();
+  }
+
+  function exportarLog() {
+    const log = ESTADO.eventos.map((e, i) => ({
+      paso: i + 1, tipo: e.evento?.tipo, de: e.evento?.de, timestamp: e.evento?.timestamp, payload: e.evento?.payload
+    }));
+    const blob = new Blob([JSON.stringify(log, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `observability-savia-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function mostrarAyuda() {
+    alert("🌿 ¿Cómo funciona la SAVIA?\n\n1. El agente-paciente inyecta SAVIA al Guardar o Cargar la ficha.\n2. Los agentes de clínica y labs inyectan al presionar 'Enviar a Kimi' o al avanzar de sección.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se refleja en esta línea de tiempo.");
+  }
+
+  function inyectarEstilos() {
+    if (document.getElementById("obs-styles")) return;
+    const style = document.createElement("style");
+    style.id = "obs-styles";
+    style.textContent = `@keyframes obsSlideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`;
+    document.head.appendChild(style);
+  }
+
+    // ═══════════════════════════════════════════════════════════
   // VIGILANTE DE SECCIONES (Detecta cambios de pantalla)
   // ═══════════════════════════════════════════════════════════
   let ultimaSeccionVista = "";
@@ -790,46 +847,6 @@
   // Arrancar los vigilantes
   iniciarVigilanteDePaciente();
   iniciarVigilanteDeSecciones(); // <--- Nueva línea
-  
-  // ═══════════════════════════════════════════════════════════
-  // UTILIDADES
-  // ═══════════════════════════════════════════════════════════
-  function limpiarPanel() {
-    if (!confirm("¿Limpiar la SAVIA del árbol?")) return;
-    ESTADO.pasoActual = 0; ESTADO.eventos = []; ultimoPacienteInyectado = "";
-    document.getElementById("obs-narrativa").innerHTML = `
-      <div style="position: absolute; left: 24px; top: 20px; bottom: 20px; width: 4px; background: linear-gradient(180deg, #34c759, #0071e3); border-radius: 4px; opacity: 0.15; z-index: 0"></div>
-      <div id="obs-sangre-vacia" style="text-align: center; padding: 40px 20px; color: #86868b; font-size: 12px; z-index: 1; background: #f9f9fa">
-        <div style="font-size: 42px; margin-bottom: 10px">🌿</div>
-        <div style="font-size: 13px; font-weight: 700; color: #6e6e73; margin-bottom: 6px">El árbol está listo</div>
-        <div style="font-size: 11px; line-height: 1.6">Navega el monolito para que los agentes empiecen a aportar SAVIA.</div>
-      </div>
-    `;
-    actualizarContadores();
-  }
-
-  function exportarLog() {
-    const log = ESTADO.eventos.map((e, i) => ({
-      paso: i + 1, tipo: e.evento?.tipo, de: e.evento?.de, timestamp: e.evento?.timestamp, payload: e.evento?.payload
-    }));
-    const blob = new Blob([JSON.stringify(log, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `observability-savia-${new Date().toISOString().slice(0, 10)}.json`; a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function mostrarAyuda() {
-    alert("🌿 ¿Cómo funciona la SAVIA?\n\n1. El agente-paciente inyecta SAVIA al Guardar o Cargar la ficha.\n2. Los agentes de clínica y labs inyectan al presionar 'Enviar a Kimi' o al avanzar de sección.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se refleja en esta línea de tiempo.");
-  }
-
-  function inyectarEstilos() {
-    if (document.getElementById("obs-styles")) return;
-    const style = document.createElement("style");
-    style.id = "obs-styles";
-    style.textContent = `@keyframes obsSlideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`;
-    document.head.appendChild(style);
-  }
-
   function init() {
     inyectarEstilos();
     inyectarBotonFlotante();
