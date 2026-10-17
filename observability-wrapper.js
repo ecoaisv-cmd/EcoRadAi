@@ -628,13 +628,21 @@
       console.log("[Observability] ✅ Hook: guardarFichaPaciente");
     }
 
-    // 2. Hook para seleccionar paciente existente (NUEVO FIX)
+        // 2. Hook para seleccionar paciente existente (NUEVO FIX)
     if (typeof window.seleccionarPacienteConsulta === "function" && !window.seleccionarPacienteConsulta._obsPatched) {
       const orig = window.seleccionarPacienteConsulta;
       window.seleccionarPacienteConsulta = async function() {
-        const r = await orig.apply(this, arguments);
-        setTimeout(emitirAportePaciente, 1000); 
-        return r;
+        try {
+          const r = await orig.apply(this, arguments);
+          // Esperar 1.5s para que el monolito termine de guardar y el ID limpio esté listo
+          setTimeout(emitirAportePaciente, 1500); 
+          return r;
+        } catch (e) {
+          console.warn("[Observability] El monolito falló al seleccionar paciente, pero el wrapper continúa.", e.message);
+          // Aunque el monolito falle, intentamos capturar el paciente de todas formas
+          setTimeout(emitirAportePaciente, 1500);
+          // No relanzamos el error para que no rompa la promesa
+        }
       };
       window.seleccionarPacienteConsulta._obsPatched = true;
       console.log("[Observability] ✅ Hook: seleccionarPacienteConsulta");
