@@ -1,13 +1,13 @@
 // ═══════════════════════════════════════════════════════════════
-// OBSERVABILITY WRAPPER v5.2 — EcoRadAi Sprint 3
-// FIX: Deduplicación basada en secuencia (no en datos), 
-//      soporte completo para Tamizaje, y UI más robusta
+// OBSERVABILITY WRAPPER v5.3 — EcoRadAi Sprint 3
+// FIX: Captura de Subjetivo, Examen Físico, Consolidado (DOM Scraping)
+//      Soporte completo para Tamizaje y Consulta
 // ═══════════════════════════════════════════════════════════════
 
 (function() {
   "use strict";
 
-  const VERSION = "5.2";
+  const VERSION = "5.3";
   const ESTADO = {
     panelAbierto: false,
     capturadorActivo: false,
@@ -18,10 +18,7 @@
     saviaDisponible: false,
     intervaloVigilante: null,
     intentosSavia: 0,
-    // ✅ FIX: Control de flujo para evitar duplicados reales sin perder datos
-    ultimoEventoEmitido: "", 
-    pasoAnteriorTamizaje: -1,
-    pasoAnteriorConsulta: -1
+    ultimoEventoEmitido: ""
   };
 
   let ultimoPacienteInyectado = "";
@@ -31,7 +28,7 @@
   console.log(`%c[Observability] 🚀 Wrapper v${VERSION} cargando...`, "background:#0071e3;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 1 — ESCUDO
+  // SECCIÓN 1 — ESCUDO Y HELPERS
   // ═══════════════════════════════════════════════════════════
   window.addEventListener("error", (e) => {
     if (e.message && (e.message.includes("docx") || e.message.includes("qrcode"))) { e.preventDefault(); return true; }
@@ -41,9 +38,6 @@
     }
   }, true);
 
-  // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 2 — HELPERS
-  // ═══════════════════════════════════════════════════════════
   async function esperarSavia(maxIntentos = 60, intervaloMs = 1000) {
     return new Promise((resolve) => {
       let intentos = 0;
@@ -82,44 +76,21 @@
     return isNaN(n) ? null : n;
   }
 
-  // ✅ FIX: Nuevo sistema anti-duplicados. Ya no usa hash de datos,
-  // sino un control de flujo para no emitir si no ha pasado el tiempo
-  // o si es exactamente el mismo evento en el mismo milisegundo.
+  function leerTexto(id) {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : "";
+  }
+
   function esEventoDuplicado(tipo, datos) {
     const firma = tipo + "|" + JSON.stringify(datos);
-    if (ESTADO.ultimoEventoEmitido === firma) {
-      return true;
-    }
+    if (ESTADO.ultimoEventoEmitido === firma) return true;
     ESTADO.ultimoEventoEmitido = firma;
-    setTimeout(() => { ESTADO.ultimoEventoEmitido = ""; }, 2000); // resetea a los 2s
+    setTimeout(() => { ESTADO.ultimoEventoEmitido = ""; }, 2000);
     return false;
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 3 — INTERPRETACIONES CLÍNICAS
-  // ═══════════════════════════════════════════════════════════
-  const INTERPRETACIONES = {
-    glucosa: (v) => v >= 126 ? { sev: "critico", label: "Diabetes" } : v >= 100 ? { sev: "leve", label: "Prediabetes" } : v < 70 ? { sev: "leve", label: "Hipoglucemia" } : { sev: "normal", label: "Normal" },
-    hba1c: (v) => v >= 6.5 ? { sev: "critico", label: "Diabetes" } : v >= 5.7 ? { sev: "leve", label: "Prediabetes" } : { sev: "normal", label: "Normal" },
-    homa_ir: (v) => v >= 4 ? { sev: "critico", label: "Resistencia severa" } : v >= 2.5 ? { sev: "moderado", label: "Resistencia" } : { sev: "normal", label: "Normal" },
-    ldl: (v) => v >= 160 ? { sev: "critico", label: "Muy alto" } : v >= 130 ? { sev: "moderado", label: "Alto" } : v >= 100 ? { sev: "leve", label: "Límite" } : { sev: "normal", label: "Óptimo" },
-    hdl: (v) => v < 40 ? { sev: "critico", label: "Bajo" } : v >= 60 ? { sev: "normal", label: "Protector" } : { sev: "leve", label: "Aceptable" },
-    tg: (v) => v >= 500 ? { sev: "critico", label: "Muy alto" } : v >= 200 ? { sev: "moderado", label: "Alto" } : v >= 150 ? { sev: "leve", label: "Límite" } : { sev: "normal", label: "Normal" },
-    alt: (v) => v > 200 ? { sev: "critico", label: "Severa" } : v > 80 ? { sev: "moderado", label: "Moderada" } : v > 40 ? { sev: "leve", label: "Leve" } : { sev: "normal", label: "Normal" },
-    imc: (v) => v >= 40 ? { sev: "critico", label: "Obesidad III" } : v >= 35 ? { sev: "critico", label: "Obesidad II" } : v >= 30 ? { sev: "moderado", label: "Obesidad I" } : v >= 25 ? { sev: "leve", label: "Sobrepeso" } : { sev: "normal", label: "Normal" }
-  };
-
-  const NOMBRES_LABS = { glucosa: "Glucosa", hba1c: "HbA1c", homa_ir: "HOMA-IR", ldl: "LDL", hdl: "HDL", tg: "Triglicéridos", alt: "ALT", ast: "AST", ct: "Colesterol Total", creatinina: "Creatinina", insulina: "Insulina" };
-  const UNIDADES_LABS = { glucosa: "mg/dL", hba1c: "%", homa_ir: "", ldl: "mg/dL", hdl: "mg/dL", tg: "mg/dL", alt: "U/L", ast: "U/L", ct: "mg/dL", creatinina: "mg/dL", insulina: "µUI/mL" };
-
-  function interpretarClave(clave, valor) {
-    const fn = INTERPRETACIONES[clave];
-    if (!fn) return { sev: "normal", label: "—" };
-    try { return fn(Number(valor)); } catch { return { sev: "normal", label: "—" }; }
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 4 — UI INJECTION
+  // SECCIÓN 2 — UI INJECTION
   // ═══════════════════════════════════════════════════════════
   function inyectarBotonFlotante() {
     if (document.getElementById("obs-fab")) return;
@@ -140,7 +111,7 @@
       <div style="padding: 14px 18px; background: linear-gradient(135deg, #1a3a5c, #34c759); color: white; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0">
         <div>
           <div style="font-size: 14px; font-weight: 800; letter-spacing: -0.3px">🌿 Flujo de SAVIA</div>
-          <div style="font-size: 11px; opacity: 0.85; margin-top: 2px">Sprint 3 · Árbol de agentes · v${VERSION}</div>
+          <div style="font-size: 11px; opacity: 0.85; margin-top: 2px">Sprint 3 · v${VERSION}</div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center">
           <span id="obs-badge" style="font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 100px; background: rgba(255,255,255,0.2); text-transform: uppercase">Esperando</span>
@@ -204,7 +175,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 5 — CAPTURADOR SAVIA
+  // SECCIÓN 3 — CAPTURADOR Y RENDER
   // ═══════════════════════════════════════════════════════════
   async function activarCapturador() {
     if (ESTADO.capturadorActivo) return;
@@ -218,10 +189,7 @@
       return;
     }
 
-    if (savia.propagar._obsPatched) {
-      ESTADO.capturadorActivo = true;
-      return;
-    }
+    if (savia.propagar._obsPatched) { ESTADO.capturadorActivo = true; return; }
 
     const origPropagar = savia.propagar;
     savia.propagar = function(evento) {
@@ -244,8 +212,6 @@
       if (tipo === "savia:aporte-paciente") return renderAportePaciente(payload, evento);
       if (tipo === "savia:aporte-clinica") return renderAporteClinica(payload, evento);
       if (tipo === "savia:aporte-laboratorio") return renderAporteLaboratorio(payload, evento);
-      if (tipo === "savia:aporte-imagen") return renderAporteImagen(payload, evento);
-      if (tipo === "savia:aporte-social") return renderAporteSocial(payload, evento);
       if (tipo === "savia:raiz:contexto-unificado") return renderSaviaRaiz(payload, evento);
       if (tipo === "savia:tronco:informe-kimi") return renderCoordinadorInforme(payload, evento);
       if (tipo === "especialista:respuesta") return renderEspecialistaRespuesta(payload, evento);
@@ -254,26 +220,6 @@
     } catch (e) {
       console.error("[Observability] Error procesando", tipo, e);
     }
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 6 — RENDER UI (Sin bloqueos)
-  // ═══════════════════════════════════════════════════════════
-  function tablaDatos(filas, thead) {
-    return `
-      <div style="overflow-x: auto; margin: 8px 0; border-radius: 8px; border: 1px solid #e8e8ed;">
-        <table style="width: 100%; border-collapse: collapse; font-size: 11px; min-width: 250px;">
-          ${thead ? `<thead><tr style="background: #f9f9fa">${thead.map(h => `<th style="padding: 8px 12px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; color: #86868b; border-bottom: 1px solid #e8e8ed">${h}</th>`).join("")}</tr></thead>` : ""}
-          <tbody style="background: white">${filas}</tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  function sevBadge(sev, label) {
-    const colors = { normal: { bg: "#f0fff4", fg: "#1a4a2a" }, leve: { bg: "#fff9e6", fg: "#8a6a00" }, moderado: { bg: "#ffe8d1", fg: "#8a4400" }, alto: { bg: "#ffdad6", fg: "#7a1a1a" }, critico: { bg: "#ff3b30", fg: "white" } };
-    const c = colors[sev] || colors.normal;
-    return `<span style="display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 100px; background: ${c.bg}; color: ${c.fg}; text-transform: uppercase">${label}</span>`;
   }
 
   function agregarPaso(config) {
@@ -314,17 +260,22 @@
     });
   }
 
-  // RENDERS (Con validación para evitar pantallas en blanco)
+  function tablaDatos(filas, thead) {
+    return `
+      <div style="overflow-x: auto; margin: 8px 0; border-radius: 8px; border: 1px solid #e8e8ed;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; min-width: 250px;">
+          ${thead ? `<thead><tr style="background: #f9f9fa">${thead.map(h => `<th style="padding: 8px 12px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; color: #86868b; border-bottom: 1px solid #e8e8ed">${h}</th>`).join("")}</tr></thead>` : ""}
+          <tbody style="background: white">${filas}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // RENDERS ESPECÍFICOS
   function renderAportePaciente(payload, evento) {
     const s = payload.subject || payload;
     ESTADO.eventos.push({ tipo: "raiz", evento });
-    const filas = `
-      <tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c; width: 40%">Nombre</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${escapeHtml(s.nombre || "—")}</td></tr>
-      <tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">ID</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; text-align: right">${escapeHtml(s.subject_id || "—")}</td></tr>
-      <tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">Edad</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; text-align: right">${escapeHtml(String(s.edad || "—"))} años</td></tr>
-      <tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">Sexo</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; text-align: right">${escapeHtml(s.sexo || "—")}</td></tr>
-    `;
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Paciente (Demografía)", subtitulo: `savia:aporte-paciente · ${formatearHora(evento.timestamp)}`, html: `${tablaDatos(filas)}<div style="margin-top:8px; font-size:10px; color:#34c759; font-weight:700;">🌿 SAVIA inyectada al árbol</div>` });
+    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Paciente", subtitulo: `savia:aporte-paciente · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;"><strong>${escapeHtml(s.nombre)}</strong> (${escapeHtml(s.subject_id)})</div>` });
   }
 
   function renderAporteClinica(payload, evento) {
@@ -332,13 +283,10 @@
     ESTADO.eventos.push({ tipo: "raiz", evento });
     let filas = "";
     Object.keys(c).forEach(k => {
-      if (c[k] === null || c[k] === undefined) return;
-      if (typeof c[k] === 'object') return; // Ignorar objetos anidados como hábitos
-      const i = interpretarClave(k, c[k]);
-      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${c[k]}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; text-align: center">${sevBadge(i.sev, i.label)}</td></tr>`;
+      if (c[k] === null || c[k] === undefined || typeof c[k] === 'object') return;
+      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${c[k]}</td></tr>`;
     });
-    if(!filas) filas = '<tr><td colspan="3" style="padding: 10px; text-align: center; color: #86868b;">Sin datos</td></tr>';
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Clínica (Signos Vitales)", subtitulo: `savia:aporte-clinica · ${formatearHora(evento.timestamp)}`, html: `${tablaDatos(filas, ["Dato", "Valor", "Estado"])}` });
+    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Clínica", subtitulo: `savia:aporte-clinica · ${formatearHora(evento.timestamp)}`, html: tablaDatos(filas, ["Dato", "Valor"]) });
   }
 
   function renderAporteLaboratorio(payload, evento) {
@@ -347,27 +295,14 @@
     let filas = "";
     Object.keys(labs).forEach(k => {
       if (labs[k] === null || labs[k] === undefined) return;
-      const i = interpretarClave(k, labs[k]);
-      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${NOMBRES_LABS[k] || k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${labs[k]} ${UNIDADES_LABS[k]||""}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; text-align: center">${sevBadge(i.sev, i.label)}</td></tr>`;
+      filas += `<tr><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-weight: 600; color: #1a3a5c">${k}</td><td style="padding: 5px 10px; border-bottom: 1px solid #e8e8ed; font-family: monospace; font-weight: 700; text-align: right">${labs[k]}</td></tr>`;
     });
-    if(!filas) filas = '<tr><td colspan="3" style="padding: 10px; text-align: center; color: #86868b;">Sin datos</td></tr>';
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Laboratorio", subtitulo: `savia:aporte-laboratorio · ${formatearHora(evento.timestamp)}`, html: `${tablaDatos(filas, ["Examen", "Valor", "Estado"])}` });
-  }
-
-  function renderAporteImagen(payload, evento) {
-    ESTADO.eventos.push({ tipo: "raiz", evento });
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Imagen", subtitulo: `savia:aporte-imagen · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Datos de imagen recibidos.</div>` });
-  }
-
-  function renderAporteSocial(payload, evento) {
-    ESTADO.eventos.push({ tipo: "raiz", evento });
-    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Trabajo Social", subtitulo: `savia:aporte-social · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Datos sociales recibidos.</div>` });
+    agregarPaso({ color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", titulo: "Aporte Laboratorio", subtitulo: `savia:aporte-laboratorio · ${formatearHora(evento.timestamp)}`, html: tablaDatos(filas, ["Examen", "Valor"]) });
   }
 
   function renderSaviaRaiz(payload, evento) {
     ESTADO.eventos.push({ tipo: "savia", evento });
-    const s = payload.subject || {};
-    agregarPaso({ color: "#34c759", badge: "SAVIA", badgeColor: "#34c759", titulo: "Consolidación: SAVIA RAÍZ", subtitulo: `savia:raiz:contexto-unificado · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Paciente: ${escapeHtml(s.nombre)}</div>` });
+    agregarPaso({ color: "#34c759", badge: "SAVIA", badgeColor: "#34c759", titulo: "Consolidación: SAVIA RAÍZ", subtitulo: `savia:raiz:contexto-unificado · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Contexto unificado generado con éxito.</div>` });
   }
 
   function renderCoordinadorInforme(payload, evento) {
@@ -377,7 +312,7 @@
 
   function renderEspecialistaRespuesta(payload, evento) {
     ESTADO.eventos.push({ tipo: "tronco", evento });
-    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: `Órgano: Respuesta de ${payload.especialista || "Especialista"}`, subtitulo: `especialista:respuesta · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Análisis recibido.</div>` });
+    agregarPaso({ color: "#d4a017", badge: "TRONCO", badgeColor: "#d4a017", titulo: `Órgano: ${payload.especialista || "Especialista"}`, subtitulo: `especialista:respuesta · ${formatearHora(evento.timestamp)}`, html: `<div style="font-size:11px;color:#333;">Análisis recibido.</div>` });
   }
 
   function renderPlanIntegrado(payload, evento) {
@@ -391,52 +326,54 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 7 — INYECTORES DE SAVIA
+  // SECCIÓN 4 — INYECTORES (DOM SCRAPING)
   // ═══════════════════════════════════════════════════════════
-  async function emitirAportePacienteDesdeEstado(pac) {
-    if (!window.SAVIA || !pac) return;
-    if (esEventoDuplicado("paciente", pac)) return;
-    ESTADO.contextoIdActual = `SAV-RAIZ-${pac.subject_id}-${Date.now()}`;
-    try {
-      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-paciente", {
-        contexto_id: ESTADO.contextoIdActual,
-        subject: { subject_id: pac.subject_id, nombre: pac.nombre, edad: pac.edad, sexo: pac.sexo, departamento: pac.departamento, empresa: pac.empresa || null }
-      }, { de: "agente-paciente" });
-    } catch(e) { console.warn(e); }
-  }
-
-  async function emitirAporteClinica() {
-    if (!window.SAVIA || !ESTADO.contextoIdActual) return;
-    const clinica = {};
-    // ✅ FIX: Buscar tanto IDs de Consulta como de Tamizaje
-    const mapa = [
+  
+  // Extrae TODO el contexto clínico posible del DOM
+  function extraerContextoClinicoCompleto() {
+    const contexto = { subjetivo: {}, objetivo: {}, analisis: {}, plan: {}, clinica: {}, labs: {} };
+    
+    // --- Subjetivo ---
+    contexto.subjetivo.motivo = leerTexto("cons-motivo") || leerTexto("e-motivo");
+    contexto.subjetivo.enfermedad_actual = leerTexto("cons-enfermedad-actual");
+    contexto.subjetivo.eva = leerNumero("cons-eva");
+    contexto.subjetivo.evolucion = leerTexto("cons-evolucion");
+    contexto.subjetivo.alergias = leerTexto("cons-alergias");
+    contexto.subjetivo.medicamentos = leerTexto("cons-medicamentos");
+    contexto.subjetivo.habitos = {
+      tabaco: leerTexto("cons-habito-tabaco"),
+      alcohol: leerTexto("cons-habito-alcohol"),
+      ejercicio: leerTexto("cons-habito-ejercicio"),
+      sueno: leerTexto("cons-habito-sueno")
+    };
+    
+    // --- Objetivo (Signos Vitales) ---
+    const mapaVitales = [
       ["cl-peso", "cons-vit-peso_kg", "peso_kg"], 
       ["cl-talla", "cons-vit-talla_cm", "talla_cm"],
       ["cl-imc", "cons-vit-imc_calc", "imc"], 
       ["cl-pas", "cons-vit-ta_sistolica", "presion_sistolica_mmhg"],
       ["cl-pad", "cons-vit-ta_diastolica", "presion_diastolica_mmhg"], 
-      ["cl-fc", "cons-vit-fc", "frecuencia_cardiaca_lpm"]
+      ["cl-fc", "cons-vit-fc", "frecuencia_cardiaca_lpm"],
+      ["cl-fr", "cons-vit-fr", "frecuencia_respiratoria_rpm"],
+      ["cl-temp", "cons-vit-temperatura", "temperatura_c"],
+      ["cl-sato2", "cons-vit-sato2", "saturacion_o2_pct"]
     ];
-    
-    mapa.forEach(([idTamizaje, idConsulta, key]) => {
+    mapaVitales.forEach(([idTamizaje, idConsulta, key]) => {
       let v = leerNumero(idTamizaje);
       if (v === null) v = leerNumero(idConsulta); 
-      if (v !== null) clinica[key] = v;
+      if (v !== null) contexto.clinica[key] = v;
     });
+
+    // --- Objetivo (Examen Físico) ---
+    const examenFisico = {};
+    document.querySelectorAll("[id^='cons-ef-']").forEach(el => {
+      if (el.value.trim()) examenFisico[el.id.replace("cons-ef-", "")] = el.value.trim();
+    });
+    contexto.objetivo.examen_fisico = examenFisico;
     
-    if (Object.keys(clinica).length === 0) return;
-    if (esEventoDuplicado("clinica", clinica)) return;
-
-    try {
-      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-clinica", { contexto_id: ESTADO.contextoIdActual, clinica }, { de: "agente-clinica" });
-    } catch(e) { console.warn(e); }
-  }
-
-  async function emitirAporteLaboratorio() {
-    if (!window.SAVIA || !ESTADO.contextoIdActual) return;
-    const labs = {};
-    // ✅ FIX: Buscar tanto IDs de Consulta como de Tamizaje
-    const mapa = [
+    // --- Objetivo (Labs) ---
+    const mapaLabs = [
       ["lab-glucosa", "cons-lab-glucosa", "glucosa"], 
       ["lab-hba1c", "cons-lab-hba1c", "hba1c"],
       ["lab-insulina", "cons-lab-insulina", "insulina"], 
@@ -449,18 +386,71 @@
       ["lab-creatinina", "cons-lab-creatinina", "creatinina"],
       ["lab-tfg", "cons-lab-tfg", "tfg"]
     ];
-    
-    mapa.forEach(([idTamizaje, idConsulta, key]) => {
+    mapaLabs.forEach(([idTamizaje, idConsulta, key]) => {
       let v = leerNumero(idTamizaje);
       if (v === null) v = leerNumero(idConsulta);
-      if (v !== null) labs[key] = v;
+      if (v !== null) contexto.labs[key] = v;
     });
-    
-    if (Object.keys(labs).length === 0) return;
-    if (esEventoDuplicado("labs", labs)) return;
 
+    // --- Análisis ---
+    contexto.analisis.impresion = leerTexto("cons-impresion-final");
+    contexto.analisis.riesgo = leerTexto("cons-nivel-riesgo");
+    
+    // --- Plan ---
+    contexto.plan.educacion = leerTexto("cons-educacion");
+
+    return contexto;
+  }
+
+  async function emitirAportePacienteDesdeEstado(pac) {
+    if (!window.SAVIA || !pac) return;
+    if (esEventoDuplicado("paciente", pac)) return;
+    ESTADO.contextoIdActual = `SAV-RAIZ-${pac.subject_id}-${Date.now()}`;
     try {
-      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-laboratorio", { contexto_id: ESTADO.contextoIdActual, labs }, { de: "agente-laboratorio" });
+      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-paciente", {
+        contexto_id: ESTADO.contextoIdActual,
+        subject: { subject_id: pac.subject_id, nombre: pac.nombre, edad: pac.edad, sexo: pac.sexo, departamento: pac.departamento, empresa: pac.empresa || null }
+      }, { de: "agente-paciente" });
+    } catch(e) { console.warn(e); }
+  }
+
+  async function emitirAporteSubjetivo() {
+    if (!window.SAVIA || !ESTADO.contextoIdActual) return;
+    const ctx = extraerContextoClinicoCompleto();
+    if (Object.keys(ctx.subjetivo).length === 0) return;
+    if (esEventoDuplicado("subjetivo", ctx.subjetivo)) return;
+    try {
+      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-subjetivo", { contexto_id: ESTADO.contextoIdActual, subjetivo: ctx.subjetivo }, { de: "agente-clinica" });
+    } catch(e) { console.warn(e); }
+  }
+
+  async function emitirAporteClinica() {
+    if (!window.SAVIA || !ESTADO.contextoIdActual) return;
+    const ctx = extraerContextoClinicoCompleto();
+    if (Object.keys(ctx.clinica).length === 0) return;
+    if (esEventoDuplicado("clinica", ctx.clinica)) return;
+    try {
+      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-clinica", { contexto_id: ESTADO.contextoIdActual, clinica: ctx.clinica }, { de: "agente-clinica" });
+    } catch(e) { console.warn(e); }
+  }
+
+  async function emitirAporteExamenFisico() {
+    if (!window.SAVIA || !ESTADO.contextoIdActual) return;
+    const ctx = extraerContextoClinicoCompleto();
+    if (Object.keys(ctx.objetivo.examen_fisico).length === 0) return;
+    if (esEventoDuplicado("examen_fisico", ctx.objetivo.examen_fisico)) return;
+    try {
+      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-examen-fisico", { contexto_id: ESTADO.contextoIdActual, examen_fisico: ctx.objetivo.examen_fisico }, { de: "agente-clinica" });
+    } catch(e) { console.warn(e); }
+  }
+
+  async function emitirAporteLaboratorio() {
+    if (!window.SAVIA || !ESTADO.contextoIdActual) return;
+    const ctx = extraerContextoClinicoCompleto();
+    if (Object.keys(ctx.labs).length === 0) return;
+    if (esEventoDuplicado("labs", ctx.labs)) return;
+    try {
+      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-laboratorio", { contexto_id: ESTADO.contextoIdActual, labs: ctx.labs }, { de: "agente-laboratorio" });
     } catch(e) { console.warn(e); }
   }
 
@@ -471,6 +461,9 @@
     
     if (esEventoDuplicado("savia_raiz", pac.subject_id)) return;
     
+    // Extraer TODO el contexto antes de enviar a Kimi
+    const ctx = extraerContextoClinicoCompleto();
+    
     let icSugeridas = [];
     try {
       const aiResponse = document.getElementById("ai-response-text")?.textContent || "";
@@ -480,15 +473,22 @@
     
     try {
       await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:raiz:contexto-unificado", {
-        contexto_id: ESTADO.contextoIdActual, case_id: `ECO-OBS-${Date.now()}`, origen: "tamizaje",
+        contexto_id: ESTADO.contextoIdActual, 
+        case_id: `ECO-OBS-${Date.now()}`, 
+        origen: "consulta",
         subject: { subject_id: pac.subject_id, nombre: pac.nombre, edad: pac.edad, sexo: pac.sexo },
+        subjetivo: ctx.subjetivo,
+        clinica: ctx.clinica,
+        examen_fisico: ctx.objetivo.examen_fisico,
+        labs: ctx.labs,
+        analisis: ctx.analisis,
         raw: { _json_estructurado: { interconsultas_sugeridas: icSugeridas } }
       }, { de: "agente-savia-consolidadora" });
     } catch(e) { console.warn(e); }
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 8 — INSTALAR HOOKS (Para Consulta y Tamizaje)
+  // SECCIÓN 5 — HOOKS Y VIGILANTES
   // ═══════════════════════════════════════════════════════════
   function instalarHooks() {
     if (typeof window.guardarFichaPaciente === "function" && !window.guardarFichaPaciente._obsPatched) {
@@ -509,10 +509,13 @@
       window.guardarFichaPaciente._obsPatched = true;
     }
 
+    // Hook crítico para enviar TODO antes de Kimi
     if (typeof window.sendToProxyBasico === "function" && !window.sendToProxyBasico._obsPatched) {
       const orig = window.sendToProxyBasico;
       window.sendToProxyBasico = async function() {
+        await emitirAporteSubjetivo();
         await emitirAporteClinica();
+        await emitirAporteExamenFisico();
         await emitirAporteLaboratorio();
         const r = await orig.apply(this, arguments);
         setTimeout(emitirSaviaRaiz, 1000);
@@ -521,7 +524,7 @@
       window.sendToProxyBasico._obsPatched = true;
     }
 
-    // ✅ FIX: Hook para botones de Tamizaje y Consulta (Universal)
+    // Hook para detectar avance en Tamizaje y Consulta
     if (!window._obs_botones_parcheados) {
       window._obs_botones_parcheados = true;
       document.addEventListener("click", (e) => {
@@ -529,15 +532,14 @@
         if (!btn) return;
         const texto = (btn.textContent || "").toLowerCase();
         
-        // Ignorar retrocesos
         if (texto.includes("atrás") || texto.includes("volver") || texto.includes("←")) return;
         
-        // Detectar avance en cualquier flujo
         if (texto.includes("siguiente") || texto.includes("continuar") || texto.includes("objetivo") || texto.includes("análisis")) {
           clearTimeout(_debounceClickTimer);
           _debounceClickTimer = setTimeout(() => {
-            // Forzar emisión de ambos por si el usuario avanzó rápido
+            emitirAporteSubjetivo();
             emitirAporteClinica();
+            emitirAporteExamenFisico();
             emitirAporteLaboratorio();
           }, 300);
         }
@@ -545,9 +547,6 @@
     }
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 9 — VIGILANTES
-  // ═══════════════════════════════════════════════════════════
   function iniciarVigilanteDePaciente() {
     let intervalo = 1000;
     function ciclo() {
@@ -589,9 +588,14 @@
           return; 
         }
         ultimaSeccionVista = seccionActual;
-        // Emitir silenciosamente, el deduplicador protegerá
-        if (seccionActual === "sec-vitales" || seccionActual === "consulta-objetivo-card") emitirAporteClinica();
+        
+        // Al cambiar de sección, forzar la captura de todo
+        if (seccionActual === "sec-vitales" || seccionActual === "consulta-objetivo-card") {
+           emitirAporteClinica();
+           emitirAporteExamenFisico();
+        }
         else if (seccionActual === "sec-labs") emitirAporteLaboratorio();
+        else if (seccionActual === "consulta-subjetivo-card") emitirAporteSubjetivo();
       }
     });
     const target = document.getElementById("sec-captura") || document.body;
@@ -599,7 +603,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 10 — UTILIDADES
+  // SECCIÓN 6 — UTILIDADES Y DIAGNÓSTICO
   // ═══════════════════════════════════════════════════════════
   function limpiarPanel() {
     if (!confirm("¿Limpiar la SAVIA del árbol?")) return;
@@ -627,7 +631,7 @@
   }
 
   function mostrarAyuda() {
-    alert("🌿 ¿Cómo funciona la SAVIA?\n\n1. El agente-paciente inyecta SAVIA al Guardar o Cargar la ficha.\n2. Los agentes de clínica y labs inyectan al presionar 'Enviar a Kimi' o al avanzar de sección.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se refleja en esta línea de tiempo.\n\n🔧 Botón 'Diag': muestra un modal con el estado interno del wrapper.\n\n📥 Exportar log: genera un JSON con todos los eventos capturados.");
+    alert("🌿 ¿Cómo funciona la SAVIA?\n\n1. El agente-paciente inyecta SAVIA al Guardar o Cargar la ficha.\n2. Los agentes de clínica, subjetivo, físico y labs inyectan al presionar 'Enviar a Kimi' o al avanzar de sección.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se refleja en esta línea de tiempo.\n\n📥 Exportar log: genera un JSON con todos los eventos capturados.");
   }
 
   function mostrarDiagnostico() {
@@ -667,7 +671,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 11 — INICIALIZACIÓN
+  // SECCIÓN 7 — INICIALIZACIÓN
   // ═══════════════════════════════════════════════════════════
   function inyectarEstilos() {
     if (document.getElementById("obs-styles")) return;
@@ -700,15 +704,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 12 — API PÚBLICA
-  // ═══════════════════════════════════════════════════════════
-  window.activarVisorSAVIA = function() { ESTADO.iniciado = false; init(); };
-  window.desactivarVisorSAVIA = function() { /* ... */ };
-  window.diagnosticarVisorSAVIA = function() { mostrarDiagnostico(); };
-  window.OBSERVABILITY_WRAPPER = { VERSION, ESTADO, activar: () => window.activarVisorSAVIA() };
-
-  // ═══════════════════════════════════════════════════════════
-  // ARRANQUE
+  // SECCIÓN 8 — ARRANQUE
   // ═══════════════════════════════════════════════════════════
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => setTimeout(init, 500));
