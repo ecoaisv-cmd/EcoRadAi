@@ -1,49 +1,86 @@
 // ═══════════════════════════════════════════════════════════════
-// OBSERVABILITY WRAPPER v4.0 — EcoRadAi Sprint 3
-// Flujo de SAVIA (Verde) + Hooks paso a paso + Protección de errores
+// OBSERVABILITY WRAPPER v5.0 — EcoRadAi Sprint 3
+// Wrapper autónomo — NO modifica el monolito
+// Incluye: Vigilante de Memoria, Hooks universales, Silenciador,
+//          Activación manual, Diagnóstico, y Robustez ante fallos
 // ═══════════════════════════════════════════════════════════════
 
 (function() {
   "use strict";
 
   // ═══════════════════════════════════════════════════════════
-  // ESCUDO: Ignorar errores de librerías externas caídas (docx, qrcode)
+  // SECCIÓN 0 — ESTADO GLOBAL Y CONSTANTES
   // ═══════════════════════════════════════════════════════════
-  window.addEventListener("error", (e) => {
-    if (e.message && (e.message.includes("docx") || e.message.includes("qrcode"))) {
-      e.preventDefault();
-      return true;
-    }
-  }, true);
-
-  console.log("[Observability] 🚀 Iniciando wrapper v4.0...");
-
+  const VERSION = "5.0";
   const ESTADO = {
     panelAbierto: false,
     capturadorActivo: false,
     pasoActual: 0,
     eventos: [],
-    contextoIdActual: null
+    contextoIdActual: null,
+    iniciado: false,
+    saviaDisponible: false,
+    intervaloVigilante: null,
+    intervaloSavia: null,
+    intentosSavia: 0
   };
 
   let ultimoPacienteInyectado = "";
   let ultimaSeccionVista = "";
+  let _debounceClickTimer = null;
+
+  console.log(`%c[Observability] 🚀 Wrapper v${VERSION} cargando...`, "background:#0071e3;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
 
   // ═══════════════════════════════════════════════════════════
-  // HELPERS
+  // SECCIÓN 1 — ESCUDO: Silenciador de errores externos
+  // Captura errores de docx, qrcode y errores de carga de scripts
   // ═══════════════════════════════════════════════════════════
-  function esperarSavia() {
+  window.addEventListener("error", (e) => {
+    // Error de mensaje (runtime)
+    if (e.message && (e.message.includes("docx") || e.message.includes("qrcode"))) {
+      e.preventDefault();
+      return true;
+    }
+    // Error de carga de script (red)
+    if (e.target && e.target.tagName === "SCRIPT") {
+      const src = (e.target.src || "").toLowerCase();
+      if (src.includes("docx") || src.includes("qrcode")) {
+        e.preventDefault();
+        console.warn("[Observability] 🔇 Script externo caído (silenciado):", src);
+        return true;
+      }
+    }
+  }, true);
+
+  window.addEventListener("unhandledrejection", (e) => {
+    const reason = String(e.reason || "");
+    if (reason.includes("docx") || reason.includes("qrcode")) {
+      e.preventDefault();
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // SECCIÓN 2 — HELPERS
+  // ═══════════════════════════════════════════════════════════
+  function esperarSavia(maxIntentos, intervaloMs) {
+    maxIntentos = maxIntentos || 60;
+    intervaloMs = intervaloMs || 1000;
     return new Promise((resolve) => {
-      const inicio = Date.now();
+      let intentos = 0;
       const interval = setInterval(() => {
+        intentos++;
+        ESTADO.intentosSavia = intentos;
         if (window.SAVIA && typeof window.SAVIA.propagar === "function") {
           clearInterval(interval);
+          ESTADO.saviaDisponible = true;
+          console.log(`[Observability] ✓ SAVIA detectado en intento ${intentos}`);
           resolve(window.SAVIA);
-        } else if (Date.now() - inicio > 60000) {
+        } else if (intentos >= maxIntentos) {
           clearInterval(interval);
+          console.warn(`[Observability] ⚠️ SAVIA no disponible tras ${intentos} intentos. El Visor funcionará en modo degradado.`);
           resolve(null);
         }
-      }, 500);
+      }, intervaloMs);
     });
   }
 
@@ -70,7 +107,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // INTERPRETACIONES CLÍNICAS
+  // SECCIÓN 3 — INTERPRETACIONES CLÍNICAS
   // ═══════════════════════════════════════════════════════════
   const INTERPRETACIONES = {
     glucosa: (v) => v >= 126 ? { sev: "critico", label: "Diabetes" }
@@ -122,7 +159,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // INYECTAR UI (Botón y Panel)
+  // SECCIÓN 4 — INYECCIÓN DE UI (Botón y Panel)
   // ═══════════════════════════════════════════════════════════
   function inyectarBotonFlotante() {
     if (document.getElementById("obs-fab")) return;
@@ -139,6 +176,7 @@
     `;
     fab.addEventListener("click", togglePanel);
     document.body.appendChild(fab);
+    console.log("[Observability] ✓ Botón flotante inyectado");
   }
 
   function inyectarPanel() {
@@ -157,7 +195,7 @@
       <div style="padding: 14px 18px; background: linear-gradient(135deg, #1a3a5c, #34c759); color: white; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0">
         <div>
           <div style="font-size: 14px; font-weight: 800; letter-spacing: -0.3px">🌿 Flujo de SAVIA</div>
-          <div style="font-size: 11px; opacity: 0.85; margin-top: 2px">Sprint 3 · Árbol de agentes</div>
+          <div style="font-size: 11px; opacity: 0.85; margin-top: 2px">Sprint 3 · Árbol de agentes · v${VERSION}</div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center">
           <span id="obs-badge" style="font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 100px; background: rgba(255,255,255,0.2); text-transform: uppercase">Esperando</span>
@@ -196,6 +234,7 @@
       <div style="padding: 10px 18px; background: white; border-top: 1px solid #d2d2d7; display: flex; gap: 6px; justify-content: space-between; flex-shrink: 0">
         <button id="obs-export" style="flex: 1; padding: 8px; background: #34c759; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer">📥 Exportar log</button>
         <button id="obs-help" style="flex: 1; padding: 8px; background: #d2d2d7; color: #1d1d1f; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer">❓ Ayuda</button>
+        <button id="obs-diag" style="flex: 0.6; padding: 8px; background: #0071e3; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer">🔧 Diag</button>
       </div>
     `;
     document.body.appendChild(panel);
@@ -204,6 +243,8 @@
     document.getElementById("obs-clear").addEventListener("click", limpiarPanel);
     document.getElementById("obs-export").addEventListener("click", exportarLog);
     document.getElementById("obs-help").addEventListener("click", mostrarAyuda);
+    document.getElementById("obs-diag").addEventListener("click", mostrarDiagnostico);
+    console.log("[Observability] ✓ Panel inyectado");
   }
 
   function togglePanel() {
@@ -229,25 +270,45 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // CAPTURADOR SAVIA
+  // SECCIÓN 5 — CAPTURADOR SAVIA (con reintentos)
   // ═══════════════════════════════════════════════════════════
   async function activarCapturador() {
-    const savia = await esperarSavia();
-    if (!savia || savia.propagar._obsPatched) {
-      if (savia) ESTADO.capturadorActivo = true;
+    if (ESTADO.capturadorActivo) return;
+
+    const savia = await esperarSavia(60, 1000);
+    
+    if (!savia) {
+      // Modo degradado: sin SAVIA, solo UI
+      console.warn("[Observability] ⚠️ Modo degradado: SAVIA no disponible. Se capturarán eventos simulados.");
+      const badge = document.getElementById("obs-badge");
+      if (badge) {
+        badge.textContent = "⚠️ Sin SAVIA";
+        badge.style.background = "rgba(255,149,0,0.6)";
+      }
+      ESTADO.capturadorActivo = true;
+      return;
+    }
+
+    if (savia.propagar._obsPatched) {
+      ESTADO.capturadorActivo = true;
       return;
     }
 
     const origPropagar = savia.propagar;
     savia.propagar = function(evento) {
-      try { procesarEvento(evento); } catch (e) { console.warn(e); }
+      try { procesarEvento(evento); } catch (e) { console.warn("[Observability] Error procesando evento:", e); }
       return origPropagar.apply(this, arguments);
     };
     savia.propagar._obsPatched = true;
     ESTADO.capturadorActivo = true;
+    ESTADO.saviaDisponible = true;
 
-    document.getElementById("obs-badge").textContent = "✅ Activo";
-    document.getElementById("obs-badge").style.background = "rgba(52,199,89,0.6)";
+    const badge = document.getElementById("obs-badge");
+    if (badge) {
+      badge.textContent = "✅ Activo";
+      badge.style.background = "rgba(52,199,89,0.6)";
+    }
+    console.log("[Observability] ✓ Capturador SAVIA activado");
   }
 
   function procesarEvento(evento) {
@@ -272,7 +333,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // RENDER UI
+  // SECCIÓN 6 — RENDER UI
   // ═══════════════════════════════════════════════════════════
   function tablaDatos(filas, thead) {
     return `
@@ -298,6 +359,7 @@
   function agregarPaso(config) {
     ESTADO.pasoActual++;
     const narrativa = document.getElementById("obs-narrativa");
+    if (!narrativa) return;
     const empty = document.getElementById("obs-sangre-vacia");
     if (empty) empty.remove();
 
@@ -455,7 +517,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // INYECTORES DE SAVIA
+  // SECCIÓN 7 — INYECTORES DE SAVIA
   // ═══════════════════════════════════════════════════════════
   async function emitirAportePacienteDesdeEstado(pac) {
     if (!window.SAVIA || !pac) return;
@@ -466,7 +528,7 @@
         subject: { subject_id: pac.subject_id, nombre: pac.nombre, edad: pac.edad, sexo: pac.sexo, departamento: pac.departamento, empresa: pac.empresa || null }
       }, { de: "agente-paciente" });
       console.log("[Observability] 🌿 SAVIA: Aporte Paciente inyectado");
-    } catch(e) { console.warn(e); }
+    } catch(e) { console.warn("[Observability] Error emitiendo paciente:", e); }
   }
 
   async function emitirAporteClinica() {
@@ -487,8 +549,10 @@
       } else if (v !== null) clinica[key] = v;
     });
     if (Object.keys(clinica).length === 0) return;
-    await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-clinica", { contexto_id: ESTADO.contextoIdActual, clinica }, { de: "agente-clinica" });
-    console.log("[Observability] 🌿 SAVIA: Aporte Clínica inyectado");
+    try {
+      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-clinica", { contexto_id: ESTADO.contextoIdActual, clinica }, { de: "agente-clinica" });
+      console.log("[Observability] 🌿 SAVIA: Aporte Clínica inyectado");
+    } catch(e) { console.warn(e); }
   }
 
   async function emitirAporteLaboratorio() {
@@ -508,8 +572,10 @@
       if (v !== null) labs[key] = v;
     });
     if (Object.keys(labs).length === 0) return;
-    await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-laboratorio", { contexto_id: ESTADO.contextoIdActual, labs }, { de: "agente-laboratorio" });
-    console.log("[Observability] 🌿 SAVIA: Aporte Labs inyectado");
+    try {
+      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:aporte-laboratorio", { contexto_id: ESTADO.contextoIdActual, labs }, { de: "agente-laboratorio" });
+      console.log("[Observability] 🌿 SAVIA: Aporte Labs inyectado");
+    } catch(e) { console.warn(e); }
   }
 
   async function emitirSaviaRaiz() {
@@ -522,18 +588,20 @@
       const m = aiResponse.match(/===JSON_ESTRUCTURADO===([\s\S]*?)===FIN_JSON===/);
       if (m) icSugeridas = JSON.parse(m[1].trim()).interconsultas_sugeridas || [];
     } catch (e) {}
-    await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:raiz:contexto-unificado", {
-      contexto_id: ESTADO.contextoIdActual, case_id: `ECO-OBS-${Date.now()}`, origen: "tamizaje",
-      subject: { subject_id: pac.subject_id, nombre: pac.nombre, edad: pac.edad, sexo: pac.sexo },
-      labs: (() => { const l={}; ["lab-glucosa|glucosa","lab-hba1c|hba1c","lab-homa|homa_ir","lab-ldl|ldl","lab-hdl|hdl","lab-tg|tg"].forEach(p=>{const [id,k]=p.split("|");const v=leerNumero(id);if(v!==null)l[k]=v;});return l; })(),
-      clinica: { imc: leerNumero("cl-imc"), presion_sistolica_mmhg: leerNumero("cl-pas") },
-      raw: { _json_estructurado: { interconsultas_sugeridas: icSugeridas, diagnostico_diferencial: [], plan: { farmacologico: [], no_farmacologico: [], metas: [] } }, interconsultas_sugeridas: icSugeridas }
-    }, { de: "agente-savia-consolidadora" });
-    console.log("[Observability] 🌿 SAVIA: SAVIA RAÍZ consolidada");
+    try {
+      await window.SAVIA.emitirContexto(ESTADO.contextoIdActual, "savia:raiz:contexto-unificado", {
+        contexto_id: ESTADO.contextoIdActual, case_id: `ECO-OBS-${Date.now()}`, origen: "tamizaje",
+        subject: { subject_id: pac.subject_id, nombre: pac.nombre, edad: pac.edad, sexo: pac.sexo },
+        labs: (() => { const l={}; ["lab-glucosa|glucosa","lab-hba1c|hba1c","lab-homa|homa_ir","lab-ldl|ldl","lab-hdl|hdl","lab-tg|tg"].forEach(p=>{const [id,k]=p.split("|");const v=leerNumero(id);if(v!==null)l[k]=v;});return l; })(),
+        clinica: { imc: leerNumero("cl-imc"), presion_sistolica_mmhg: leerNumero("cl-pas") },
+        raw: { _json_estructurado: { interconsultas_sugeridas: icSugeridas, diagnostico_diferencial: [], plan: { farmacologico: [], no_farmacologico: [], metas: [] } }, interconsultas_sugeridas: icSugeridas }
+      }, { de: "agente-savia-consolidadora" });
+      console.log("[Observability] 🌿 SAVIA: SAVIA RAÍZ consolidada");
+    } catch(e) { console.warn(e); }
   }
 
   // ═══════════════════════════════════════════════════════════
-  // INSTALAR HOOKS
+  // SECCIÓN 8 — INSTALAR HOOKS
   // ═══════════════════════════════════════════════════════════
   function instalarHooks() {
     if (typeof window.guardarFichaPaciente === "function" && !window.guardarFichaPaciente._obsPatched) {
@@ -610,29 +678,50 @@
         if (!btn) return;
         const texto = (btn.textContent || "").toLowerCase();
         if (texto.includes("siguiente") || texto.includes("continuar") || texto.includes("objetivo") || texto.includes("análisis")) {
-          emitirAporteClinica();
-          emitirAporteLaboratorio();
-          emitirAporteSocial();
+          // Debounce: evitar múltiples emisiones
+          clearTimeout(_debounceClickTimer);
+          _debounceClickTimer = setTimeout(() => {
+            emitirAporteClinica();
+            emitirAporteLaboratorio();
+            emitirAporteSocial();
+          }, 300);
         }
       });
-      console.log("[Observability] ✅ Hook: Botones Siguiente (Universal)");
+      console.log("[Observability] ✅ Hook: Botones Siguiente (Universal con debounce)");
     }
   }
 
   // ═══════════════════════════════════════════════════════════
-  // VIGILANTES (Memoria y Secciones)
+  // SECCIÓN 9 — VIGILANTES (Memoria y Secciones)
   // ═══════════════════════════════════════════════════════════
   function iniciarVigilanteDePaciente() {
-    setInterval(() => {
+    let intervalo = 1000;
+    const MAX_INTERVALO = 10000;
+    
+    function ciclo() {
+      let huboCambio = false;
       if (window._consultaState && window._consultaState.paciente) {
         const pac = window._consultaState.paciente;
         if (pac.subject_id && !pac.subject_id.includes("????") && pac.subject_id !== ultimoPacienteInyectado) {
           ultimoPacienteInyectado = pac.subject_id;
+          huboCambio = true;
           console.log("[Observability] 🎯 Vigilante detectó paciente en memoria:", pac.nombre);
           emitirAportePacienteDesdeEstado(pac);
         }
       }
-    }, 1000);
+      
+      // Backoff exponencial si no hay cambios
+      if (huboCambio) {
+        intervalo = 1000;
+      } else {
+        intervalo = Math.min(intervalo * 1.5, MAX_INTERVALO);
+      }
+      
+      ESTADO.intervaloVigilante = setTimeout(ciclo, intervalo);
+    }
+    
+    ciclo();
+    console.log("[Observability] ✅ Vigilante de Paciente activado (con backoff)");
   }
 
   function iniciarVigilanteDeSecciones() {
@@ -663,24 +752,29 @@
         else if (seccionActual === "sec-analisis" || seccionActual === "consulta-analisis-card") emitirAporteLaboratorio();
       }
     });
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+    // Observar solo los contenedores de secciones, no todo el body
+    const target = document.getElementById("sec-captura") || document.body;
+    observer.observe(target, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
     console.log("[Observability] ✅ Vigilante de Secciones (DOM) activado");
   }
 
   // ═══════════════════════════════════════════════════════════
-  // UTILIDADES
+  // SECCIÓN 10 — UTILIDADES DEL PANEL
   // ═══════════════════════════════════════════════════════════
   function limpiarPanel() {
     if (!confirm("¿Limpiar la SAVIA del árbol?")) return;
     ESTADO.pasoActual = 0; ESTADO.eventos = []; ultimoPacienteInyectado = "";
-    document.getElementById("obs-narrativa").innerHTML = `
-      <div style="position: absolute; left: 24px; top: 20px; bottom: 20px; width: 4px; background: linear-gradient(180deg, #34c759, #0071e3); border-radius: 4px; opacity: 0.15; z-index: 0"></div>
-      <div id="obs-sangre-vacia" style="text-align: center; padding: 40px 20px; color: #86868b; font-size: 12px; z-index: 1; background: #f9f9fa">
-        <div style="font-size: 42px; margin-bottom: 10px">🌿</div>
-        <div style="font-size: 13px; font-weight: 700; color: #6e6e73; margin-bottom: 6px">El árbol está listo</div>
-        <div style="font-size: 11px; line-height: 1.6">Navega el monolito para que los agentes empiecen a aportar SAVIA.</div>
-      </div>
-    `;
+    const narrativa = document.getElementById("obs-narrativa");
+    if (narrativa) {
+      narrativa.innerHTML = `
+        <div style="position: absolute; left: 24px; top: 20px; bottom: 20px; width: 4px; background: linear-gradient(180deg, #34c759, #0071e3); border-radius: 4px; opacity: 0.15; z-index: 0"></div>
+        <div id="obs-sangre-vacia" style="text-align: center; padding: 40px 20px; color: #86868b; font-size: 12px; z-index: 1; background: #f9f9fa">
+          <div style="font-size: 42px; margin-bottom: 10px">🌿</div>
+          <div style="font-size: 13px; font-weight: 700; color: #6e6e73; margin-bottom: 6px">El árbol está listo</div>
+          <div style="font-size: 11px; line-height: 1.6">Navega el monolito para que los agentes empiecen a aportar SAVIA.</div>
+        </div>
+      `;
+    }
     actualizarContadores();
   }
 
@@ -693,9 +787,43 @@
   }
 
   function mostrarAyuda() {
-    alert("🌿 ¿Cómo funciona la SAVIA?\n\n1. El agente-paciente inyecta SAVIA al Guardar o Cargar la ficha.\n2. Los agentes de clínica y labs inyectan al presionar 'Enviar a Kimi' o al avanzar de sección.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se refleja en esta línea de tiempo.");
+    alert("🌿 ¿Cómo funciona la SAVIA?\n\n1. El agente-paciente inyecta SAVIA al Guardar o Cargar la ficha.\n2. Los agentes de clínica y labs inyectan al presionar 'Enviar a Kimi' o al avanzar de sección.\n3. La SAVIA fluye hacia el coordinador y especialistas.\n\nTodo se refleja en esta línea de tiempo.\n\n🔧 Botón 'Diag': muestra el estado de SAVIA y del wrapper.\n\n📥 Exportar log: genera un JSON con todos los eventos capturados.");
   }
 
+  function mostrarDiagnostico() {
+    const savia = window.SAVIA;
+    const diag = {
+      "Versión wrapper": VERSION,
+      "SAVIA disponible": !!savia,
+      "SAVIA.emitirContexto": typeof savia?.emitirContexto,
+      "SAVIA.propagar": typeof savia?.propagar,
+      "SAVIA.propagar._obsPatched": savia?.propagar?._obsPatched || false,
+      "Capturador activo": ESTADO.capturadorActivo,
+      "Intentos SAVIA": ESTADO.intentosSavia,
+      "Eventos capturados": ESTADO.eventos.length,
+      "Contexto actual": ESTADO.contextoIdActual || "—",
+      "Paciente actual": window._consultaState?.paciente?.nombre || "—",
+      "Último paciente inyectado": ultimoPacienteInyectado || "—",
+      "Click handler instalado": !!window._obs_botones_parcheados,
+      "Vigilante paciente": !!ESTADO.intervaloVigilante,
+      "_pacienteActual": !!window._pacienteActual,
+      "_consultaState": !!window._consultaState
+    };
+    console.table(diag);
+    
+    const narrativa = document.getElementById("obs-narrativa");
+    if (narrativa) {
+      const card = document.createElement("div");
+      card.style.cssText = "background:#fff;border:2px solid #0071e3;border-radius:12px;padding:14px;font-size:11px;font-family:monospace;white-space:pre-wrap;word-break:break-all;z-index:2;position:relative;margin-left:20px";
+      card.textContent = "🔧 DIAGNÓSTICO\n\n" + Object.entries(diag).map(([k,v]) => `${k}: ${v}`).join("\n");
+      narrativa.appendChild(card);
+      card.scrollIntoView({ behavior: "smooth" });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SECCIÓN 11 — INICIALIZACIÓN
+  // ═══════════════════════════════════════════════════════════
   function inyectarEstilos() {
     if (document.getElementById("obs-styles")) return;
     const style = document.createElement("style");
@@ -705,25 +833,84 @@
   }
 
   function init() {
-    inyectarEstilos();
-    inyectarBotonFlotante();
-    inyectarPanel();
-    setTimeout(activarCapturador, 3000);
-    iniciarVigilanteDePaciente();
-    iniciarVigilanteDeSecciones();
+    if (ESTADO.iniciado) {
+      console.log("[Observability] Ya iniciado, ignorando init() duplicado");
+      return;
+    }
+    ESTADO.iniciado = true;
     
+    try { inyectarEstilos(); } catch (e) { console.error("[Observability] Error inyectando estilos:", e); }
+    try { inyectarBotonFlotante(); } catch (e) { console.error("[Observability] Error inyectando botón:", e); }
+    try { inyectarPanel(); } catch (e) { console.error("[Observability] Error inyectando panel:", e); }
+    
+    // Capturador con reintentos
+    setTimeout(activarCapturador, 3000);
+    
+    // Vigilantes
+    try { iniciarVigilanteDePaciente(); } catch (e) { console.error("[Observability] Error vigilante paciente:", e); }
+    try { iniciarVigilanteDeSecciones(); } catch (e) { console.error("[Observability] Error vigilante secciones:", e); }
+    
+    // Hooks con reintentos
     let intentos = 0;
     const intervalHooks = setInterval(() => {
-      instalarHooks();
+      try { instalarHooks(); } catch (e) { console.warn("[Observability] Error hooks:", e); }
       intentos++;
       if (intentos > 60) clearInterval(intervalHooks);
     }, 1000);
+    
+    console.log(`%c[Observability] ✅ Wrapper v${VERSION} inicializado`, "background:#34c759;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // SECCIÓN 12 — API PÚBLICA (activación manual)
+  // ═══════════════════════════════════════════════════════════
+  window.activarVisorSAVIA = function() {
+    console.log("[Observability] 🔧 Activación manual solicitada");
+    ESTADO.iniciado = false;
+    init();
+  };
+
+  window.desactivarVisorSAVIA = function() {
+    const panel = document.getElementById("obs-panel");
+    const fab = document.getElementById("obs-fab");
+    if (panel) panel.remove();
+    if (fab) fab.remove();
+    ESTADO.iniciado = false;
+    ESTADO.panelAbierto = false;
+    document.body.style.marginRight = "0";
+    document.body.style.width = "100%";
+    console.log("[Observability] ⏸️ Visor desactivado");
+  };
+
+  window.diagnosticarVisorSAVIA = function() {
+    mostrarDiagnostico();
+    return {
+      version: VERSION,
+      iniciado: ESTADO.iniciado,
+      saviaDisponible: ESTADO.saviaDisponible,
+      capturadorActivo: ESTADO.capturadorActivo,
+      eventos: ESTADO.eventos.length,
+      contextoId: ESTADO.contextoIdActual
+    };
+  };
+
+  // Exponer constantes útiles
+  window.OBSERVABILITY_WRAPPER = {
+    VERSION,
+    ESTADO,
+    activar: () => window.activarVisorSAVIA(),
+    desactivar: () => window.desactivarVisorSAVIA(),
+    diagnosticar: () => window.diagnosticarVisorSAVIA()
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // ARRANQUE AUTOMÁTICO
+  // ═══════════════════════════════════════════════════════════
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", () => setTimeout(init, 500));
   } else {
     setTimeout(init, 500);
   }
 
+  console.log(`%c[Observability] Wrapper v${VERSION} cargado. Usa activarVisorSAVIA() para forzar activación manual.`, "background:#0071e3;color:white;padding:4px 8px;border-radius:4px;font-size:11px");
 })();
