@@ -13920,18 +13920,18 @@ window.firmarYGenerarConsulta = async function() {
       btn.textContent = original;
     }
   }
-  // Al final, notificar
-  if (window.SAVIA) {
-    window.SAVIA.enviar({
-      de: "agente-consulta",
-      tipo: "consulta:firmada",
-      payload: {
-        case_id: s.caseId,
-        subject_id: s.paciente?.subject_id,
-        tiene_ordenes: (s.ordenesLab?.length || 0) + (s.ordenesImagen?.length || 0) > 0
-      },
-      flujo: "ascendente"
-    }).catch(() => {});
+   // Al final de cada función:
+  try {
+    if (window.SAVIA && typeof data !== "undefined" && data) {
+      window.SAVIA.enviar({
+        de: "agente-paciente",
+        tipo: "paciente:seleccionado",
+        payload: { subject_id: data.subject_id, nombre: data.nombre },
+        flujo: "ascendente"
+      }).catch(() => {});
+    }
+  } catch (e) {
+    // Silenciar el error si la data no está disponible en este scope
   }
 };
 
