@@ -954,4 +954,465 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 console.log("[Observability] ✅ Auto-fix para error 'data' instalado");
+// ═══════════════════════════════════════════════════════════
+// INTERCEPTADOR DE FLUJO — Emitir eventos SAVIA reales
+// El monolito NO emite eventos SAVIA en el flujo de usuario.
+// Este bloque intercepta los clicks clave y emite los eventos
+// con los datos REALES del formulario.
+// ═══════════════════════════════════════════════════════════
+
+console.log("[Observability] 🔧 Instalando interceptador de flujo...");
+
+// Helpers
+function leerCampo(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const val = el.value;
+  return val === "" ? null : val;
+}
+
+function leerNumero(id) {
+  const v = leerCampo(id);
+  if (v === null) return null;
+  const n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
+function leerCheckboxes(containerId) {
+  const cont = document.getElementById(containerId);
+  if (!cont) return [];
+  return Array.from(cont.querySelectorAll("input[type=checkbox]:checked"))
+    .map(cb => cb.value || cb.id);
+}
+
+// Esperar a que SAVIA esté listo y emitir el evento de aporte
+async function emitirAportePaciente() {
+  if (!window.SAVIA) return;
+  
+  const nombre = leerCampo("ficha-nombre");
+  const subjectId = leerCampo("ficha-subject_id");
+  const edad = leerCampo("ficha-edad");
+  const sexo = leerCampo("ficha-sexo");
+  const dui = leerCampo("ficha-dui");
+  const email = leerCampo("ficha-email");
+  const telefono = leerCampo("ficha-telefono");
+  const departamento = leerCampo("ficha-departamento");
+  const municipio = leerCampo("ficha-municipio");
+  const empresaId = leerCampo("ficha-empresa_id");
+  
+  if (!nombre || !subjectId) {
+    console.log("[Observability] ⏭️ Aporte paciente omitido: faltan datos");
+    return;
+  }
+  
+  const empresaSelect = document.getElementById("ficha-empresa_id");
+  const empresaTexto = empresaSelect?.selectedOptions?.[0]?.textContent || "";
+  
+  const contextoId = `SAV-RAIZ-${subjectId}-${Date.now()}`;
+  window._obsContextoIdActual = contextoId;
+  
+  try {
+    await window.SAVIA.emitirContexto(contextoId, "savia:aporte-paciente", {
+      contexto_id: contextoId,
+      subject: {
+        subject_id: subjectId,
+        nombre: nombre,
+        edad: edad ? parseInt(edad) : null,
+        sexo: sexo,
+        dui: dui,
+        email: email,
+        telefono: telefono,
+        departamento: departamento,
+        municipio: municipio,
+        empresa: empresaTexto || null
+      }
+    }, { de: "agente-paciente" });
+    console.log("[Observability] ✅ Aporte paciente emitido con datos reales");
+  } catch (e) {
+    console.warn("[Observability] Error emitiendo aporte paciente:", e);
+  }
+}
+
+async function emitirAporteClinica() {
+  if (!window.SAVIA) return;
+  const contextoId = window._obsContextoIdActual;
+  if (!contextoId) {
+    console.log("[Observability] ⏭️ Aporte clínica omitido: no hay contexto previo");
+    return;
+  }
+  
+  const peso = leerNumero("cl-peso");
+  const talla = leerNumero("cl-talla");
+  const imc = leerNumero("cl-imc");
+  const cintura = leerNumero("cl-cintura");
+  const cuello = leerNumero("cl-cuello");
+  const pas = leerNumero("cl-pas");
+  const pad = leerNumero("cl-pad");
+  const fc = leerNumero("cl-fc");
+  const sato2 = leerNumero("cl-sato2");
+  const tabaco = leerNumero("cl-tabaco");
+  const alcohol = leerNumero("cl-alcohol");
+  const actividad = leerNumero("cl-actividad");
+  const sueno = leerNumero("cl-sueno");
+  
+  const clinica = {};
+  if (peso !== null) clinica.peso_kg = peso;
+  if (talla !== null) clinica.talla_cm = talla;
+  if (imc !== null) clinica.imc = imc;
+  if (cintura !== null) clinica.circunferencia_cintura_cm = cintura;
+  if (cuello !== null) clinica.circunferencia_cervical_cm = cuello;
+  if (pas !== null) clinica.presion_sistolica_mmhg = pas;
+  if (pad !== null) clinica.presion_diastolica_mmhg = pad;
+  if (fc !== null) clinica.frecuencia_cardiaca_lpm = fc;
+  if (sato2 !== null) clinica.saturacion_o2_pct = sato2;
+  
+  const habitos = {};
+  if (tabaco !== null) habitos.tabaco_cigarrillos_dia = tabaco;
+  if (alcohol !== null) habitos.alcohol_unidades_semana = alcohol;
+  if (actividad !== null) habitos.actividad_fisica_min_semana = actividad;
+  if (sueno !== null) habitos.sueno_horas = sueno;
+  if (Object.keys(habitos).length > 0) clinica.habitos = habitos;
+  
+  if (Object.keys(clinica).length === 0) {
+    console.log("[Observability] ⏭️ Aporte clínica omitido: sin datos");
+    return;
+  }
+  
+  try {
+    await window.SAVIA.emitirContexto(contextoId, "savia:aporte-clinica", {
+      contexto_id: contextoId,
+      clinica: clinica
+    }, { de: "agente-clinica" });
+    console.log("[Observability] ✅ Aporte clínica emitido con datos reales");
+  } catch (e) {
+    console.warn("[Observability] Error emitiendo aporte clínica:", e);
+  }
+}
+
+async function emitirAporteLaboratorio() {
+  if (!window.SAVIA) return;
+  const contextoId = window._obsContextoIdActual;
+  if (!contextoId) return;
+  
+  // Leer todos los labs conocidos
+  const labs = {};
+  const labsIds = {
+    "lab-glucosa": "glucosa",
+    "lab-hba1c": "hba1c",
+    "lab-insulina": "insulina",
+    "lab-homa": "homa_ir",
+    "lab-ct": "ct",
+    "lab-ldl": "ldl",
+    "lab-hdl": "hdl",
+    "lab-tg": "tg",
+    "lab-alt": "alt",
+    "lab-ast": "ast",
+    "lab-ggt": "ggt",
+    "lab-fa": "fa",
+    "lab-creatinina": "creatinina",
+    "lab-tfg": "tfg",
+    "lab-albumina": "albumina",
+    "lab-urico": "acido_urico",
+    "lab-tsh": "tsh",
+    "lab-vitd": "vitamina_d",
+    "lab-pcr": "pcr",
+    "lab-hb": "hemoglobina"
+  };
+  
+  Object.entries(labsIds).forEach(([elId, key]) => {
+    const v = leerNumero(elId);
+    if (v !== null) labs[key] = v;
+  });
+  
+  if (Object.keys(labs).length === 0) {
+    console.log("[Observability] ⏭️ Aporte lab omitido: sin datos");
+    return;
+  }
+  
+  try {
+    await window.SAVIA.emitirContexto(contextoId, "savia:aporte-laboratorio", {
+      contexto_id: contextoId,
+      labs: labs
+    }, { de: "agente-laboratorio" });
+    console.log("[Observability] ✅ Aporte lab emitido con", Object.keys(labs).length, "exámenes reales");
+  } catch (e) {
+    console.warn("[Observability] Error emitiendo aporte lab:", e);
+  }
+}
+
+async function emitirAporteImagen() {
+  if (!window.SAVIA) return;
+  const contextoId = window._obsContextoIdActual;
+  if (!contextoId) return;
+  
+  const imagen = {};
+  const imagenIds = {
+    "cl-esteatosisgrado": "higado_esteatosis_grado",
+    "cl-litiasis": "rinon_litiasis_mm",
+    "cl-bosniak": "rinon_quiste_bosniak",
+    "cl-tirads": "tiroides_tirads"
+  };
+  
+  Object.entries(imagenIds).forEach(([elId, key]) => {
+    const v = leerNumero(elId);
+    if (v !== null) imagen[key] = v;
+  });
+  
+  if (Object.keys(imagen).length === 0) {
+    console.log("[Observability] ⏭️ Aporte imagen omitido: sin datos");
+    return;
+  }
+  
+  try {
+    await window.SAVIA.emitirContexto(contextoId, "savia:aporte-imagen", {
+      contexto_id: contextoId,
+      imagen: imagen
+    }, { de: "agente-imagen" });
+    console.log("[Observability] ✅ Aporte imagen emitido con datos reales");
+  } catch (e) {
+    console.warn("[Observability] Error emitiendo aporte imagen:", e);
+  }
+}
+
+async function emitirAporteSocial() {
+  if (!window.SAVIA) return;
+  const contextoId = window._obsContextoIdActual;
+  if (!contextoId) return;
+  
+  const social = {};
+  const nivel = leerCampo("ficha-nivel_educativo");
+  const ocupacion = leerCampo("ficha-ocupacion");
+  const estadoCivil = leerCampo("ficha-estado_civil");
+  const hijos = leerNumero("ficha-numero_hijos");
+  
+  if (nivel) social.nivel_educativo = nivel;
+  if (ocupacion) social.ocupacion = ocupacion;
+  if (estadoCivil) social.estado_civil = estadoCivil;
+  if (hijos !== null) social.numero_hijos = hijos;
+  
+  if (Object.keys(social).length === 0) {
+    console.log("[Observability] ⏭️ Aporte social omitido: sin datos");
+    return;
+  }
+  
+  try {
+    await window.SAVIA.emitirContexto(contextoId, "savia:aporte-social", {
+      contexto_id: contextoId,
+      social: social
+    }, { de: "agente-trabajo-social" });
+    console.log("[Observability] ✅ Aporte social emitido con datos reales");
+  } catch (e) {
+    console.warn("[Observability] Error emitiendo aporte social:", e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// EMITIR SAVIA RAÍZ (consolidada)
+// ═══════════════════════════════════════════════════════════
+async function emitirSaviaRaiz() {
+  if (!window.SAVIA) return;
+  const contextoId = window._obsContextoIdActual;
+  if (!contextoId) {
+    console.log("[Observability] ⏭️ SAVIA RAÍZ omitida: no hay contexto");
+    return;
+  }
+  
+  const nombre = leerCampo("ficha-nombre");
+  const subjectId = leerCampo("ficha-subject_id");
+  const edad = leerCampo("ficha-edad");
+  const sexo = leerCampo("ficha-sexo");
+  
+  if (!nombre || !subjectId) return;
+  
+  // Recoger todos los labs
+  const labs = {};
+  const labsIds = {
+    "lab-glucosa": "glucosa", "lab-hba1c": "hba1c", "lab-insulina": "insulina", "lab-homa": "homa_ir",
+    "lab-ct": "ct", "lab-ldl": "ldl", "lab-hdl": "hdl", "lab-tg": "tg",
+    "lab-alt": "alt", "lab-ast": "ast", "lab-ggt": "ggt", "lab-creatinina": "creatinina", "lab-tfg": "tfg"
+  };
+  Object.entries(labsIds).forEach(([elId, key]) => {
+    const v = leerNumero(elId);
+    if (v !== null) labs[key] = v;
+  });
+  
+  // Recoger clínica
+  const clinica = {};
+  const peso = leerNumero("cl-peso");
+  const talla = leerNumero("cl-talla");
+  const imc = leerNumero("cl-imc");
+  const pas = leerNumero("cl-pas");
+  const pad = leerNumero("cl-pad");
+  if (peso !== null) clinica.peso_kg = peso;
+  if (talla !== null) clinica.talla_cm = talla;
+  if (imc !== null) clinica.imc = imc;
+  if (pas !== null) clinica.presion_sistolica_mmhg = pas;
+  if (pad !== null) clinica.presion_diastolica_mmhg = pad;
+  
+  const actividad = leerNumero("cl-actividad");
+  if (actividad !== null) clinica.habitos = { actividad_fisica_min_semana: actividad };
+  
+  // Leer JSON estructurado de la respuesta de Kimi si está disponible
+  let icSugeridas = [];
+  try {
+    const aiResponse = document.getElementById("ai-response-text")?.textContent || "";
+    const m = aiResponse.match(/===JSON_ESTRUCTURADO===([\s\S]*?)===FIN_JSON===/);
+    if (m) {
+      const json = JSON.parse(m[1].trim());
+      icSugeridas = json.interconsultas_sugeridas || [];
+    }
+  } catch (e) {}
+  
+  try {
+    await window.SAVIA.emitirContexto(contextoId, "savia:raiz:contexto-unificado", {
+      contexto_id: contextoId,
+      case_id: `ECO-OBS-${Date.now()}`,
+      origen: "tamizaje",
+      subject: {
+        subject_id: subjectId,
+        nombre: nombre,
+        edad: edad ? parseInt(edad) : null,
+        sexo: sexo
+      },
+      encounter: {
+        estudio: "corporativo_metabolico",
+        fecha: new Date().toLocaleDateString("es-ES")
+      },
+      labs: labs,
+      clinica: clinica,
+      raw: {
+        _json_estructurado: {
+          interconsultas_sugeridas: icSugeridas
+        }
+      }
+    }, { de: "agente-savia-consolidadora" });
+    console.log("[Observability] ✅ SAVIA RAÍZ emitida con datos reales");
+  } catch (e) {
+    console.warn("[Observability] Error emitiendo SAVIA RAÍZ:", e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// INTERCEPTAR CLICKS DEL USUARIO
+// ═══════════════════════════════════════════════════════════
+
+// Botón "Guardar ficha y continuar" → aporte paciente
+function interceptarGuardarFicha() {
+  const origGuardar = window.guardarFichaPaciente;
+  if (typeof origGuardar !== "function" || origGuardar._obsPatched) return;
+  
+  window.guardarFichaPaciente = async function() {
+    console.log("[Observability] 🎯 Interceptado: Guardar ficha");
+    const result = await origGuardar.apply(this, arguments);
+    // Emitir aporte paciente después de guardar (con delay para que se llenen los campos)
+    setTimeout(() => {
+      emitirAportePaciente();
+      emitirAporteSocial();
+    }, 500);
+    return result;
+  };
+  window.guardarFichaPaciente._obsPatched = true;
+  console.log("[Observability] ✅ Hook: guardarFichaPaciente");
+}
+
+// Botón "Enviar a Kimi" → aportes clínica + laboratorio + imagen + SAVIA RAÍZ
+function interceptarEnviarKimi() {
+  const origEnviar = window.sendToProxyBasico;
+  if (typeof origEnviar !== "function" || origEnviar._obsPatched) return;
+  
+  window.sendToProxyBasico = async function() {
+    console.log("[Observability] 🎯 Interceptado: Enviar a Kimi");
+    // Emitir aportes ANTES de enviar
+    await emitirAporteClinica();
+    await emitirAporteLaboratorio();
+    await emitirAporteImagen();
+    
+    const result = await origEnviar.apply(this, arguments);
+    
+    // Emitir SAVIA RAÍZ después de que Kimi responda
+    setTimeout(() => emitirSaviaRaiz(), 1000);
+    return result;
+  };
+  window.sendToProxyBasico._obsPatched = true;
+  console.log("[Observability] ✅ Hook: sendToProxyBasico");
+}
+
+// Botón "Generar informe base" → reforzar SAVIA RAÍZ
+function interceptarGenerarInforme() {
+  const origGenerar = window.generarInformeBase;
+  if (typeof origGenerar !== "function" || origGenerar._obsPatched) return;
+  
+  window.generarInformeBase = async function() {
+    console.log("[Observability] 🎯 Interceptado: Generar informe base");
+    const result = await origGenerar.apply(this, arguments);
+    setTimeout(() => emitirSaviaRaiz(), 500);
+    return result;
+  };
+  window.generarInformeBase._obsPatched = true;
+  console.log("[Observability] ✅ Hook: generarInformeBase");
+}
+
+// Botón "Firmar consulta" → emitir decisión médico
+function interceptarFirma() {
+  const origFirmar = window.firmarYGenerarConsulta;
+  if (typeof origFirmar !== "function" || origFirmar._obsPatched) return;
+  
+  window.firmarYGenerarConsulta = async function() {
+    console.log("[Observability] 🎯 Interceptado: Firmar consulta");
+    const s = window._consultaState;
+    if (s && s.paciente && s.diagnosticos) {
+      const contextoId = window._obsContextoIdActual || `SAV-RAIZ-${s.paciente.subject_id}`;
+      const ics = s.diagnosticos.map(d => ({ especialista: "internista", prioridad: "media" }));
+      await window.SAVIA.emitirContexto(contextoId, "medico:decision-interconsultas", {
+        contexto_id: contextoId,
+        case_id: s.caseId || `CONS-${Date.now()}`,
+        interconsultas: ics,
+        decision: "autorizar",
+        timestamp: new Date().toISOString()
+      }, { de: "medico-tratante" });
+      console.log("[Observability] ✅ Decisión médico emitida");
+    }
+    return origFirmar.apply(this, arguments);
+  };
+  window.firmarYGenerarConsulta._obsPatched = true;
+  console.log("[Observability] ✅ Hook: firmarYGenerarConsulta");
+}
+
+// Botón "Ejecutar interconsultas autorizadas" → disparar especialistas
+function interceptarEjecutarInterconsultas() {
+  const origEjecutar = window.consultaEjecutarInterconsultas;
+  if (typeof origEjecutar !== "function" || origEjecutar._obsPatched) return;
+  
+  window.consultaEjecutarInterconsultas = async function() {
+    console.log("[Observability] 🎯 Interceptado: Ejecutar interconsultas");
+    return origEjecutar.apply(this, arguments);
+  };
+  window.consultaEjecutarInterconsultas._obsPatched = true;
+  console.log("[Observability] ✅ Hook: consultaEjecutarInterconsultas");
+}
+
+// ═══════════════════════════════════════════════════════════
+// INSTALAR TODOS LOS HOOKS (con reintentos)
+// ═══════════════════════════════════════════════════════════
+let _intentosHooks = 0;
+const _MAX_INTENTOS_HOOKS = 40;
+
+function instalarHooks() {
+  _intentosHooks++;
+  
+  interceptarGuardarFicha();
+  interceptarEnviarKimi();
+  interceptarGenerarInforme();
+  interceptarFirma();
+  interceptarEjecutarInterconsultas();
+  
+  if (_intentosHooks < _MAX_INTENTOS_HOOKS) {
+    // Reintentar cada 500ms por si el monolito aún está cargando
+    setTimeout(instalarHooks, 500);
+  }
+}
+
+setTimeout(instalarHooks, 2000);
+
+console.log("[Observability] ✅ Interceptador de flujo instalado");  
 })();
