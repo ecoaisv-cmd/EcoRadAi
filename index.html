@@ -21971,184 +21971,141 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
 <script type="module" src="js/kernel/init.js"></script>
 <script src="observability-wrapper.js" defer></script>
 <!-- ═══════════════════════════════════════════════════════════
-     PUENTE UI↔AGENTES RAÍZ — v1.0
-     Conecta los botones del monolito con SAVIA
-     para que los agentes emitan eventos reales.
-     Añadir DESPUÉS de <script type="module" src="js/kernel/init.js"></script>
+     PUENTE UI↔AGENTES RAÍZ v1.3 (Lógica Clínica)
+     - Emite eventos solo si los datos cambiaron.
+     - Permite corregir datos retrocediendo sin duplicar.
      ═══════════════════════════════════════════════════════════ -->
 <script>
 (function() {
   "use strict";
-  console.log("%c[Puente] Inicializando puente UI→RAÍZ...", "color:#0071e3;font-weight:700");
+  
+  if (window._puenteUI_instalado_v13) return;
+  window._puenteUI_instalado_v13 = true;
+  
+  console.log("%c[Puente v1.3] Inicializando...", "color:#0071e3;font-weight:700");
 
   let intentos = 0;
   const MAX = 60;
+  
+  // Memoria para guardar el "hash" del último texto emitido
+  const _ultimoHashEmitido = {};
+
+  // Función para detectar si el texto cambió
+  function generarHash(texto) {
+    let hash = 0;
+    if (texto.length === 0) return hash;
+    for (let i = 0; i < texto.length; i++) {
+      const char = texto.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash.toString();
+  }
 
   function esperarSaviaYUI() {
     intentos++;
-    const saviaListo = window.SAVIA && typeof window.SAVIA.enviar === "function";
-    const uiLista = document.getElementById("ficha-busqueda-card") !== null;
-
-    if (saviaListo && uiLista) {
+    if (window.SAVIA && typeof window.SAVIA.enviar === "function" && document.getElementById("ficha-busqueda-card")) {
       instalarPuente();
       return;
     }
-    if (intentos < MAX) {
-      setTimeout(esperarSaviaYUI, 250);
-    } else {
-      console.warn("[Puente] Timeout. Estado:", {
-        savia: typeof window.SAVIA,
-        saviaEnviar: typeof window.SAVIA?.enviar,
-        fichaUI: !!document.getElementById("ficha-busqueda-card")
-      });
-    }
+    if (intentos < MAX) setTimeout(esperarSaviaYUI, 250);
   }
 
   function instalarPuente() {
-    console.log("%c[Puente] ✓ SAVIA y UI listos. Instalando listeners...", "color:#34c759;font-weight:700");
+    console.log("%c[Puente v1.3] ✓ SAVIA y UI listos. Instalando listeners...", "color:#34c759;font-weight:700");
 
-    // ═══════════════════════════════════════════════════════
-    // 1. AGENTE-PACIENTE — al guardar ficha
-    // ═══════════════════════════════════════════════════════
-    const _guardarFichaOrig = window.guardarFichaPaciente;
-    if (typeof _guardarFichaOrig === "function" && !_guardarFichaOrig._puentePatched) {
+    // ── 1. PACIENTE ──
+    if (typeof window.guardarFichaPaciente === "function" && !window.guardarFichaPaciente._puentePatched) {
+      const _orig = window.guardarFichaPaciente;
       window.guardarFichaPaciente = async function() {
-        const resultado = await _guardarFichaOrig.apply(this, arguments);
+        const resultado = await _orig.apply(this, arguments);
         if (window._pacienteActual?.subject_id && !window._pacienteActual.subject_id.includes("????")) {
           try {
             await window.SAVIA.enviar({
-              de: "agente-paciente",
-              tipo: "savia:aporte-paciente",
-              flujo: "ascendente",
+              de: "agente-paciente", tipo: "savia:aporte-paciente", flujo: "ascendente",
               payload: { subject: window._pacienteActual, timestamp: new Date().toISOString() }
             });
             console.log("%c[Puente] ✓ savia:aporte-paciente emitido", "color:#34c759;font-weight:700");
-          } catch (e) { console.warn("[Puente] Error aporte-paciente:", e); }
+          } catch (e) { console.warn("[Puente] Error:", e); }
         }
         return resultado;
       };
       window.guardarFichaPaciente._puentePatched = true;
-      console.log("[Puente] ✓ guardarFichaPaciente → agente-paciente");
     }
 
-    // ═══════════════════════════════════════════════════════
-    // 2. AGENTE-CLINICA — al cambiar de Subjetivo a Objetivo
-    // ═══════════════════════════════════════════════════════
-    const _consultaIrAObjetivoOrig = window.consultaIrAObjetivo;
-    if (typeof _consultaIrAObjetivoOrig === "function" && !_consultaIrAObjetivoOrig._puentePatched) {
+    // ── 2. SUBJETIVO (Solo emite si cambia) ──
+    if (typeof window.consultaIrAObjetivo === "function" && !window.consultaIrAObjetivo._puentePatched) {
+      const _orig = window.consultaIrAObjetivo;
       window.consultaIrAObjetivo = function() {
-        emitirAporteSubjetivo();
-        return _consultaIrAObjetivoOrig.apply(this, arguments);
+        const motivo = document.getElementById("cons-motivo")?.value?.trim() || "";
+        const enfermedad = document.getElementById("cons-enfermedad-actual")?.value?.trim() || "";
+        
+        if (!motivo && !enfermedad) return _orig.apply(this, arguments);
+        
+        const hashActual = generarHash(motivo + "|" + enfermedad);
+        
+        if (_ultimoHashEmitido["subjetivo"] !== hashActual) {
+          _ultimoHashEmitido["subjetivo"] = hashActual;
+          emitirAporteSubjetivo();
+        } else {
+          console.log("%c[Puente] ⊘ Subjetivo sin cambios. No se re-emite.", "color:#86868b");
+        }
+        return _orig.apply(this, arguments);
       };
       window.consultaIrAObjetivo._puentePatched = true;
-      console.log("[Puente] ✓ consultaIrAObjetivo → agente-clinica (subjetivo)");
     }
 
-    // ═══════════════════════════════════════════════════════
-    // 3. AGENTE-CLINICA — al cambiar de Objetivo a Análisis
-    // ═══════════════════════════════════════════════════════
-    const _consultaIrAAnalisisOrig = window.consultaIrAAnalisis;
-    if (typeof _consultaIrAAnalisisOrig === "function" && !_consultaIrAAnalisisOrig._puentePatched) {
+    // ── 3. EXAMEN FÍSICO (Solo emite si cambia) ──
+    if (typeof window.consultaIrAAnalisis === "function" && !window.consultaIrAAnalisis._puentePatched) {
+      const _orig = window.consultaIrAAnalisis;
       window.consultaIrAAnalisis = function() {
-        emitirAporteExamenFisico();
-        emitirAporteClinico();
-        return _consultaIrAAnalisisOrig.apply(this, arguments);
+        const general = document.getElementById("cons-ef-general")?.value?.trim() || "";
+        const torax = document.getElementById("cons-ef-torax_pulmones")?.value?.trim() || "";
+        
+        if (!general && !torax) return _orig.apply(this, arguments);
+        
+        const hashActual = generarHash(general + "|" + torax);
+        
+        if (_ultimoHashEmitido["examen"] !== hashActual) {
+          _ultimoHashEmitido["examen"] = hashActual;
+          emitirAporteExamenFisico();
+        } else {
+          console.log("%c[Puente] ⊘ Examen físico sin cambios.", "color:#86868b");
+        }
+        return _orig.apply(this, arguments);
       };
       window.consultaIrAAnalisis._puentePatched = true;
-      console.log("[Puente] ✓ consultaIrAAnalisis → agente-clinica (examen físico)");
     }
 
-    // ═══════════════════════════════════════════════════════
-    // 4. AGENTE-CLINICA — al capturar vitales (blur)
-    // ═══════════════════════════════════════════════════════
-    const vitalesObs = ["cl-pas", "cl-pad", "cl-fc", "cl-peso", "cl-talla", "cl-cintura", "cl-sato2"];
-    let vitalesEnganchados = 0;
-    vitalesObs.forEach(id => {
-      const el = document.getElementById(id);
-      if (el && !el._puentePatched) {
-        el.addEventListener("blur", emitirAporteClinico);
-        el._puentePatched = true;
-        vitalesEnganchados++;
-      }
-    });
-    console.log("[Puente] ✓ " + vitalesEnganchados + " campos de vitales → agente-clinica");
-
-    // ═══════════════════════════════════════════════════════
-    // 5. AGENTE-LABORATORIO — al capturar labs (blur)
-    // ═══════════════════════════════════════════════════════
-    const labsObs = ["lab-glucosa", "lab-hba1c", "lab-ct", "lab-ldl", "lab-hdl", "lab-tg", "lab-creatinina", "lab-alt", "lab-ast"];
-    let labsEnganchados = 0;
-    labsObs.forEach(id => {
-      const el = document.getElementById(id);
-      if (el && !el._puentePatched) {
-        el.addEventListener("blur", emitirAporteLaboratorio);
-        el._puentePatched = true;
-        labsEnganchados++;
-      }
-    });
-    console.log("[Puente] ✓ " + labsEnganchados + " campos de labs → agente-laboratorio");
-
-    // ═══════════════════════════════════════════════════════
-    // 6. CONSOLIDADORA — al generar informe base
-    // ═══════════════════════════════════════════════════════
-    const _generarInformeBaseOrig = window.generarInformeBase;
-    if (typeof _generarInformeBaseOrig === "function" && !_generarInformeBaseOrig._puentePatched) {
-      window.generarInformeBase = async function() {
-        emitirConsolidacion();
-        return _generarInformeBaseOrig.apply(this, arguments);
+    // ── 4. LIMPIAR MEMORIA (Nuevo paciente) ──
+    if (typeof window.seleccionarPacienteConsulta === "function" && !window.seleccionarPacienteConsulta._puentePatched) {
+      const _orig = window.seleccionarPacienteConsulta;
+      window.seleccionarPacienteConsulta = async function() {
+        for (let key in _ultimoHashEmitido) delete _ultimoHashEmitido[key];
+        console.log("%c[Puente] 🔄 Memoria limpiada (nuevo paciente)", "color:#ff9500");
+        return _orig.apply(this, arguments);
       };
-      window.generarInformeBase._puentePatched = true;
-      console.log("[Puente] ✓ generarInformeBase → agente-savia-consolidadora");
+      window.seleccionarPacienteConsulta._puentePatched = true;
     }
-
-    // ═══════════════════════════════════════════════════════
-    // 7. AGENTE-TAMIZAJE — al seleccionar estudio
-    // ═══════════════════════════════════════════════════════
-    const _seleccionarEstudioOrig = window.seleccionarEstudio;
-    if (typeof _seleccionarEstudioOrig === "function" && !_seleccionarEstudioOrig._puentePatched) {
-      window.seleccionarEstudio = function(tipo) {
-        const result = _seleccionarEstudioOrig.apply(this, arguments);
-        try {
-          window.SAVIA.enviar({
-            de: "agente-tamizaje",
-            tipo: "savia:aporte-tamizaje",
-            flujo: "ascendente",
-            payload: { estudio: tipo, timestamp: new Date().toISOString() }
-          });
-          console.log("%c[Puente] ✓ savia:aporte-tamizaje emitido", "color:#34c759;font-weight:700");
-        } catch (e) { console.warn("[Puente] Error aporte-tamizaje:", e); }
-        return result;
-      };
-      window.seleccionarEstudio._puentePatched = true;
-      console.log("[Puente] ✓ seleccionarEstudio → agente-tamizaje");
-    }
-
-    console.log("%c[Puente] ═════════════════════════════════════════════", "color:#34c759;font-weight:900");
-    console.log("%c[Puente] ✅ PUENTE INSTALADO — los agentes ahora escucharán la UI", "color:#fff;background:#34c759;padding:6px 16px;font-weight:900;border-radius:4px");
-    console.log("%c[Puente] ═════════════════════════════════════════════", "color:#34c759;font-weight:900");
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // EMISORES
-  // ═══════════════════════════════════════════════════════════
+  // ── EMISORES ──
   async function emitirAporteSubjetivo() {
     try {
       const motivo = document.getElementById("cons-motivo")?.value?.trim();
       const enfermedadActual = document.getElementById("cons-enfermedad-actual")?.value?.trim();
-      if (!motivo && !enfermedadActual) return;
       const revision = {};
       ["general","cardiovascular","respiratorio","digestivo","genitourinario","neurologico","musculoesqueletico","piel","psiquico"].forEach(sys => {
         const val = document.getElementById("cons-sys-" + sys)?.value?.trim();
         if (val) revision[sys] = val;
       });
+      
       await window.SAVIA.enviar({
-        de: "agente-clinica",
-        tipo: "savia:aporte-subjetivo",
-        flujo: "ascendente",
+        de: "agente-clinica", tipo: "savia:aporte-subjetivo", flujo: "ascendente",
         payload: { subjetivo: { motivo: motivo || "", enfermedad_actual: enfermedadActual || "", revision_sistemas: revision } }
       });
       console.log("%c[Puente] ✓ savia:aporte-subjetivo emitido", "color:#34c759;font-weight:700");
-    } catch (e) { console.warn("[Puente] Error aporte-subjetivo:", e); }
+    } catch (e) { console.warn("[Puente] Error:", e); }
   }
 
   async function emitirAporteExamenFisico() {
@@ -22158,88 +22115,19 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
         const val = document.getElementById("cons-ef-" + reg)?.value?.trim();
         if (val) examen[reg] = val;
       });
-      if (Object.keys(examen).length === 0) return;
+      
       await window.SAVIA.enviar({
-        de: "agente-clinica",
-        tipo: "savia:aporte-examen-fisico",
-        flujo: "ascendente",
+        de: "agente-clinica", tipo: "savia:aporte-examen-fisico", flujo: "ascendente",
         payload: { examen_fisico: examen }
       });
       console.log("%c[Puente] ✓ savia:aporte-examen-fisico emitido", "color:#34c759;font-weight:700");
-    } catch (e) { console.warn("[Puente] Error aporte-examen-fisico:", e); }
+    } catch (e) { console.warn("[Puente] Error:", e); }
   }
 
-  async function emitirAporteClinico() {
-    try {
-      const clinica = {
-        peso_kg: parseFloat(document.getElementById("cl-peso")?.value) || null,
-        talla_cm: parseFloat(document.getElementById("cl-talla")?.value) || null,
-        imc: parseFloat(document.getElementById("cl-imc")?.value) || null,
-        circunferencia_cintura_cm: parseFloat(document.getElementById("cl-cintura")?.value) || null,
-        presion_sistolica_mmhg: parseFloat(document.getElementById("cl-pas")?.value) || null,
-        presion_diastolica_mmhg: parseFloat(document.getElementById("cl-pad")?.value) || null,
-        frecuencia_cardiaca_lpm: parseFloat(document.getElementById("cl-fc")?.value) || null,
-        saturacion_o2_pct: parseFloat(document.getElementById("cl-sato2")?.value) || null
-      };
-      const limpio = Object.fromEntries(Object.entries(clinica).filter(([k,v]) => v !== null));
-      if (Object.keys(limpio).length === 0) return;
-      await window.SAVIA.enviar({
-        de: "agente-clinica",
-        tipo: "savia:aporte-clinica",
-        flujo: "ascendente",
-        payload: { clinica: limpio }
-      });
-      console.log("%c[Puente] ✓ savia:aporte-clinica emitido", "color:#34c759;font-weight:700");
-    } catch (e) { console.warn("[Puente] Error aporte-clinica:", e); }
-  }
-
-  async function emitirAporteLaboratorio() {
-    try {
-      const labs = {};
-      if (typeof LABS_REGISTRY !== "undefined") {
-        LABS_REGISTRY._items.forEach(l => {
-          const el = document.getElementById(l.id);
-          if (el && el.value) {
-            const key = l.id.replace(/^lab-/, "").replace(/-/g, "_");
-            labs[key] = parseFloat(el.value) || el.value;
-          }
-        });
-      }
-      if (Object.keys(labs).length === 0) return;
-      await window.SAVIA.enviar({
-        de: "agente-laboratorio",
-        tipo: "savia:aporte-laboratorio",
-        flujo: "ascendente",
-        payload: { labs }
-      });
-      console.log("%c[Puente] ✓ savia:aporte-laboratorio emitido", "color:#34c759;font-weight:700");
-    } catch (e) { console.warn("[Puente] Error aporte-laboratorio:", e); }
-  }
-
-  async function emitirConsolidacion() {
-    try {
-      const contextoId = "SAV-RAIZ-" + (window._pacienteActual?.subject_id || "SIN-ID") + "-" + Date.now();
-      await window.SAVIA.emitirContexto(
-        contextoId,
-        "savia:raiz:contexto-unificado",
-        {
-          contexto_id: contextoId,
-          subject: window._pacienteActual || {},
-          encounter: { fecha: new Date().toISOString() },
-          consolidado_at: new Date().toISOString()
-        },
-        { de: "agente-savia-consolidadora" }
-      );
-      console.log("%c[Puente] ✓ savia:raiz:contexto-unificado emitido: " + contextoId, "color:#34c759;font-weight:700");
-    } catch (e) { console.warn("[Puente] Error consolidación:", e); }
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => setTimeout(esperarSaviaYUI, 500));
-  } else {
-    setTimeout(esperarSaviaYUI, 500);
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(esperarSaviaYUI, 500));
+  else setTimeout(esperarSaviaYUI, 500);
 })();
+</script>
 </script>
 </body>
 </html>
