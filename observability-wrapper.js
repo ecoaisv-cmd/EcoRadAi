@@ -1,13 +1,12 @@
 // ═══════════════════════════════════════════════════════════════
-// OBSERVABILITY WRAPPER v9.0 — EcoRadAi Sprint 3
-// Lógica: Observador Pasivo (Escucha al Kernel)
-// Render: Narrativa Clínica + JSON Opcional (Colapsable)
+// OBSERVABILITY WRAPPER v9.1 — EcoRadAi Sprint 3
+// Fix: Narrativa completa + Actualización de tarjetas sin duplicar
 // ═══════════════════════════════════════════════════════════════
 
 (function() {
   "use strict";
 
-  const VERSION = "9.0";
+  const VERSION = "9.1";
   const ESTADO = {
     panelAbierto: false,
     capturadorActivo: false,
@@ -16,7 +15,7 @@
     iniciado: false
   };
 
-  console.log(`%c[Observability] 🚀 Visor v${VERSION} (Modo Narrativa) cargando...`, "background:#0071e3;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
+  console.log(`%c[Observability] 🚀 Visor v${VERSION} (Modo Narrativa Clínica) cargando...`, "background:#0071e3;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
 
   // ═══════════════════════════════════════════════════════════
   // SECCIÓN 1 — ESCUDO Y HELPERS
@@ -184,7 +183,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SECCIÓN 4 — RENDERIZADO NARRATIVO
+  // SECCIÓN 4 — RENDERIZADO NARRATIVO (CON ACTUALIZACIÓN)
   // ═══════════════════════════════════════════════════════════
   
   function agregarPaso(config) {
@@ -193,15 +192,66 @@
     const empty = document.getElementById("obs-sangre-vacia");
     if (empty) empty.remove();
 
+    // ═══════════════════════════════════════════════════════════
+    // NUEVO v9.1: Lógica de actualización (Evitar duplicados)
+    // ═══════════════════════════════════════════════════════════
+    const tarjetasExistentes = narrativa.querySelectorAll('.obs-card-item');
+    let tarjetaVieja = null;
+    const agenteActual = (config.subtitulo || "").split('·')[0].trim();
+    
+    for (const t of tarjetasExistentes) {
+      if (t.dataset.tipo === config.titulo && t.dataset.agente === agenteActual) {
+        tarjetaVieja = t;
+        break;
+      }
+    }
+
+    if (tarjetaVieja) {
+      console.log(`[Observability] Actualizando tarjeta: ${config.titulo}`);
+      
+      const body = tarjetaVieja.querySelector('.obs-card-body');
+      if (body) body.innerHTML = config.html;
+      
+      const jsonContainer = tarjetaVieja.querySelector('.obs-json-container');
+      if (jsonContainer && config.rawJSON) {
+        jsonContainer.innerHTML = `
+          <button onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'" 
+                  style="background: none; border: 1px dashed #ccc; color: #666; font-size: 9px; padding: 2px 6px; border-radius: 4px; cursor: pointer; width: 100%;">
+            { } Ver JSON crudo
+          </button>
+          <pre style="display: none; margin-top: 4px; background: #f5f5f5; padding: 8px; border-radius: 4px; font-size: 9px; max-height: 150px; overflow: auto; white-space: pre-wrap; word-break: break-all;">${escapeHtml(JSON.stringify(config.rawJSON, null, 2))}</pre>
+        `;
+      }
+      
+      let badgeAct = tarjetaVieja.querySelector('.obs-updated-badge');
+      if (!badgeAct) {
+        badgeAct = document.createElement('span');
+        badgeAct.className = 'obs-updated-badge';
+        badgeAct.style = "font-size:8px;font-weight:700;background:#ff9500;color:white;padding:2px 6px;border-radius:4px;margin-left:6px;text-transform:uppercase";
+        badgeAct.textContent = "Actualizado";
+        const header = tarjetaVieja.querySelector('.obs-card-title');
+        if (header) header.appendChild(badgeAct);
+      }
+      
+      tarjetaVieja.style.animation = 'none';
+      tarjetaVieja.offsetHeight; 
+      tarjetaVieja.style.animation = 'obsFlash 1s';
+      
+      return; 
+    }
+
+    // ─── Si no existe, crear tarjeta nueva ───
     const card = document.createElement("div");
+    card.className = "obs-card-item";
+    card.dataset.tipo = config.titulo;
+    card.dataset.agente = agenteActual;
     card.style.cssText = `position: relative; z-index: 1; background: white; border: 1px solid #e8e8ed; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); animation: obsSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); margin-left: 20px; overflow: hidden;`;
 
     const badgeColor = config.badgeColor || config.color || "#34c759";
     const color = config.color || "#34c759";
 
-    // Botón opcional para ver el JSON crudo
     const jsonBtnHTML = config.rawJSON ? `
-      <div style="margin-top: 10px;">
+      <div class="obs-json-container" style="margin-top: 10px;">
         <button onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'" 
                 style="background: none; border: 1px dashed #ccc; color: #666; font-size: 9px; padding: 2px 6px; border-radius: 4px; cursor: pointer; width: 100%;">
           { } Ver JSON crudo
@@ -214,12 +264,12 @@
       <div style="padding: 12px 16px; background: ${color}11; border-bottom: 1px solid ${color}22; display: flex; align-items: flex-start; gap: 12px; position: relative">
         <div style="position: absolute; left: -31px; top: 14px; width: 16px; height: 16px; border-radius: 50%; background: ${color}; border: 3px solid white; box-shadow: 0 0 0 2px ${color}44; z-index: 2"></div>
         <div style="flex: 1; min-width: 0">
-          <div style="font-size: 13px; font-weight: 800; color: #1d1d1f; margin-bottom: 2px">${escapeHtml(config.titulo)}</div>
+          <div class="obs-card-title" style="font-size: 13px; font-weight: 800; color: #1d1d1f; margin-bottom: 2px">${escapeHtml(config.titulo)}</div>
           <div style="font-size: 10px; color: #86868b; font-family: ui-monospace, monospace">${escapeHtml(config.subtitulo || "")}</div>
         </div>
         <span style="font-size: 9px; font-weight: 800; padding: 4px 10px; border-radius: 100px; text-transform: uppercase; background: ${badgeColor}; color: white; flex-shrink: 0; letter-spacing: 0.5px">${config.badge || ""}</span>
       </div>
-      <div style="padding: 16px; font-size: 12px; line-height: 1.6; color: #333;">
+      <div class="obs-card-body" style="padding: 16px; font-size: 12px; line-height: 1.6; color: #333;">
         ${config.html || ""}
         ${jsonBtnHTML}
       </div>
@@ -244,43 +294,81 @@
     
     let titulo = "Agente de Captura";
     let narrativa = "";
+    let badgeColor = "#0071e3"; 
 
     if (tipo.includes("paciente")) {
       titulo = "Registro de Paciente";
-      narrativa = `Se ha capturado la identidad de <strong>${payload.subject?.nombre || "Paciente"}</strong> (ID: ${payload.subject?.subject_id || "—"}), de ${payload.subject?.edad || "—"} años, sexo ${payload.subject?.sexo || "—"}.`;
+      const subj = payload.subject || {};
+      const partes = [
+        subj.nombre && `<strong>Nombre:</strong> ${escapeHtml(subj.nombre)}`,
+        subj.subject_id && `<strong>ID:</strong> ${escapeHtml(subj.subject_id)}`,
+        subj.edad && `<strong>Edad:</strong> ${escapeHtml(String(subj.edad))} años`,
+        subj.sexo && `<strong>Sexo:</strong> ${escapeHtml(subj.sexo)}`
+      ].filter(Boolean);
+      narrativa = partes.length > 0
+        ? `El agente-paciente capturó la identidad del paciente.<br>${partes.join("<br>")}`
+        : "El agente-paciente registró datos del paciente.";
     } 
     else if (tipo.includes("subjetivo")) {
       titulo = "Anamnesis (Subjetivo)";
-      narrativa = `<strong>Motivo:</strong> ${payload.subjetivo?.motivo || "No especificado"}.<br><strong>Enfermedad actual:</strong> ${payload.subjetivo?.enfermedad_actual || "—"}.`;
+      const s = payload.subjetivo || {};
+      const lineas = [];
+      if (s.motivo) lineas.push(`<strong>Motivo:</strong> ${escapeHtml(s.motivo)}`);
+      if (s.enfermedad_actual) lineas.push(`<strong>Enfermedad actual:</strong> ${escapeHtml(s.enfermedad_actual)}`);
+      if (s.revision_sistemas && Object.keys(s.revision_sistemas).length > 0) {
+        const rev = Object.entries(s.revision_sistemas).map(([k, v]) => `<strong>${escapeHtml(k)}:</strong> ${escapeHtml(v)}`).join("<br>");
+        lineas.push(`<strong>Revisión por sistemas:</strong><br>${rev}`);
+      }
+      narrativa = lineas.length > 0
+        ? lineas.join("<br><br>")
+        : "El agente-clinica capturó la anamnesis del paciente (sin detalles).";
+    }
+    else if (tipo.includes("examen")) {
+      titulo = "Examen Físico";
+      const ef = payload.examen_fisico || {};
+      const regiones = Object.entries(ef).map(([k, v]) => `<strong>${escapeHtml(k.replace(/_/g, " "))}:</strong> ${escapeHtml(v)}`);
+      narrativa = regiones.length > 0
+        ? `Se registraron hallazgos en ${regiones.length} región(es):<br>${regiones.join("<br>")}`
+        : "El agente-clinica registró el examen físico.";
     }
     else if (tipo.includes("clinica")) {
       titulo = "Signos Vitales y Antropometría";
       const c = payload.clinica || payload;
-      let filas = "";
-      if (c.peso_kg) filas += `Peso: ${c.peso_kg}kg `;
-      if (c.talla_cm) filas += `| Talla: ${c.talla_cm}cm `;
-      if (c.imc) filas += `| IMC: ${c.imc} `;
-      if (c.presion_sistolica_mmhg) filas += `| PA: ${c.presion_sistolica_mmhg}/${c.presion_diastolica_mmhg || "—"} mmHg `;
-      if (c.frecuencia_cardiaca_lpm) filas += `| FC: ${c.frecuencia_cardiaca_lpm} lpm`;
-      narrativa = filas || "Se capturaron datos clínicos.";
-    }
-    else if (tipo.includes("examen")) {
-      titulo = "Examen Físico";
-      narrativa = `Se registraron hallazgos en ${Object.keys(payload.examen_fisico || {}).length} regiones anatómicas.`;
+      const filas = [];
+      if (c.peso_kg) filas.push(`Peso: <strong>${c.peso_kg} kg</strong>`);
+      if (c.talla_cm) filas.push(`Talla: <strong>${c.talla_cm} cm</strong>`);
+      if (c.imc) filas.push(`IMC: <strong>${c.imc}</strong>`);
+      if (c.circunferencia_cintura_cm) filas.push(`Cintura: <strong>${c.circunferencia_cintura_cm} cm</strong>`);
+      if (c.presion_sistolica_mmhg) filas.push(`PA: <strong>${c.presion_sistolica_mmhg}/${c.presion_diastolica_mmhg || "—"} mmHg</strong>`);
+      if (c.frecuencia_cardiaca_lpm) filas.push(`FC: <strong>${c.frecuencia_cardiaca_lpm} lpm</strong>`);
+      if (c.saturacion_o2_pct) filas.push(`SatO2: <strong>${c.saturacion_o2_pct}%</strong>`);
+      narrativa = filas.length > 0
+        ? `El agente-clinica capturó signos vitales:<br>${filas.join(" · ")}`
+        : "El agente-clinica capturó signos vitales.";
     }
     else if (tipo.includes("laboratorio")) {
       titulo = "Resultados de Laboratorio";
       const l = payload.labs || payload;
-      narrativa = `Se han recibido ${Object.keys(l).length} exámenes. Destacan: ` + Object.entries(l).slice(0, 3).map(([k, v]) => `<strong>${k}</strong>: ${v}`).join(", ") + "...";
+      const entries = Object.entries(l);
+      narrativa = entries.length > 0
+        ? `Se han recibido ${entries.length} examen(es):<br>` +
+          entries.slice(0, 5).map(([k, v]) => `<strong>${escapeHtml(k.replace(/_/g, " "))}:</strong> ${escapeHtml(String(v))}`).join("<br>") +
+          (entries.length > 5 ? `<br>... y ${entries.length - 5} más` : "")
+        : "El agente-laboratorio registró exámenes de laboratorio.";
     }
-    else if (tipo.includes("contexto-unificado")) {
+    else if (tipo.includes("contexto-unificado") || tipo === "savia:raiz:contexto-unificado") {
       titulo = "Consolidación de SAVIA RAÍZ";
-      narrativa = `El agente consolidador ha unificado todos los aportes en un solo contexto clínico, listo para ser enviado al TRONCO.`;
-      ESTADO.eventos.push({ tipo: "savia", evento }); // Sumar al contador SAVIA
+      narrativa = `El agente-savia-consolidadora ha unificado todos los aportes en un solo contexto clínico (${escapeHtml(payload.contexto_id || "—")}), listo para el TRONCO.`;
+      ESTADO.eventos.push({ tipo: "savia", evento });
+      badgeColor = "#34c759"; 
+    }
+    else {
+      titulo = "Evento de Captura";
+      narrativa = `El agente <strong>${escapeHtml(evento.de || "desconocido")}</strong> emitió el evento <code>${escapeHtml(tipo)}</code> con ${Object.keys(payload).length} campo(s).`;
     }
 
     agregarPaso({ 
-      color: "#34c759", badge: "RAÍZ", badgeColor: "#0071e3", 
+      color: "#34c759", badge: "RAÍZ", badgeColor: badgeColor, 
       titulo, subtitulo: `${evento.de || 'agente'} · ${formatearHora(evento.timestamp)}`, 
       html: `<div style="font-size:12px; line-height:1.5;">${narrativa}</div>`,
       rawJSON: payload
@@ -364,7 +452,7 @@
   }
 
   function mostrarAyuda() {
-    alert("🌿 ¿Cómo funciona la SAVIA?\n\nEl Visor es un observador pasivo. Se engancha a los canales del Kernel (window.SAVIA) y pinta cada evento que los agentes emiten de forma narrativa.\n\nSi necesitas ver los datos crudos que viajan por la SAVIA, haz clic en '{ } Ver JSON crudo' dentro de cada tarjeta.");
+    alert("🌿 ¿Cómo funciona la SAVIA?\n\nEl Visor es un observador pasivo. Se engancha a los canales del Kernel (window.SAVIA) y pinta cada evento que los agentes emiten.\n\nSi corriges un dato y vuelves a avanzar, el Visor actualizará la tarjeta en lugar de duplicarla.");
   }
 
   function mostrarDiagnostico() {
@@ -409,7 +497,10 @@
     if (document.getElementById("obs-styles")) return;
     const style = document.createElement("style");
     style.id = "obs-styles";
-    style.textContent = `@keyframes obsSlideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`;
+    style.textContent = `
+      @keyframes obsSlideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+      @keyframes obsFlash { 0% { background-color: rgba(255, 149, 0, 0.3); } 100% { background-color: white; } }
+    `;
     document.head.appendChild(style);
   }
 
@@ -423,7 +514,7 @@
     
     setTimeout(activarCapturador, 2000);
     
-    console.log(`%c[Observability] ✅ Visor v${VERSION} inicializado. Esperando eventos del Kernel.`, "background:#34c759;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
+    console.log(`%c[Observability] ✅ Visor v${VERSION} inicializado.`, "background:#34c759;color:white;padding:4px 8px;border-radius:4px;font-weight:bold");
   }
 
   if (document.readyState === "loading") {
