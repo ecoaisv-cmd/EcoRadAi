@@ -7350,13 +7350,45 @@ function renderInformeLite(p, caso, nivel, rec, g, f) {
     const estudioNombre = esc((caso.encounter?.estudio || "").replace(/_/g, " "));
     resumenHTML = `<div class="lv2-section"><h4>📋 Resumen ejecutivo</h4><div class="lv2-resumen"><p>Se realizó un tamizaje <strong>${estudioNombre}</strong> el ${esc(f)}.</p><p>Resultado global: <strong>${nNorm}</strong>. ${descNivel[nNorm] || ""}</p></div></div>`;
   }
-  /* ─── Tabla de valores ─── */
+   /* ─── Tabla de valores ─── */
+  // ✅ Reutilizamos EXACTAMENTE la misma lógica de datos que el informe médico,
+  // solo cambia el HTML/CSS para mantener el estilo visual del Lite.
   let tablaHTML = "";
   if (caso.metrics && caso.metrics.length > 0) {
-    // v23.4.2 — Preferir siempre la tabla estructurada compacta
-    tablaHTML = `<div class="lv2-section"><h4>📊 Tus valores</h4>${renderTablaDesdeMetrics(caso.metrics)}</div>`;
+    const filasMetricas = caso.metrics.map(m => {
+      const key = escapeHtml((m.key || "").replace(/_/g, " ").replace(/\./g, " · "));
+      const val = escapeHtml((m.value ?? "—") + " " + (m.unit || ""));
+      const ref = (m.ref_min !== undefined && m.ref_max !== undefined) 
+        ? escapeHtml(`${m.ref_min} - ${m.ref_max}`) 
+        : "—";
+      
+      // Misma lógica que el informe médico: confiar en m.flag del JSON
+      const flagOriginal = String(m.flag || "normal").toLowerCase();
+      let flagClass, flagLabel;
+      if (flagOriginal.includes("alto") || flagOriginal.includes("elevado")) {
+        flagClass = "alto"; flagLabel = "Alto";
+      } else if (flagOriginal.includes("bajo")) {
+        flagClass = "bajo"; flagLabel = "Bajo";
+      } else {
+        flagClass = "normal"; flagLabel = "Normal";
+      }
+      
+      return `<tr>
+        <td>${key}</td>
+        <td><strong>${val}</strong></td>
+        <td>${ref}</td>
+        <td><span class="lv2-flag ${flagClass}">${flagLabel}</span></td>
+      </tr>`;
+    }).join("");
+    
+    tablaHTML = `<div class="lv2-section"><h4>📊 Tus valores</h4>
+      <table class="lv2-tabla">
+        <thead><tr><th>Métrica</th><th>Valor</th><th>Referencia</th><th>Estado</th></tr></thead>
+        <tbody>${filasMetricas}</tbody>
+      </table>
+    </div>`;
   } else if (rTabla && rTabla.contenido.trim()) {
-    // Fallback: parsear texto narrativo con |
+    // Fallback: si no hay caso.metrics, usar el parser de texto
     tablaHTML = `<div class="lv2-section"><h4>📊 Tus valores</h4>${renderTablaLite(rTabla.contenido)}</div>`;
   }
   /* ─── Clasificación de riesgo ─── */
@@ -21970,135 +22002,5 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
 </script>
 <script type="module" src="js/kernel/init.js"></script>
 <script src="observability-wrapper.js?v=999" defer></script>
-</script>
-<script>
-(function() {
-  "use strict";
-  console.log("%c[Wrapper RAÍZ] Conectando formularios con los Agentes...", "color:#0071e3;font-weight:700");
-
-  let intentos = 0;
-  const intervalo = setInterval(() => {
-    intentos++;
-    if (window.SAVIA && window.SAVIA.enviar) {
-      clearInterval(intervalo);
-      inyectarWrapper();
-    } else if (intentos > 40) {
-      clearInterval(intervalo);
-      console.error("❌ Kernel no detectado.");
-    }
-  }, 500);
-
-  function inyectarWrapper() {
-    console.log("%c[Wrapper RAÍZ] ✅ Kernel detectado. Envolviendo funciones del monolito...", "color:#34c759");
-
-    // ── 1. DESPERTAR AGENTE-PACIENTE (Nuevo o Existente) ──
-    const origGuardarFicha = window.guardarFichaPaciente;
-    if (typeof origGuardarFicha === "function" && !origGuardarFicha._wrapped) {
-      window.guardarFichaPaciente = async function() {
-        const res = await origGuardarFicha.apply(this, arguments);
-        const pac = window._pacienteActual;
-        if (pac && pac.subject_id && !pac.subject_id.includes("????")) {
-          console.log("%c[Wrapper] -> Despertando agente-paciente", "color:#0071e3");
-          window.SAVIA.enviar({
-            de: "agente-paciente",
-            tipo: "savia:aporte-paciente",
-            flujo: "ascendente",
-            payload: { subject: pac, timestamp: new Date().toISOString() }
-          });
-        }
-        return res;
-      };
-      window.guardarFichaPaciente._wrapped = true;
-    }
-
-    const origSeleccionarPaciente = window.seleccionarPacienteConsulta;
-    if (typeof origSeleccionarPaciente === "function" && !origSeleccionarPaciente._wrapped) {
-      window.seleccionarPacienteConsulta = async function() {
-        const res = await origSeleccionarPaciente.apply(this, arguments);
-        const pac = window._consultaState?.paciente || window._pacienteActual;
-        if (pac && pac.subject_id && !pac.subject_id.includes("????")) {
-          console.log("%c[Wrapper] -> Despertando agente-paciente (selección)", "color:#0071e3");
-          window.SAVIA.enviar({
-            de: "agente-paciente",
-            tipo: "savia:aporte-paciente",
-            flujo: "ascendente",
-            payload: { subject: pac, timestamp: new Date().toISOString() }
-          });
-        }
-        return res;
-      };
-      window.seleccionarPacienteConsulta._wrapped = true;
-    }
-
-    // ── 2. DESPERTAR AGENTE-CLINICA (Subjetivo) ──
-    const origIrAObjetivo = window.consultaIrAObjetivo;
-    if (typeof origIrAObjetivo === "function" && !origIrAObjetivo._wrapped) {
-      window.consultaIrAObjetivo = function() {
-        const motivo = document.getElementById("cons-motivo")?.value || "";
-        const enf = document.getElementById("cons-enfermedad-actual")?.value || "";
-        if (motivo || enf) {
-          console.log("%c[Wrapper] -> Despertando agente-clinica (subjetivo)", "color:#34c759");
-          window.SAVIA.enviar({
-            de: "agente-clinica",
-            tipo: "savia:aporte-subjetivo",
-            flujo: "ascendente",
-            payload: { subjetivo: { motivo, enfermedad_actual: enf } }
-          });
-        }
-        return origIrAObjetivo.apply(this, arguments);
-      };
-      window.consultaIrAObjetivo._wrapped = true;
-    }
-
-    // ── 3. DESPERTAR AGENTE-CLINICA (Examen Físico) ──
-    const origIrAAnalisis = window.consultaIrAAnalisis;
-    if (typeof origIrAAnalisis === "function" && !origIrAAnalisis._wrapped) {
-      window.consultaIrAAnalisis = function() {
-        const general = document.getElementById("cons-ef-general")?.value || "";
-        const torax = document.getElementById("cons-ef-torax_pulmones")?.value || "";
-        if (general || torax) {
-          console.log("%c[Wrapper] -> Despertando agente-clinica (examen físico)", "color:#34c759");
-          window.SAVIA.enviar({
-            de: "agente-clinica",
-            tipo: "savia:aporte-examen-fisico",
-            flujo: "ascendente",
-            payload: { examen_fisico: { general, torax_pulmones: torax } }
-          });
-        }
-        return origIrAAnalisis.apply(this, arguments);
-      };
-      window.consultaIrAAnalisis._wrapped = true;
-    }
-
-    // ── 4. DESPERTAR AGENTE-LABORATORIO ──
-    if (typeof LABS_REGISTRY !== "undefined") {
-      LABS_REGISTRY._items.forEach(l => {
-        const el = document.getElementById(l.id);
-        if (el && !el._wrapped) {
-          el.addEventListener("change", () => {
-            const labs = {};
-            LABS_REGISTRY._items.forEach(l2 => {
-              const el2 = document.getElementById(l2.id);
-              if (el2 && el2.value) labs[l2.id.replace(/^lab-/, "").replace(/-/g, "_")] = el2.value;
-            });
-            if (Object.keys(labs).length > 0) {
-              console.log("%c[Wrapper] -> Despertando agente-laboratorio", "color:#34c759");
-              window.SAVIA.enviar({
-                de: "agente-laboratorio",
-                tipo: "savia:aporte-laboratorio",
-                flujo: "ascendente",
-                payload: { labs }
-              });
-            }
-          });
-          el._wrapped = true;
-        }
-      });
-    }
-
-    console.log("%c[Wrapper RAÍZ] ✅ Agentes conectados a la interfaz.", "color:#fff;background:#34c759;padding:4px 8px;border-radius:4px;font-weight:bold");
-  }
-})();
-</script>
 </body>
 </html>
