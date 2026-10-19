@@ -1133,6 +1133,33 @@ body[data-rol="admin"] #btn-enviar-revision {
 body[data-rol="operador"] #btn-firmar-consulta {
   display: none !important;
 }
+/* ═══════════════════════════════════════════════════════════
+   OCULTAR TODA LA SECCIÓN VISUAL DE CAPTURA
+   ═══════════════════════════════════════════════════════════ */
+
+/* Ocultar los selectores de enfoque y plan */
+#enfoque-selector,
+.plan-selector {
+  display: none !important;
+}
+
+/* Ocultar el recuadro azul del "Tamizaje activo" */
+#tamizaje-header-dinamico {
+  display: none !important;
+}
+
+/* Ocultar la tarjeta de "Especialistas disponibles" */
+#ecosystem-card {
+  display: none !important;
+}
+
+/* Eliminar márgenes residuales */
+#sec-captura > .enfoque-selector + .plan-selector,
+#sec-captura > .plan-selector + .tamizaje-header,
+#sec-captura > .tamizaje-header + .card,
+#sec-captura > .card {
+  margin-top: 0 !important;
+}
 </style>
 </head>
 <body>
