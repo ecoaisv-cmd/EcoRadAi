@@ -1078,6 +1078,61 @@ input[type="checkbox"]{width:auto}
 }
 @media print{@page{size:letter;margin:12mm}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{background:#fff!important;color:#000!important;padding:0!important}.header,.steps,.nav-footer,.btn,.no-print,.card,.plan-selector,.tabs,.seccion-titulo-preview,.paquetes-grid,.estudio-selector,.admin-container,.accordion-header,.btn-row{display:none!important}.container{max-width:100%!important;padding:0!important}.section{display:block!important}#sec-reporte{display:block!important}.report-medico,.report-lite,.report-receta-separada,.report-imagenes-pagina{border:none!important;border-radius:0!important;box-shadow:none!important;overflow:visible!important;max-width:100%!important;page-break-after:always;break-after:page}.report-medico:last-child,.report-lite:last-child,.report-receta-separada:last-child,.report-imagenes-pagina:last-child{page-break-after:auto;break-after:auto}}
 @media (min-width:640px){.paquetes-grid{grid-template-columns:repeat(2,1fr)}}
+/* ═══════════════════════════════════════════════════════════
+   CONTROL DE VISIBILIDAD POR ROL — CSS
+   Refuerza el control de JavaScript
+   ═══════════════════════════════════════════════════════════ */
+
+/* Tabs ocultos por atributo data-acceso */
+body[data-rol="operador"] .tab[data-acceso="medico"],
+body[data-rol="operador"] .tab[data-acceso="admin"],
+body[data-rol="medico"] .tab[data-acceso="operador"],
+body[data-rol="medico"] .tab[data-acceso="admin"],
+body[data-rol="admin"] .tab[data-acceso="operador"] {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Secciones ocultas por rol */
+body[data-rol="operador"] #sec-admin,
+body[data-rol="operador"] #sec-prompts-config,
+body[data-rol="operador"] #sec-por-firmar,
+body[data-rol="medico"] #sec-admin,
+body[data-rol="medico"] #sec-mis-envios,
+body[data-rol="medico"] #sec-mis-solicitudes {
+  display: none !important;
+}
+
+/* Botones críticos ocultos para operador */
+body[data-rol="operador"] #btn-firmar-consulta,
+body[data-rol="operador"] #btn-generar-informe-final,
+body[data-rol="operador"] #btn-ejecutar-interconsultas,
+body[data-rol="operador"] #btn-report,
+body[data-rol="operador"] #btn-pdf-medico,
+body[data-rol="operador"] #btn-word-medico,
+body[data-rol="operador"] #btn-pdf-lite,
+body[data-rol="operador"] #btn-png-lite,
+body[data-rol="operador"] #btn-pdf-receta,
+body[data-rol="operador"] #btn-png-receta,
+body[data-rol="operador"] #btn-email-medico,
+body[data-rol="operador"] #btn-email-lite,
+body[data-rol="operador"] #btn-whatsapp-medico,
+body[data-rol="operador"] #btn-whatsapp-lite,
+body[data-rol="operador"] #btn-guardar,
+body[data-rol="operador"] #btn-cambiar-estudio {
+  display: none !important;
+}
+
+/* Botón "Enviar a revisión" solo para operador */
+body[data-rol="medico"] #btn-enviar-revision,
+body[data-rol="admin"] #btn-enviar-revision {
+  display: none !important;
+}
+
+/* Botón "Firmar" solo para médico/admin */
+body[data-rol="operador"] #btn-firmar-consulta {
+  display: none !important;
+}
 </style>
 </head>
 <body>
@@ -1150,13 +1205,16 @@ input[type="checkbox"]{width:auto}
 </div>
 <div class="container">
 <div class="tabs no-print" id="tabs-principales">
-  <div class="tab active" data-tab="captura" onclick="cambiarTab('captura')">📋 Captura</div>
-   <div class="tab" data-tab="consulta" onclick="cambiarTab('consulta')">🩺 Consulta</div>
-  <div class="tab" data-tab="pacientes" onclick="cambiarTab('pacientes')">👥 Pacientes</div>
-  <div class="tab" data-tab="informes" onclick="cambiarTab('informes')">📁 Informes</div>
-  <div class="tab" data-tab="prompts" onclick="cambiarTab('prompts')">🧠 Prompts</div>
-  <div class="tab admin-tab" data-tab="admin" onclick="cambiarTab('admin')">🔧 Admin</div>
-  <div class="tab" data-tab="config" onclick="cambiarTab('config')">⚙️ Config</div>
+  <div class="tab active" data-tab="captura" data-acceso="todos" onclick="cambiarTab('captura')">📋 Captura</div>
+  <div class="tab" data-tab="consulta" data-acceso="todos" onclick="cambiarTab('consulta')">🩺 Consulta</div>
+  <div class="tab" data-tab="pacientes" data-acceso="admin" onclick="cambiarTab('pacientes')">👥 Pacientes</div>
+  <div class="tab" data-tab="informes" data-acceso="admin" onclick="cambiarTab('informes')">📁 Informes</div>
+  <div class="tab" data-tab="mis-envios" data-acceso="operador" onclick="cambiarTab('mis-envios')">📤 Mis envíos</div>
+  <div class="tab" data-tab="mis-solicitudes" data-acceso="operador" onclick="cambiarTab('mis-solicitudes')">📩 Mis solicitudes</div>
+  <div class="tab" data-tab="por-firmar" data-acceso="medico" onclick="cambiarTab('por-firmar')">⏳ Por firmar</div>
+  <div class="tab" data-tab="prompts" data-acceso="admin" onclick="cambiarTab('prompts')">🧠 Prompts</div>
+  <div class="tab admin-tab" data-tab="admin" data-acceso="admin" onclick="cambiarTab('admin')">🔧 Admin</div>
+  <div class="tab" data-tab="config" data-acceso="admin" onclick="cambiarTab('config')">⚙️ Config</div>
 </div>
 <div class="section active" id="sec-captura">
 <div class="enfoque-selector no-print" id="enfoque-selector" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0">
@@ -1735,6 +1793,25 @@ input[type="checkbox"]{width:auto}
   <div class="card"><div class="card-title"><span class="num">📈</span>Evolución de métricas</div><div id="metricas-charts"></div></div>
   <div class="card"><div class="card-title"><span class="num">🔔</span>Alertas proactivas</div><div id="alertas-container"></div></div>
   <div class="card"><div class="card-title"><span class="num">📅</span>Timeline de casos</div><div id="timeline-container"></div></div>
+</div>
+<div class="section" id="sec-mis-solicitudes">
+  <div class="card">
+    <div class="card-title">
+      <span class="num">📩</span>
+      <span>Mis solicitudes de suscripción</span>
+      <button class="btn btn-secondary btn-xs" style="margin-left:auto" onclick="renderMisSolicitudes()">🔄</button>
+    </div>
+    <div id="mis-solicitudes-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:16px"></div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-xs" onclick="filtrarMisSolicitudes('todas', this)" style="font-size:10px">Todas</button>
+      <button class="btn btn-secondary btn-xs" onclick="filtrarMisSolicitudes('pendiente', this)" style="font-size:10px">Pendientes</button>
+      <button class="btn btn-secondary btn-xs" onclick="filtrarMisSolicitudes('aprobada', this)" style="font-size:10px">Aprobadas</button>
+      <button class="btn btn-secondary btn-xs" onclick="filtrarMisSolicitudes('rechazada', this)" style="font-size:10px">Rechazadas</button>
+    </div>
+    <div id="mis-solicitudes-lista">
+      <div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>
+    </div>
+  </div>
 </div>
 <div class="section" id="sec-informes">
   <div class="card"><div class="card-title"><span class="num">📁</span>Casos guardados</div><div id="informes-lista-container"><div class="empty-state"><div class="icon">📁</div><p>No hay casos guardados</p></div></div></div>
@@ -5293,32 +5370,189 @@ function mostrarErrorLogin(msg) {
    AJUSTAR UI SEGÚN ROL
    ─────────────────────────────────────────────────────────── */
 
+/* ═══════════════════════════════════════════════════════════════
+   AJUSTE DE UI SEGÚN ROL — v2.0
+   Oculta tabs, secciones y botones según el rol
+   ═══════════════════════════════════════════════════════════════ */
+
 function ajustarUIPorRol(rol) {
-  console.log("[Rol]", rol);
-  const tabs = document.getElementById("tabs-principales");
-  if (rol === "paciente") {
-    if (tabs) tabs.style.display = "none";
-    document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  rol = rol || window.usuarioActual?.rol || "operador";
+  console.log("[Rol] Ajustando UI para:", rol);
+  
+  // ═══ 1. Marcar el body con el rol (para CSS) ═══
+  document.body.dataset.rol = rol;
+  
+  const esPaciente = rol === "paciente";
+  const esOperador = rol === "operador";
+  const esMedico = rol === "medico";
+  const esAdmin = rol === "admin";
+  
+  // ═══ 2. Paciente: solo portal ═══
+  if (esPaciente) {
+    const tabs = document.getElementById("tabs-principales");
+    const header = document.querySelector(".header");
+    const footer = document.querySelector(".nav-footer");
     const portal = document.getElementById("sec-paciente-portal");
-    if (portal) portal.classList.add("active");
-    const header = document.querySelector(".header");
+    
+    if (tabs) tabs.style.display = "none";
     if (header) header.style.display = "none";
-    const footer = document.querySelector(".nav-footer");
     if (footer) footer.style.display = "none";
+    document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+    if (portal) portal.classList.add("active");
+    
     const saludo = document.getElementById("portal-saludo");
-    if (saludo && usuarioActual?.nombre) {
-      saludo.textContent = "Hola, " + usuarioActual.nombre.split(" ")[0];
+    if (saludo && window.usuarioActual?.nombre) {
+      saludo.textContent = "Hola, " + window.usuarioActual.nombre.split(" ")[0];
     }
-    cargarPortalPaciente();
-    document.body.dataset.rol = "paciente";
-  } else {
-    if (tabs) tabs.style.display = "flex";
-    const header = document.querySelector(".header");
-    if (header) header.style.display = "";
-    const footer = document.querySelector(".nav-footer");
-    if (footer) footer.style.display = "";
-    document.body.dataset.rol = rol || "operador";
+    
+    if (typeof cargarPortalPaciente === "function") cargarPortalPaciente();
+    return;
   }
+  
+  // ═══ 3. Resto de roles: header visible ═══
+  const tabs = document.getElementById("tabs-principales");
+  const header = document.querySelector(".header");
+  const footer = document.querySelector(".nav-footer");
+  const portal = document.getElementById("sec-paciente-portal");
+  
+  if (header) header.style.display = "";
+  if (footer) footer.style.display = "";
+  if (tabs) tabs.style.display = "flex";
+  if (portal) portal.classList.remove("active");
+  
+  // ═══ 4. FILTRAR TABS SEGÚN ROL ═══
+  const tabsPermitidosPorRol = {
+    admin:    ["captura", "consulta", "pacientes", "informes", "mis-envios", 
+               "por-firmar", "prompts", "admin", "config"],
+    medico:   ["captura", "consulta", "pacientes", "informes", 
+               "por-firmar"],
+    operador: ["captura", "consulta","mis-envios", "mis-solicitudes", "config"]
+               
+  };
+  
+  const permitidos = tabsPermitidosPorRol[rol] || tabsPermitidosPorRol.operador;
+  
+  document.querySelectorAll("#tabs-principales .tab").forEach(tab => {
+    const tabKey = tab.dataset.tab;
+    const permitido = permitidos.includes(tabKey);
+    tab.style.display = permitido ? "" : "none";
+    tab.style.visibility = permitido ? "visible" : "hidden";
+    tab.style.position = permitido ? "" : "absolute";
+    tab.style.pointerEvents = permitido ? "" : "none";
+    
+    console.log(`[Rol] Tab "${tabKey}": ${permitido ? "✓ visible" : "✗ oculto"}`);
+  });
+  
+  // ═══ 5. FILTRAR SECCIONES (por si quedaron activas) ═══
+  const seccionesPermitidasPorRol = {
+    admin:    ["sec-captura", "sec-empleado", "sec-estudio", "sec-vitales",
+               "sec-labs", "sec-clinica", "sec-protocolo", "sec-imagenes",
+               "sec-analisis", "sec-interconsultas", "sec-tratamiento",
+               "sec-reporte", "sec-consulta", "sec-pacientes",
+               "sec-paciente-detalle", "sec-informes", "sec-mis-envios",
+               "sec-mis-solicitudes", "sec-por-firmar", "sec-prompts-config",
+               "sec-admin", "sec-config-view", "sec-config"],
+    medico:   ["sec-captura", "sec-empleado", "sec-estudio", "sec-vitales",
+               "sec-labs", "sec-clinica", "sec-protocolo", "sec-imagenes",
+               "sec-analisis", "sec-interconsultas", "sec-tratamiento",
+               "sec-reporte", "sec-consulta", "sec-pacientes",
+               "sec-paciente-detalle", "sec-informes", "sec-por-firmar",
+               "sec-config-view", "sec-config"],
+    operador: ["sec-captura", "sec-empleado", "sec-estudio", "sec-vitales",
+               "sec-labs", "sec-clinica", "sec-protocolo", "sec-imagenes",
+               "sec-analisis", "sec-consulta", "sec-pacientes",
+               "sec-mis-envios",
+               "sec-mis-solicitudes", "sec-config-view", "sec-config"]
+  };
+  
+  const seccionesPermitidas = seccionesPermitidasPorRol[rol] || seccionesPermitidasPorRol.operador;
+  
+  document.querySelectorAll(".section").forEach(seccion => {
+    const seccionId = seccion.id;
+    if (!seccionesPermitidas.includes(seccionId)) {
+      seccion.classList.remove("active");
+      seccion.style.display = "none";
+    } else {
+      seccion.style.display = "";
+    }
+  });
+  
+  // ═══ 6. IR A LA PRIMERA PESTAÑA PERMITIDA ═══
+  const primeraTabVisible = Array.from(
+    document.querySelectorAll("#tabs-principales .tab")
+  ).find(t => t.style.display !== "none");
+  
+  if (primeraTabVisible) {
+    const targetTab = primeraTabVisible.dataset.tab;
+    console.log("[Rol] Navegando a primera tab permitida:", targetTab);
+    setTimeout(() => {
+      if (typeof cambiarTab === "function") cambiarTab(targetTab);
+    }, 100);
+  }
+  
+  // ═══ 7. CONFIGURAR BOTONES ESPECÍFICOS ═══
+  setTimeout(() => {
+    if (typeof configurarBotonesPorRol === "function") {
+      configurarBotonesPorRol();
+    }
+    
+    // Botones de firma en el paso de consulta
+    const btnFirmar = document.getElementById("btn-firmar-consulta");
+    const btnEnviarRevision = document.getElementById("btn-enviar-revision");
+    
+    if (btnFirmar) {
+      btnFirmar.style.display = (esMedico || esAdmin) ? "block" : "none";
+    }
+    if (btnEnviarRevision) {
+      btnEnviarRevision.style.display = esOperador ? "block" : "none";
+    }
+    
+    // Botones de generar informe en captura
+    const btnGenerarInforme = document.getElementById("btn-generar-informe-final");
+    if (btnGenerarInforme) {
+      btnGenerarInforme.style.display = (esMedico || esAdmin) ? "" : "none";
+    }
+    
+    // Botones de ejecutar interconsultas
+    const btnEjecutarInterconsultas = document.getElementById("btn-ejecutar-interconsultas");
+    if (btnEjecutarInterconsultas) {
+      btnEjecutarInterconsultas.style.display = (esMedico || esAdmin) ? "" : "none";
+    }
+    
+    // Botones de PDF y descargas en reporte
+    ["btn-pdf-medico", "btn-word-medico", "btn-pdf-lite", "btn-png-lite",
+     "btn-pdf-receta", "btn-png-receta", "btn-email-medico", "btn-email-lite",
+     "btn-whatsapp-medico", "btn-whatsapp-lite"].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = (esMedico || esAdmin) ? "" : "none";
+    });
+    
+    // Botón "Enviar a IA" - el operador SÍ puede usarlo
+    const btnSend = document.getElementById("btn-send");
+    if (btnSend) btnSend.style.display = "";
+    
+    // Botón "Generar informe base" - el operador NO puede
+    const btnReport = document.getElementById("btn-report");
+    if (btnReport) btnReport.style.display = (esMedico || esAdmin) ? "" : "none";
+    
+  }, 300);
+  
+  // ═══ 8. Badge de notificaciones (médicos) ═══
+  if (esMedico || esAdmin) {
+    setTimeout(() => {
+      if (typeof actualizarBadgePorFirmar === "function") {
+        actualizarBadgePorFirmar();
+        setInterval(actualizarBadgePorFirmar, 60000);
+      }
+    }, 500);
+  }
+  
+  // ═══ 9. Poblar header ═══
+  if (typeof poblarHeaderUsuario === "function") {
+    setTimeout(() => poblarHeaderUsuario(), 300);
+  }
+  
+  console.log("[Rol] ✓ UI configurada para:", rol);
 }
 
 /* ───────────────────────────────────────────────────────────
@@ -8608,6 +8842,7 @@ function cambiarTab(tab) {
   }
   
   // 4. Inicializaciones específicas
+  if (tab === "mis-solicitudes") renderMisSolicitudes();
   if (tab === "informes") renderCasosGuardados();
   if (tab === "pacientes") renderPacientesLista();
   if (tab === "config") renderEstadisticas();
@@ -22256,10 +22491,10 @@ console.log("[Header] ✓ Módulo de menú de usuario cargado");
     }
 
     try {
-      const { data, error } = await window.supabaseClient.rpc(
-        "obtener_info_plan_paciente",
-        { p_subject_id: subjectId }
-      );
+     const { data, error } = await window.supabaseClient.rpc(
+  "obtener_info_plan_paciente",
+  { p_subject_id: subjectId }
+);
 
       if (error) throw error;
 
@@ -23277,6 +23512,20 @@ ${panelUrl}
 
   console.log("[OP] Portal Operador v2.0 cargado. Diagnóstico: __OP.estado()");
 })();
+document.addEventListener("visibilitychange", function() {
+  if (!window.usuarioActual || window.usuarioActual.rol !== "operador") return;
+  if (document.hidden) {
+    if (window._opPollingNotif) {
+      clearInterval(window._opPollingNotif);
+      window._opPollingNotif = null;
+    }
+  } else {
+    if (!window._opPollingNotif) {
+      window._opPollingNotif = setInterval(actualizarNotifOperador, 60000);
+      actualizarNotifOperador();
+    }
+  }
+});
 </script>
 <script src="observability-wrapper.js?v=999" defer></script>
 </body>
