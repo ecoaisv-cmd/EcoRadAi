@@ -1124,6 +1124,28 @@ input[type="checkbox"]{width:auto}
   <div class="header-inner">
     <h1 id="app-title">EcoRadAi v23.4</h1>
     <span class="badge" id="plan-badge">Plan Básico</span>
+    <div id="header-user-menu" style="display:none;position:relative;flex-shrink:0">
+      <button id="btn-user-menu" onclick="toggleUserMenu(event)" 
+              style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1.5px solid var(--border);border-radius:100px;background:var(--bg-secondary);cursor:pointer;font-size:11px;font-weight:600;color:var(--text-primary);transition:all .2s">
+        <span id="user-avatar" style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">?</span>
+        <span id="user-name-short" style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Usuario</span>
+        <span style="font-size:8px;color:var(--text-tertiary)">▼</span>
+      </button>
+      <div id="user-menu-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--bg);border:1.5px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.15);min-width:220px;z-index:1000;overflow:hidden">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border);background:var(--bg-secondary)">
+          <div id="user-menu-name" style="font-size:12px;font-weight:700;color:var(--corp);margin-bottom:2px">Usuario</div>
+          <div id="user-menu-email" style="font-size:10px;color:var(--text-secondary);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis">—</div>
+          <div id="user-menu-rol" style="display:inline-block;margin-top:6px;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px;background:var(--accent-light);color:var(--accent);text-transform:uppercase;letter-spacing:0.5px">—</div>
+        </div>
+        <button onclick="confirmarCerrarSesion()" 
+                style="width:100%;padding:12px 14px;background:transparent;border:none;text-align:left;cursor:pointer;font-size:12px;font-weight:600;color:var(--danger);display:flex;align-items:center;gap:8px;transition:background .2s"
+                onmouseover="this.style.background='#fff3f3'"
+                onmouseout="this.style.background='transparent'">
+          <span style="font-size:14px">🚪</span>
+          <span>Cerrar sesión</span>
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 <div class="container">
@@ -21999,6 +22021,183 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     setTimeout(registrar, 500);
   }
 })();
+</script>
+<!-- ═══════════════════════════════════════════════════════════
+     MENÚ DE USUARIO + CERRAR SESIÓN
+     v1.0 — Header sticky con dropdown y confirmación
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+/* ═══════════════════════════════════════════════════════════
+   ABRIR / CERRAR DROPDOWN
+   ═══════════════════════════════════════════════════════════ */
+
+window.toggleUserMenu = function(event) {
+  if (event) {
+    event.stopPropagation();
+    if (event.preventDefault) event.preventDefault();
+  }
+  const dd = document.getElementById("user-menu-dropdown");
+  if (!dd) return;
+  dd.style.display = (dd.style.display === "none" || !dd.style.display) ? "block" : "none";
+};
+
+/* ═══════════════════════════════════════════════════════════
+   CONFIRMAR CERRAR SESIÓN
+   ═══════════════════════════════════════════════════════════ */
+
+window.confirmarCerrarSesion = function() {
+  const dd = document.getElementById("user-menu-dropdown");
+  if (dd) dd.style.display = "none";
+
+  const confirmado = confirm(
+    "¿Cerrar sesión?\n\n" +
+    "Se cerrará tu sesión actual y volverás a la pantalla de login."
+  );
+  if (!confirmado) return;
+
+  // Llamar a la función cerrarSesion() ya existente en la Parte B
+  if (typeof cerrarSesion === "function") {
+    try {
+      cerrarSesion();
+      return;
+    } catch (e) {
+      console.warn("[Header] cerrarSesion() falló, usando fallback:", e);
+    }
+  }
+
+  // Fallback: cerrar sesión directamente con Supabase
+  if (window.supabaseClient && window.supabaseClient.auth) {
+    window.supabaseClient.auth.signOut()
+      .then(() => { window.location.reload(); })
+      .catch(() => { window.location.reload(); });
+  } else {
+    window.location.reload();
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   POBLAR EL HEADER CON DATOS DEL USUARIO
+   ═══════════════════════════════════════════════════════════ */
+
+window.poblarHeaderUsuario = function() {
+  const menu = document.getElementById("header-user-menu");
+  if (!menu) {
+    console.warn("[Header] No existe #header-user-menu en el DOM");
+    return false;
+  }
+  if (!window.usuarioActual) {
+    console.warn("[Header] window.usuarioActual aún no está disponible");
+    return false;
+  }
+
+  const nombre = window.usuarioActual.nombre || "Usuario";
+  const email  = window.usuarioActual.email  || "—";
+  const rol    = window.usuarioActual.rol    || "—";
+
+  // Iniciales para el avatar (2 letras máximo)
+  const iniciales = String(nombre)
+    .trim()
+    .split(/\s+/)
+    .map(p => p[0] || "")
+    .join("")
+    .substring(0, 2)
+    .toUpperCase() || "?";
+
+  const avatar = document.getElementById("user-avatar");
+  if (avatar) avatar.textContent = iniciales;
+
+  // Nombre corto (solo primer nombre)
+  const short = document.getElementById("user-name-short");
+  if (short) short.textContent = String(nombre).split(/\s+/)[0] || nombre;
+
+  // Nombre completo en el dropdown
+  const menuName = document.getElementById("user-menu-name");
+  if (menuName) menuName.textContent = nombre;
+
+  // Email
+  const menuEmail = document.getElementById("user-menu-email");
+  if (menuEmail) menuEmail.textContent = email;
+
+  // Rol con etiqueta legible
+  const menuRol = document.getElementById("user-menu-rol");
+  if (menuRol) {
+    const rolLabels = {
+      paciente: "Paciente",
+      medico:   "Médico",
+      operador: "Operador",
+      admin:    "Administrador"
+    };
+    menuRol.textContent = rolLabels[rol] || rol;
+  }
+
+  menu.style.display = "block";
+  console.log("[Header] ✓ Menú de usuario poblado:", nombre, "·", rol);
+  return true;
+};
+
+/* ═══════════════════════════════════════════════════════════
+   CERRAR DROPDOWN AL HACER CLIC FUERA
+   ═══════════════════════════════════════════════════════════ */
+
+document.addEventListener("click", function(e) {
+  const menu = document.getElementById("header-user-menu");
+  const dd = document.getElementById("user-menu-dropdown");
+  if (menu && dd && !menu.contains(e.target)) {
+    dd.style.display = "none";
+  }
+});
+
+/* Cerrar con tecla ESC */
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Escape") {
+    const dd = document.getElementById("user-menu-dropdown");
+    if (dd) dd.style.display = "none";
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════
+   ESPERAR A QUE window.usuarioActual ESTÉ LISTO
+   El login de la Parte B tarda en resolver (auth + perfil)
+   ═══════════════════════════════════════════════════════════ */
+
+let _intentosHeader = 0;
+const _MAX_INTENTOS_HEADER = 40;
+
+function _intentarPoblarHeader() {
+  _intentosHeader++;
+
+  // Solo poblar para roles distintos de paciente
+  if (window.usuarioActual && window.usuarioActual.rol && window.usuarioActual.rol !== "paciente") {
+    window.poblarHeaderUsuario();
+    return;
+  }
+
+  // Para pacientes no mostramos el menú (usan el suyo en el portal)
+  if (window.usuarioActual && window.usuarioActual.rol === "paciente") {
+    console.log("[Header] Rol paciente → menú de header oculto");
+    return;
+  }
+
+  if (_intentosHeader < _MAX_INTENTOS_HEADER) {
+    setTimeout(_intentarPoblarHeader, 250);
+  } else {
+    console.warn("[Header] Timeout esperando usuarioActual. Estado:", {
+      usuarioActual: typeof window.usuarioActual,
+      rol: window.usuarioActual?.rol
+    });
+  }
+}
+
+/* Arrancar la detección */
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => setTimeout(_intentarPoblarHeader, 400));
+} else {
+  setTimeout(_intentarPoblarHeader, 400);
+}
+
+console.log("[Header] ✓ Módulo de menú de usuario cargado");
 </script>
 <script type="module" src="js/kernel/init.js"></script>
 <script src="observability-wrapper.js?v=999" defer></script>
