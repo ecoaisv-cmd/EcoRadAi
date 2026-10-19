@@ -22200,6 +22200,1084 @@ if (document.readyState === "loading") {
 console.log("[Header] ✓ Módulo de menú de usuario cargado");
 </script>
 <script type="module" src="js/kernel/init.js"></script>
+<!-- ═══════════════════════════════════════════════════════════════════
+     WRAPPER PORTAL OPERADOR v2.0 — DEFINITIVO
+     Adaptado a la BD real:
+       · obtener_info_plan_paciente (nueva)
+       · consumir_cuota (p_tipo_servicio)
+       · verificar_cuota (p_tipo_servicio)
+       · notificar_a_medicos (nueva)
+       · aprobar_solicitud_suscripcion (nueva)
+     No modifica código existente. Solo envuelve.
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+(function() {
+  "use strict";
+
+  const OP = {
+    inicializado: false,
+    reintentos: 0,
+    MAX_REINTENTOS: 40,
+    planActualPaciente: null,
+    pacienteSeleccionado: null,
+    planSeleccionado: null,
+    solicitudEnviada: null,
+    sendToAI_original: null,
+    generarInformeBase_original: null
+  };
+
+  const ADMIN_WHATSAPP = "50378311074";
+  const ADMIN_EMAIL = "ecoaisv@gmail.com";
+
+  const PLANES_INFO = {
+    basico:  { nombre: "Básico",  icono: "🥉", precio: 9.90,  color: "#86868b",
+               cuotas: { consultas: 1, tamizajes: 1, interconsultas: 0, constancias: 1 } },
+    plus:    { nombre: "Plus",    icono: "🥈", precio: 15.00, color: "#0071e3",
+               cuotas: { consultas: 3, tamizajes: 1, interconsultas: 2, constancias: 3 } },
+    premium: { nombre: "Premium", icono: "🥇", precio: 20.00, color: "#d4a017",
+               cuotas: { consultas: 5, tamizajes: 2, interconsultas: 5, constancias: 99 } }
+  };
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE A — VERIFICAR PLAN DEL PACIENTE
+     Usa: obtener_info_plan_paciente (nueva función)
+     ═══════════════════════════════════════════════════════════ */
+
+  window.verificarPlanPaciente = async function(subjectId) {
+    if (!subjectId) {
+      console.warn("[OP] verificarPlan: sin subject_id");
+      return null;
+    }
+    if (!window.supabaseClient) {
+      console.error("[OP] Sin Supabase");
+      return null;
+    }
+
+    try {
+      const { data, error } = await window.supabaseClient.rpc(
+        "obtener_info_plan_paciente",
+        { p_subject_id: subjectId }
+      );
+
+      if (error) throw error;
+
+      OP.planActualPaciente = data;
+      console.log("[OP] Plan del paciente:", data);
+
+      mostrarPanelSuscripcion(data, subjectId);
+      return data;
+
+    } catch (e) {
+      console.error("[OP] Error verificando plan:", e);
+      mostrarPanelSuscripcion({ tiene_plan: false, estado: "error" }, subjectId);
+      return null;
+    }
+  };
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE B — PANEL DE SUSCRIPCIÓN
+     ═══════════════════════════════════════════════════════════ */
+
+  function mostrarPanelSuscripcion(planData, subjectId) {
+    let cont = document.getElementById("panel-suscripcion-operador");
+    if (!cont) {
+      cont = document.createElement("div");
+      cont.id = "panel-suscripcion-operador";
+
+      const fichaCard = document.getElementById("ficha-paciente-card");
+      const anchor = fichaCard || document.querySelector(".container");
+      if (anchor) {
+        anchor.parentNode.insertBefore(cont, anchor.nextSibling);
+      }
+    }
+
+    if (!planData || !planData.tiene_plan) {
+      cont.innerHTML = renderSinPlan(subjectId);
+      bloquearFlujo();
+      return;
+    }
+
+    cont.innerHTML = renderConPlan(planData, subjectId);
+    desbloquearFlujo();
+  }
+
+  function renderSinPlan(subjectId) {
+    return `
+      <div class="card" style="background:linear-gradient(135deg,#fff9e6,#ffe9b8);border:2px solid #ff9500;margin-bottom:16px">
+        <div class="card-title">
+          <span class="num" style="background:#ff9500">⚠️</span>
+          <span>Sin suscripción activa</span>
+        </div>
+        <p style="font-size:12px;color:#5a4a00;line-height:1.6;margin-bottom:14px">
+          Este paciente no tiene un plan de suscripción activo.<br>
+          Solicita el alta al administrador para poder iniciar el llenado.
+        </p>
+
+        <div style="background:white;border-radius:10px;padding:14px;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:700;color:#8a6a00;text-transform:uppercase;margin-bottom:8px">
+            Planes disponibles
+          </div>
+          <div style="display:grid;gap:8px">
+            ${Object.entries(PLANES_INFO).map(([id, p]) => `
+              <label style="display:flex;align-items:center;gap:10px;padding:10px;background:${p.color}11;border:1.5px solid ${p.color};border-radius:8px;cursor:pointer">
+                <input type="radio" name="op-plan-seleccion" value="${id}"
+                       onchange="OP_seleccionarPlan('${id}')" style="width:auto">
+                <span style="font-size:18px">${p.icono}</span>
+                <div style="flex:1">
+                  <div style="font-size:12px;font-weight:700;color:#1a3a5c">Plan ${p.nombre}</div>
+                  <div style="font-size:10px;color:#666">
+                    ${p.cuotas.consultas} consultas · ${p.cuotas.tamizajes} tamizajes/mes
+                  </div>
+                </div>
+                <div style="font-size:14px;font-weight:800;color:${p.color}">$${p.precio.toFixed(2)}</div>
+              </label>
+            `).join("")}
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="OP_contactarAdmin('${subjectId}')"
+                  style="flex:1;font-size:12px">
+            💬 Contactar admin
+          </button>
+          <button class="btn btn-success" id="btn-solicitar-plan"
+                  onclick="OP_solicitarPlan('${subjectId}')"
+                  style="flex:1;font-size:12px" disabled>
+            📤 Solicitar plan
+          </button>
+        </div>
+
+        <div id="op-solicitud-status" style="display:none;margin-top:14px"></div>
+
+        <p style="font-size:10px;color:#8a6a00;text-align:center;margin-top:12px;line-height:1.5">
+          El administrador revisará tu solicitud y activará el plan tras confirmar el pago.
+        </p>
+      </div>
+    `;
+  }
+
+  function renderConPlan(planData, subjectId) {
+    const plan = PLANES_INFO[planData.plan] || { nombre: planData.plan, icono: "📦", precio: 0,
+                                                   cuotas: { consultas: 0, tamizajes: 0 } };
+
+    const consultasUsadas = planData.cuota_consultas_usada || 0;
+    const tamizajesUsados = planData.cuota_tamizajes_usada || 0;
+    const consultasDisp = Math.max(0, plan.cuotas.consultas - consultasUsadas);
+    const tamizajesDisp = Math.max(0, plan.cuotas.tamizajes - tamizajesUsados);
+    const agotado = consultasDisp <= 0 && tamizajesDisp <= 0;
+
+    return `
+      <div class="card" style="background:linear-gradient(135deg,#f0fff4,#d4f5dc);border:2px solid #34c759;margin-bottom:16px">
+        <div class="card-title">
+          <span class="num" style="background:#34c759">✓</span>
+          <span>Plan ${plan.nombre} activo</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:14px">
+          <div style="background:white;border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Consultas</div>
+            <div style="font-size:18px;font-weight:800;color:${consultasDisp > 0 ? '#34c759' : '#ff3b30'}">
+              ${consultasDisp}/${plan.cuotas.consultas}
+            </div>
+          </div>
+          <div style="background:white;border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Tamizajes</div>
+            <div style="font-size:18px;font-weight:800;color:${tamizajesDisp > 0 ? '#34c759' : '#ff3b30'}">
+              ${tamizajesDisp}/${plan.cuotas.tamizajes}
+            </div>
+          </div>
+          <div style="background:white;border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Próximo cobro</div>
+            <div style="font-size:11px;font-weight:700;color:#1a3a5c;margin-top:2px">
+              ${planData.fecha_proximo_cobro ? new Date(planData.fecha_proximo_cobro).toLocaleDateString("es-ES") : "—"}
+            </div>
+          </div>
+        </div>
+
+        ${agotado ? `
+          <div style="background:#fff3f3;border-left:4px solid #ff3b30;padding:10px 12px;border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a;margin-bottom:12px">
+            <strong>⚠️ Cuotas agotadas este mes.</strong> Contacta al admin para un add-on o espera el próximo cobro.
+          </div>
+          <button class="btn btn-warning" onclick="OP_solicitarAddon('${subjectId}')"
+                  style="width:100%;font-size:12px">
+            🎁 Solicitar add-on al admin
+          </button>
+        ` : `
+          <div style="background:white;border-radius:8px;padding:10px;font-size:11px;color:#1a4a2a;text-align:center">
+            ✅ Puedes iniciar el llenado de formularios
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE C — BLOQUEAR / DESBLOQUEAR FLUJO
+     ═══════════════════════════════════════════════════════════ */
+
+  function bloquearFlujo() {
+    const secs = ["sec-estudio", "sec-vitales", "sec-labs", "sec-clinica",
+                  "sec-protocolo", "sec-imagenes", "sec-analisis", "sec-consulta"];
+    secs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = "none";
+    });
+    document.body.dataset.planVerificado = "false";
+    console.log("[OP] Flujo BLOQUEADO");
+  }
+
+  function desbloquearFlujo() {
+    const secs = ["sec-estudio", "sec-consulta"];
+    secs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = "";
+    });
+    document.body.dataset.planVerificado = "true";
+    console.log("[OP] Flujo DESBLOQUEADO");
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE D — SELECCIONAR PLAN
+     ═══════════════════════════════════════════════════════════ */
+
+  window.OP_seleccionarPlan = function(planId) {
+    OP.planSeleccionado = planId;
+    const btn = document.getElementById("btn-solicitar-plan");
+    if (btn) btn.disabled = false;
+    console.log("[OP] Plan seleccionado:", planId);
+  };
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE E — SOLICITAR PLAN (INSERT + WhatsApp)
+     ═══════════════════════════════════════════════════════════ */
+
+  window.OP_solicitarPlan = async function(subjectId) {
+    if (!OP.planSeleccionado) {
+      showStatus("Selecciona un plan primero", "error");
+      return;
+    }
+    if (!window.supabaseClient) {
+      showStatus("Sin conexión", "error");
+      return;
+    }
+
+    const paciente = OP.pacienteSeleccionado || window._pacienteActual;
+    if (!paciente || !paciente.nombre) {
+      showStatus("Falta paciente", "error");
+      return;
+    }
+
+    const plan = PLANES_INFO[OP.planSeleccionado];
+
+    try {
+      showStatus("Registrando solicitud...", "info");
+
+      // 1. INSERT en solicitudes_suscripcion
+      const { data, error } = await window.supabaseClient
+        .from("solicitudes_suscripcion")
+        .insert({
+          subject_id: subjectId,
+          paciente_nombre: paciente.nombre,
+          paciente_telefono: paciente.telefono || null,
+          plan_solicitado: OP.planSeleccionado,
+          operador_id: window.usuarioActual.id,
+          operador_nombre: window.usuarioActual.nombre,
+          estado: "pendiente"
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      OP.solicitudEnviada = data;
+
+      // 2. Mensaje WhatsApp con link directo
+      const mensaje = construirMensajeSolicitud(paciente, plan);
+
+      // 3. Abrir WhatsApp
+      const url = `https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(mensaje)}`;
+      window.open(url, "_blank");
+
+      // 4. Guardar para fallback
+      try {
+        sessionStorage.setItem("ecoradai_ultimo_wa_solicitud", mensaje);
+      } catch (e) {}
+
+      // 5. Mostrar estado
+      mostrarEstadoSolicitudEnviada(plan);
+
+      showStatus(`✓ Solicitud de Plan ${plan.nombre} enviada al admin`, "success");
+
+    } catch (e) {
+      console.error("[OP_solicitarPlan]", e);
+      showStatus("Error: " + e.message, "error");
+    }
+  };
+
+  function construirMensajeSolicitud(paciente, plan) {
+    const solicitudId = OP.solicitudEnviada?.solicitud_id || "pendiente";
+    const origin = window.location.origin;
+    const panelUrl = `${origin}/?tab=admin&subtab=solicitudes&solicitud=${solicitudId}`;
+
+    return `🩺 *SOLICITUD DE SUSCRIPCIÓN — EcoRadAi*
+
+Hola admin, necesito activar un plan de suscripción.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+👤 *DATOS DEL PACIENTE*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+*Nombre:* ${paciente.nombre}
+*ID:* ${paciente.subject_id || ""}
+${paciente.dui ? "*DUI:* " + paciente.dui : ""}
+${paciente.telefono ? "*Teléfono:* " + paciente.telefono : ""}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+💳 *PLAN SOLICITADO*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+*Plan:* ${plan.icono} ${plan.nombre}
+*Precio:* $${plan.precio.toFixed(2)}/mes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+👨‍💼 *OPERADOR*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+*Nombre:* ${window.usuarioActual?.nombre || ""}
+*Solicitud ID:* ${solicitudId}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🔗 *APROBAR RÁPIDO*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Toca este link para abrir el panel admin:
+
+${panelUrl}
+
+¡Gracias!`;
+  }
+
+  function mostrarEstadoSolicitudEnviada(plan) {
+    const cont = document.getElementById("op-solicitud-status");
+    if (!cont) return;
+
+    cont.innerHTML = `
+      <div style="background:#f0f7ff;border:2px solid #0071e3;border-radius:10px;padding:14px">
+        <div style="font-size:13px;font-weight:700;color:#0051a3;margin-bottom:6px">
+          ✅ Solicitud enviada al admin
+        </div>
+        <div style="font-size:11px;color:#0051a3;line-height:1.6">
+          El admin recibirá tu solicitud por WhatsApp.<br>
+          <strong>Plan:</strong> ${plan.icono} ${plan.nombre}<br>
+          <strong>ID:</strong> <code>${OP.solicitudEnviada?.solicitud_id || "—"}</code>
+        </div>
+        <button class="btn btn-secondary btn-sm"
+                onclick="OP_verificarActivacion('${OP.pacienteSeleccionado?.subject_id || ''}')"
+                style="width:100%;margin-top:10px;font-size:11px">
+          🔄 Verificar si ya fue activada
+        </button>
+      </div>
+    `;
+    cont.style.display = "block";
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE F — VERIFICAR ACTIVACIÓN (polling manual)
+     ═══════════════════════════════════════════════════════════ */
+
+  window.OP_verificarActivacion = async function(subjectId) {
+    if (!subjectId) {
+      subjectId = OP.pacienteSeleccionado?.subject_id || window._pacienteActual?.subject_id;
+    }
+    if (!subjectId) return;
+
+    showStatus("Verificando plan...", "info");
+    const plan = await verificarPlanPaciente(subjectId);
+
+    if (plan && plan.tiene_plan) {
+      showStatus(`✓ Plan ${PLANES_INFO[plan.plan]?.nombre} activo`, "success");
+    } else {
+      showStatus("El plan aún no ha sido activado por el admin", "warning");
+    }
+  };
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE G — CONTACTAR ADMIN / ADD-ON
+     ═══════════════════════════════════════════════════════════ */
+
+  window.OP_contactarAdmin = function(subjectId) {
+    const paciente = OP.pacienteSeleccionado || window._pacienteActual;
+    const mensaje = `Hola, necesito información sobre planes de suscripción para ${paciente?.nombre || "un paciente"}.`;
+    window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(mensaje)}`, "_blank");
+  };
+
+  window.OP_solicitarAddon = function(subjectId) {
+    const paciente = OP.pacienteSeleccionado || window._pacienteActual;
+    const mensaje = `Hola, el paciente ${paciente?.nombre || ""} (${subjectId}) agotó sus cuotas. Necesito un add-on.\n\nOperador: ${window.usuarioActual?.nombre || ""}`;
+    window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(mensaje)}`, "_blank");
+  };
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE H — NOTIFICAR ANTES (a médicos)
+     ═══════════════════════════════════════════════════════════ */
+
+  async function notificarAntes(pacienteNombre, subjectId, tipoFlujo, estudio) {
+    if (!window.supabaseClient || !window.usuarioActual) return 0;
+
+    try {
+      const s = window._consultaState || {};
+      const caso = window._casoActual;
+
+      const { data, error } = await window.supabaseClient.rpc(
+        "notificar_a_medicos",
+        {
+          p_consulta_id: s.consultaId || null,
+          p_case_id: s.caseId || caso?.case_id || null,
+          p_tipo_notif: "consulta_lista_para_analisis",
+          p_prioridad: "media",
+          p_mensaje: `${window.usuarioActual.nombre} está iniciando análisis IA de ${pacienteNombre}`,
+          p_payload: {
+            operador: window.usuarioActual.nombre,
+            paciente: pacienteNombre,
+            subject_id: subjectId,
+            estudio: estudio,
+            tipo_flujo: tipoFlujo,
+            fase: "antes_de_ia"
+          },
+          p_narrativa_kimi: null,
+          p_json_kimi: null
+        }
+      );
+
+      if (error) throw error;
+      console.log(`[OP] Notif ANTES: ${data} médicos`);
+      return data || 0;
+    } catch (e) {
+      console.warn("[OP] Error notif antes:", e);
+      return 0;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE I — NOTIFICAR DESPUÉS (con informe de Kimi)
+     ═══════════════════════════════════════════════════════════ */
+
+  async function notificarDespues(pacienteNombre, subjectId, tipoFlujo, estudio) {
+    if (!window.supabaseClient || !window.usuarioActual) return 0;
+
+    try {
+      const s = window._consultaState || {};
+      const caso = window._casoActual;
+
+      const narrativa = s.iaRespuesta || caso?.narrativa_completa || window.aiResponseText || "";
+      const jsonEst = s.iaJSON || extraerJSON(narrativa);
+
+      if (!narrativa || narrativa.length < 50) return 0;
+
+      if (!s.consultaId && typeof guardarConsultaBorrador === "function") {
+        try { await guardarConsultaBorrador(); } catch (e) {}
+      }
+
+      const consultaId = s.consultaId || null;
+      const caseId = s.caseId || caso?.case_id || null;
+
+      // Actualizar estado a pendiente_firma
+      if (consultaId) {
+        try {
+          await window.supabaseClient.from("consultas").update({
+            estado: "pendiente_firma",
+            enviada_a_firma_at: new Date().toISOString(),
+            operador_id: window.usuarioActual.id,
+            operador_nombre: window.usuarioActual.nombre
+          }).eq("consulta_id", consultaId);
+        } catch (e) { console.warn("[OP] Update estado:", e); }
+      }
+
+      // Notificar CON informe
+      const { data, error } = await window.supabaseClient.rpc(
+        "notificar_a_medicos",
+        {
+          p_consulta_id: consultaId,
+          p_case_id: caseId,
+          p_tipo_notif: "consulta_con_analisis_kimi",
+          p_prioridad: "alta",
+          p_mensaje: `Informe IA listo: ${pacienteNombre} — pendiente de firma`,
+          p_payload: {
+            operador: window.usuarioActual.nombre,
+            paciente: pacienteNombre,
+            subject_id: subjectId,
+            estudio: estudio,
+            tipo_flujo: tipoFlujo,
+            fase: "despues_de_ia",
+            nivel_riesgo: jsonEst?.nivel_riesgo || "MODERADO"
+          },
+          p_narrativa_kimi: narrativa,
+          p_json_kimi: jsonEst
+        }
+      );
+
+      if (error) throw error;
+      console.log(`[OP] Notif DESPUÉS: ${data} médicos`);
+
+      // ═══ CONSUMIR CUOTA (usa tu función real con p_tipo_servicio) ═══
+      if (subjectId) {
+        try {
+          const resultado = await window.supabaseClient.rpc("consumir_cuota", {
+            p_subject_id: subjectId,
+            p_tipo_servicio: tipoFlujo === "consulta" ? "consulta" : "tamizaje",
+            p_referencia_id: consultaId || caseId || null
+          });
+          console.log("[OP] ✓ Cuota consumida:", resultado.data);
+        } catch (e) {
+          console.warn("[OP] Error consumiendo cuota:", e);
+        }
+      }
+
+      // Auditoría
+      try {
+        await window.supabaseClient.from("auditoria_acciones").insert({
+          user_id: window.usuarioActual.id,
+          user_rol: window.usuarioActual.rol,
+          accion: "enviar_analisis_ia_a_medico",
+          entidad: tipoFlujo,
+          entidad_id: consultaId || caseId,
+          detalle: {
+            paciente: pacienteNombre,
+            medico_notificados: data,
+            largo_narrativa: narrativa.length
+          }
+        });
+      } catch (e) {}
+
+      return data || 0;
+    } catch (e) {
+      console.warn("[OP] Error notif después:", e);
+      return 0;
+    }
+  }
+
+  function extraerJSON(texto) {
+    if (!texto) return null;
+    const m = texto.match(/===JSON_ESTRUCTURADO===([\s\S]*?)===FIN_JSON===/);
+    if (!m) return null;
+    try { return JSON.parse(m[1].trim()); } catch (e) { return null; }
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE J — WRAPPER DE sendToAI
+     ═══════════════════════════════════════════════════════════ */
+
+  function instalarWrapperSendToAI() {
+    if (window.usuarioActual?.rol !== "operador") return false;
+    if (typeof window.sendToAI !== "function") return false;
+    if (OP.sendToAI_original) return true;
+
+    OP.sendToAI_original = window.sendToAI;
+
+    window.sendToAI = async function() {
+      console.log("[OP Wrapper] Interceptado sendToAI");
+
+      // Verificar plan
+      const subjectId = OP.pacienteSeleccionado?.subject_id || window._pacienteActual?.subject_id;
+      if (subjectId) {
+        const plan = await verificarPlanPaciente(subjectId);
+        if (!plan || !plan.tiene_plan) {
+          showStatus("⚠️ El paciente no tiene plan activo", "error");
+          return;
+        }
+      }
+
+      const s = window._consultaState || {};
+      const caso = window._casoActual;
+      const pacienteNombre = s.paciente?.nombre || caso?.subject?.nombre || "Paciente";
+      const subId = s.paciente?.subject_id || caso?.subject?.subject_id;
+      const tipoFlujo = s.paciente ? "consulta" : "tamizaje";
+      const estudio = caso?.encounter?.estudio || s.tipoConsulta || "consulta";
+
+      // Notif ANTES
+      showStatus("📤 Notificando al médico...", "info");
+      await notificarAntes(pacienteNombre, subId, tipoFlujo, estudio);
+
+      // Ejecutar original
+      const resultado = await OP.sendToAI_original.apply(this, arguments);
+
+      // Verificar respuesta
+      const hayRespuesta = (s.iaRespuesta || caso?.narrativa_completa || window.aiResponseText)?.length > 50;
+      if (!hayRespuesta) {
+        showStatus("Análisis sin respuesta, no se notifica al médico", "warning");
+        return resultado;
+      }
+
+      // Notif DESPUÉS
+      await new Promise(r => setTimeout(r, 500));
+      const countDespues = await notificarDespues(pacienteNombre, subId, tipoFlujo, estudio);
+
+      if (countDespues > 0) {
+        mostrarUIEnviado(countDespues, pacienteNombre);
+        showStatus(`✓ Informe enviado a ${countDespues} médico(s)`, "success");
+      }
+
+      return resultado;
+    };
+
+    console.log("[OP Wrapper] ✓ sendToAI envuelto");
+    return true;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE K — WRAPPER DE generarInformeBase (tamizajes)
+     ═══════════════════════════════════════════════════════════ */
+
+  function instalarWrapperGenerarInforme() {
+    if (window.usuarioActual?.rol !== "operador") return false;
+    if (typeof window.generarInformeBase !== "function") return false;
+    if (OP.generarInformeBase_original) return true;
+
+    OP.generarInformeBase_original = window.generarInformeBase;
+
+    window.generarInformeBase = async function() {
+      console.log("[OP Wrapper] Interceptado generarInformeBase");
+
+      const caso = window._casoActual;
+      const pacienteNombre = caso?.subject?.nombre || "Paciente";
+      const subjectId = caso?.subject?.subject_id;
+      const estudio = caso?.encounter?.estudio || window.estudioActual || "tamizaje";
+
+      // Notif ANTES
+      showStatus("📤 Notificando al médico...", "info");
+      await notificarAntes(pacienteNombre, subjectId, "tamizaje", estudio);
+
+      // Ejecutar original
+      const resultado = await OP.generarInformeBase_original.apply(this, arguments);
+
+      // Verificar respuesta
+      const hayRespuesta = (caso?.narrativa_completa || window.aiResponseText)?.length > 50;
+      if (!hayRespuesta) return resultado;
+
+      // Notif DESPUÉS
+      await new Promise(r => setTimeout(r, 500));
+      const countDespues = await notificarDespues(pacienteNombre, subjectId, "tamizaje", estudio);
+
+      if (countDespues > 0) {
+        showStatus(`✓ Informe de tamizaje enviado a ${countDespues} médico(s)`, "success");
+      }
+
+      return resultado;
+    };
+
+    console.log("[OP Wrapper] ✓ generarInformeBase envuelto");
+    return true;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE L — UI DE ENVIADO
+     ═══════════════════════════════════════════════════════════ */
+
+  function mostrarUIEnviado(count, pacienteNombre) {
+    const cont = document.getElementById("consulta-botones-firma");
+    if (cont) {
+      cont.innerHTML = `
+        <div style="background:#fff9e6;border:2px solid #ff9500;border-radius:12px;padding:16px;text-align:center">
+          <div style="font-size:32px;margin-bottom:8px">⏳</div>
+          <div style="font-size:14px;font-weight:700;color:#8a6a00;margin-bottom:6px">
+            Esperando firma del médico
+          </div>
+          <div style="font-size:11px;color:#5a4a00;line-height:1.6;margin-bottom:14px">
+            ${count} médico(s) recibió(eron) el informe de ${pacienteNombre}.<br>
+            Recibirás notificación cuando sea firmado.
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="cambiarTab('mis-envios')"
+                  style="width:auto;font-size:11px">
+            📤 Ver mis envíos
+          </button>
+        </div>
+      `;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE M — INTERCEPTAR SELECCIÓN DE PACIENTE
+     ═══════════════════════════════════════════════════════════ */
+
+  function interceptarSeleccionPaciente() {
+    // Ficha (captura)
+    const _selOrig = window.seleccionarPacienteExistente;
+    if (typeof _selOrig === "function" && !_selOrig._opWrapped) {
+      window.seleccionarPacienteExistente = async function(subjectId) {
+        const result = await _selOrig.apply(this, arguments);
+        if (window._pacienteActual) {
+          OP.pacienteSeleccionado = window._pacienteActual;
+          setTimeout(async () => {
+            await verificarPlanPaciente(subjectId);
+          }, 400);
+        }
+        return result;
+      };
+      window.seleccionarPacienteExistente._opWrapped = true;
+      console.log("[OP] ✓ seleccionarPacienteExistente interceptado");
+    }
+
+    // Consulta SOAP
+    const _selConsOrig = window.seleccionarPacienteConsulta;
+    if (typeof _selConsOrig === "function" && !_selConsOrig._opWrapped) {
+      window.seleccionarPacienteConsulta = async function(subjectId) {
+        const result = await _selConsOrig.apply(this, arguments);
+        if (window._consultaState?.paciente) {
+          OP.pacienteSeleccionado = window._consultaState.paciente;
+          setTimeout(async () => {
+            await verificarPlanPaciente(subjectId);
+          }, 400);
+        }
+        return result;
+      };
+      window.seleccionarPacienteConsulta._opWrapped = true;
+      console.log("[OP] ✓ seleccionarPacienteConsulta interceptado");
+    }
+
+    // Guardado de ficha nueva
+    const _guardarFichaOrig = window.guardarFichaPaciente;
+    if (typeof _guardarFichaOrig === "function" && !_guardarFichaOrig._opWrapped) {
+      window.guardarFichaPaciente = async function() {
+        const result = await _guardarFichaOrig.apply(this, arguments);
+        if (window._pacienteActual) {
+          OP.pacienteSeleccionado = window._pacienteActual;
+          setTimeout(async () => {
+            await verificarPlanPaciente(window._pacienteActual.subject_id);
+          }, 600);
+        }
+        return result;
+      };
+      window.guardarFichaPaciente._opWrapped = true;
+      console.log("[OP] ✓ guardarFichaPaciente interceptado");
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE N — MIS SOLICITUDES (historial)
+     ═══════════════════════════════════════════════════════════ */
+
+  window.renderMisSolicitudes = async function() {
+    const cont = document.getElementById("mis-solicitudes-lista");
+    if (!cont) return;
+    if (!window.supabaseClient || !window.usuarioActual) {
+      cont.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Sin conexión</p></div>';
+      return;
+    }
+
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+
+    try {
+      const { data, error } = await window.supabaseClient
+        .from("solicitudes_suscripcion")
+        .select("*")
+        .eq("operador_id", window.usuarioActual.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      // KPIs
+      const kpis = {
+        total: data?.length || 0,
+        pendientes: (data || []).filter(s => s.estado === "pendiente").length,
+        aprobadas: (data || []).filter(s => s.estado === "aprobada").length,
+        rechazadas: (data || []).filter(s => s.estado === "rechazada").length
+      };
+
+      const kpiCont = document.getElementById("mis-solicitudes-kpis");
+      if (kpiCont) {
+        kpiCont.innerHTML = `
+          <div style="background:#f0f7ff;border:1.5px solid #0071e3;border-radius:12px;padding:10px;text-align:center">
+            <div style="font-size:9px;font-weight:700;color:#0051a3;text-transform:uppercase">Total</div>
+            <div style="font-size:20px;font-weight:800;color:#0051a3">${kpis.total}</div>
+          </div>
+          <div style="background:#fff9e6;border:1.5px solid #ff9500;border-radius:12px;padding:10px;text-align:center">
+            <div style="font-size:9px;font-weight:700;color:#8a6a00;text-transform:uppercase">Pendientes</div>
+            <div style="font-size:20px;font-weight:800;color:#8a6a00">${kpis.pendientes}</div>
+          </div>
+          <div style="background:#f0fff4;border:1.5px solid #34c759;border-radius:12px;padding:10px;text-align:center">
+            <div style="font-size:9px;font-weight:700;color:#1a4a2a;text-transform:uppercase">Aprobadas</div>
+            <div style="font-size:20px;font-weight:800;color:#1a4a2a">${kpis.aprobadas}</div>
+          </div>
+          <div style="background:#fff3f3;border:1.5px solid #ff3b30;border-radius:12px;padding:10px;text-align:center">
+            <div style="font-size:9px;font-weight:700;color:#7a1a1a;text-transform:uppercase">Rechazadas</div>
+            <div style="font-size:20px;font-weight:800;color:#7a1a1a">${kpis.rechazadas}</div>
+          </div>
+        `;
+      }
+
+      if (!data || data.length === 0) {
+        cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No has enviado solicitudes</p></div>';
+        return;
+      }
+
+      cont.innerHTML = data.map(sol => {
+        const plan = PLANES_INFO[sol.plan_solicitado] || { icono: "📦", nombre: sol.plan_solicitado, precio: 0 };
+        const estadoConfig = {
+          pendiente:   { color: "#ff9500", icono: "⏳", label: "Pendiente" },
+          en_revision: { color: "#0071e3", icono: "🔍", label: "En revisión" },
+          aprobada:    { color: "#34c759", icono: "✅", label: "Aprobada" },
+          rechazada:   { color: "#ff3b30", icono: "❌", label: "Rechazada" }
+        };
+        const estado = estadoConfig[sol.estado] || estadoConfig.pendiente;
+        const tiempo = getTiempoRelativo(sol.created_at);
+
+        return `
+          <div class="informe-card" data-estado="${sol.estado}"
+               style="border-left:4px solid ${estado.color};flex-direction:column;align-items:stretch;gap:8px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:700;color:var(--corp);margin-bottom:3px">
+                  ${plan.icono} Plan ${plan.nombre} — ${escapeHtml(sol.paciente_nombre)}
+                </div>
+                <div style="font-size:10px;color:var(--text-secondary);font-family:var(--font-mono)">
+                  ${escapeHtml(sol.subject_id)}
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0">
+                <span style="background:${estado.color};color:white;font-size:9px;font-weight:700;padding:3px 8px;border-radius:100px;text-transform:uppercase">
+                  ${estado.icono} ${sol.estado}
+                </span>
+                <span style="font-size:9px;color:var(--text-tertiary)">${tiempo}</span>
+              </div>
+            </div>
+
+            ${sol.estado === "aprobada" ? `
+              <div style="background:#f0fff4;border-radius:6px;padding:8px 10px;font-size:11px;color:#1a4a2a">
+                <strong>✓ Aprobada el ${new Date(sol.aprobada_at).toLocaleDateString("es-ES")}</strong>
+                ${sol.monto_cobrado ? ` — $${parseFloat(sol.monto_cobrado).toFixed(2)}` : ""}
+              </div>
+            ` : ""}
+
+            ${sol.estado === "rechazada" ? `
+              <div style="background:#fff3f3;border-radius:6px;padding:8px 10px;font-size:11px;color:#7a1a1a">
+                <strong>❌ Motivo:</strong> ${escapeHtml(sol.rechazada_motivo || "No especificado")}
+              </div>
+            ` : ""}
+
+            ${sol.estado === "pendiente" ? `
+              <div style="display:flex;gap:6px;margin-top:6px">
+                <button class="btn btn-secondary btn-xs"
+                        onclick="OP_reabrirWhatsApp('${sol.solicitud_id}')"
+                        style="font-size:10px;flex:1">
+                  💬 Reenviar WA
+                </button>
+                <button class="btn btn-warning btn-xs"
+                        onclick="OP_verificarSolicitud('${sol.solicitud_id}', '${sol.subject_id}')"
+                        style="font-size:10px;flex:1">
+                  🔄 Verificar
+                </button>
+              </div>
+            ` : ""}
+          </div>
+        `;
+      }).join("");
+
+    } catch (e) {
+      console.error("[renderMisSolicitudes]", e);
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${escapeHtml(e.message)}</p></div>`;
+    }
+  };
+
+  function getTiempoRelativo(fechaISO) {
+    const ms = Date.now() - new Date(fechaISO).getTime();
+    const min = Math.floor(ms / 60000);
+    const h = Math.floor(min / 60);
+    const d = Math.floor(h / 24);
+    if (min < 1) return "ahora";
+    if (min < 60) return `hace ${min} min`;
+    if (h < 24) return `hace ${h}h`;
+    if (d < 7) return `hace ${d}d`;
+    return new Date(fechaISO).toLocaleDateString("es-ES");
+  }
+
+  window.filtrarMisSolicitudes = function(estado, btn) {
+    document.querySelectorAll("#sec-mis-solicitudes button[onclick^='filtrarMisSolicitudes']").forEach(b => {
+      b.classList.remove("btn-primary");
+      b.classList.add("btn-secondary");
+    });
+    if (btn) {
+      btn.classList.remove("btn-secondary");
+      btn.classList.add("btn-primary");
+    }
+    document.querySelectorAll("#mis-solicitudes-lista .informe-card").forEach(card => {
+      card.style.display = (estado === "todas" || card.dataset.estado === estado) ? "flex" : "none";
+    });
+  };
+
+  window.OP_reabrirWhatsApp = async function(solicitudId) {
+    if (!window.supabaseClient) return;
+    try {
+      const { data } = await window.supabaseClient
+        .from("solicitudes_suscripcion")
+        .select("*")
+        .eq("solicitud_id", solicitudId)
+        .single();
+
+      if (!data) return;
+
+      const plan = PLANES_INFO[data.plan_solicitado];
+      const paciente = {
+        nombre: data.paciente_nombre,
+        subject_id: data.subject_id,
+        telefono: data.paciente_telefono
+      };
+
+      OP.solicitudEnviada = data;
+      OP.pacienteSeleccionado = paciente;
+
+      const mensaje = construirMensajeSolicitud(paciente, plan);
+      const url = `https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(mensaje)}`;
+      window.open(url, "_blank");
+      showStatus("WhatsApp reabierto", "success");
+    } catch (e) {
+      console.error("[OP_reabrirWhatsApp]", e);
+    }
+  };
+
+  window.OP_verificarSolicitud = async function(solicitudId, subjectId) {
+    if (!window.supabaseClient) return;
+    showStatus("Verificando estado...", "info");
+
+    try {
+      const { data } = await window.supabaseClient
+        .from("solicitudes_suscripcion")
+        .select("estado")
+        .eq("solicitud_id", solicitudId)
+        .single();
+
+      if (!data) return;
+
+      if (data.estado === "aprobada") {
+        showStatus("✅ ¡Aprobada! Recargando plan...", "success");
+        await verificarPlanPaciente(subjectId);
+        renderMisSolicitudes();
+      } else if (data.estado === "rechazada") {
+        showStatus("❌ Solicitud rechazada", "warning");
+        renderMisSolicitudes();
+      } else {
+        showStatus("⏳ Aún pendiente", "info");
+      }
+    } catch (e) {
+      console.error("[OP_verificarSolicitud]", e);
+    }
+  };
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE O — NOTIFICACIONES DEL OPERADOR + AUTO-POLLING
+     ═══════════════════════════════════════════════════════════ */
+
+  async function actualizarNotifOperador() {
+    if (!window.supabaseClient || !window.usuarioActual) return;
+    if (window.usuarioActual.rol !== "operador") return;
+
+    try {
+      const { data: notifs, error } = await window.supabaseClient
+        .from("notificaciones_operador")
+        .select("*")
+        .eq("operador_id", window.usuarioActual.id)
+        .eq("leida", false)
+        .order("created_at", { ascending: false });
+
+      if (error) return;
+
+      if (notifs && notifs.length > 0) {
+        for (const notif of notifs) {
+          showStatus(`🔔 ${notif.mensaje}`, "success");
+
+          if (notif.tipo === "suscripcion_activada" && notif.payload?.subject_id) {
+            const subjectId = notif.payload.subject_id;
+            const esActual = OP.pacienteSeleccionado?.subject_id === subjectId
+                          || window._pacienteActual?.subject_id === subjectId;
+
+            if (esActual) {
+              console.log("[OP Polling] Plan activado para paciente actual");
+              await verificarPlanPaciente(subjectId);
+            }
+          }
+
+          await window.supabaseClient
+            .from("notificaciones_operador")
+            .update({ leida: true })
+            .eq("notif_id", notif.notif_id);
+        }
+
+        const secSol = document.getElementById("sec-mis-solicitudes");
+        if (secSol?.classList.contains("active")) {
+          renderMisSolicitudes();
+        }
+      }
+
+      // Verificación silenciosa de solicitud del paciente actual
+      if (OP.solicitudEnviada?.solicitud_id) {
+        const { data: solAct } = await window.supabaseClient
+          .from("solicitudes_suscripcion")
+          .select("estado")
+          .eq("solicitud_id", OP.solicitudEnviada.solicitud_id)
+          .single();
+
+        if (solAct?.estado === "aprobada" && OP.planActualPaciente?.tiene_plan !== true) {
+          const subjectId = OP.pacienteSeleccionado?.subject_id;
+          if (subjectId) await verificarPlanPaciente(subjectId);
+        }
+      }
+    } catch (e) {
+      console.warn("[OP] Error polling:", e);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE P — INICIALIZACIÓN
+     ═══════════════════════════════════════════════════════════ */
+
+  function intentarInicializar() {
+    OP.reintentos++;
+
+    if (window.usuarioActual?.rol !== "operador") {
+      if (OP.reintentos < OP.MAX_REINTENTOS) {
+        setTimeout(intentarInicializar, 250);
+      }
+      return;
+    }
+
+    interceptarSeleccionPaciente();
+    instalarWrapperSendToAI();
+    instalarWrapperGenerarInforme();
+
+    if (!window._opPollingNotif) {
+      window._opPollingNotif = setInterval(actualizarNotifOperador, 60000);
+      console.log("[OP] Polling 60s activo");
+    }
+
+    OP.inicializado = true;
+    console.log("[OP] ✓ Portal operador inicializado");
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(intentarInicializar, 500));
+  } else {
+    setTimeout(intentarInicializar, 500);
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTE Q — API DE DEBUG
+     ═══════════════════════════════════════════════════════════ */
+
+  window.__OP = {
+    estado: () => ({
+      inicializado: OP.inicializado,
+      reintentos: OP.reintentos,
+      planActual: OP.planActualPaciente,
+      pacienteActual: OP.pacienteSeleccionado?.subject_id,
+      sendToAI_original: typeof OP.sendToAI_original,
+      generarInformeBase_original: typeof OP.generarInformeBase_original
+    }),
+    verificarPlan: (sid) => verificarPlanPaciente(sid),
+    forzarDesbloqueo: () => desbloquearFlujo(),
+    forzarPolling: () => actualizarNotifOperador(),
+    verSolicitudes: () => renderMisSolicitudes()
+  };
+
+  console.log("[OP] Portal Operador v2.0 cargado. Diagnóstico: __OP.estado()");
+})();
+</script>
 <script src="observability-wrapper.js?v=999" defer></script>
 </body>
 </html>
