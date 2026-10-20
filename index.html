@@ -24470,5 +24470,791 @@ document.addEventListener("visibilitychange", function() {
   console.log("[Admin v2.0] Wrapper cargado. Diagnóstico: __ADMIN_V2.estado()");
 })();
 </script>
+<!-- ═══════════════════════════════════════════════════════════════════
+     PORTAL MÉDICO v2.0 — FASE 1
+     Dashboard + Por firmar + Notificaciones
+     Compatible con wrappers existentes (Admin, Operador, FaseD)
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+(function() {
+  console.log("[Médico v2.0] Iniciando wrapper...");
+
+  const MED = {
+    inicializado: false,
+    intentos: 0,
+    MAX_INTENTOS: 40,
+    cache: {
+      kpis: null,
+      pendientes: [],
+      notificaciones: [],
+      firmadas: []
+    },
+    filtros: {
+      pendientes: "todos",
+      busquedaPendientes: ""
+    }
+  };
+
+  window.MEDICO_V2 = MED;
+  window.__MEDICO_V2 = {
+    estado: () => ({
+      inicializado: MED.inicializado,
+      intentos: MED.intentos,
+      usuario: window.usuarioActual?.rol,
+      kpis: MED.cache.kpis,
+      pendientes: MED.cache.pendientes.length,
+      notificaciones: MED.cache.notificaciones.length
+    }),
+    recargarTodo: () => {
+      MED.cache = { kpis: null, pendientes: [], notificaciones: [], firmadas: [] };
+      window.medicoV2CargarDashboard();
+      window.medicoV2CargarPendientes();
+      window.medicoV2CargarNotificaciones();
+    },
+    verificarRPCS: async () => {
+      const rpcs = [
+        "medico_dashboard_kpis",
+        "medico_consultas_pendientes_firma",
+        "medico_mis_firmadas"
+      ];
+      const results = {};
+      for (const rpc of rpcs) {
+        try {
+          const args = rpc === "medico_mis_firmadas" ? { p_dias: 1, p_limit: 1 } : {};
+          const { error } = await window.supabaseClient.rpc(rpc, args);
+          results[rpc] = error ? `❌ ${error.code || error.message}` : "✅";
+        } catch (e) {
+          results[rpc] = `❌ ${e.message}`;
+        }
+      }
+      console.table(results);
+      return results;
+    }
+  };
+
+  // ─── Helpers ───
+  const esc = window.escapeHtml || function(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  };
+  const toast = window.showStatus || function(msg, tipo) {
+    console.log("[Médico v2.0]", tipo || "info", msg);
+  };
+  function $id(id) { return document.getElementById(id); }
+  function debounce(fn, ms) {
+    let t;
+    return function() {
+      clearTimeout(t);
+      const ctx = this, args = arguments;
+      t = setTimeout(() => fn.apply(ctx, args), ms);
+    };
+  }
+  function fechaCorta(iso) {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+    } catch (e) { return iso; }
+  }
+  function tiempoRelativo(iso) {
+    if (!iso) return "—";
+    const ms = Date.now() - new Date(iso).getTime();
+    const min = Math.floor(ms / 60000);
+    if (min < 1) return "ahora";
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h}h`;
+    const d = Math.floor(h / 24);
+    return `${d}d`;
+  }
+  function riesgoColor(nivel) {
+    return nivel === "MUY ALTO" ? "#ff3b30"
+         : nivel === "ALTO" ? "#ff9500"
+         : nivel === "MODERADO" ? "#ffcc00"
+         : "#34c759";
+  }
+
+  // ─── Inyectar HTML ───
+  function inyectarHTML() {
+    const tabs = $id("tabs-principales");
+    if (!tabs) return false;
+
+    // Añadir 4 tabs nuevas al inicio (visibles solo para médico)
+    const nuevasTabs = [
+      { id: "mi-dashboard", icon: "🏠", label: "Mi Dashboard", acceso: "medico" },
+      { id: "por-firmar", icon: "⏳", label: "Por firmar", acceso: "medico", badge: true },
+      { id: "mis-firmadas", icon: "📋", label: "Mis firmadas", acceso: "medico" },
+      { id: "mis-notificaciones", icon: "🔔", label: "Notificaciones", acceso: "medico", badge: true }
+    ];
+
+    nuevasTabs.forEach(t => {
+      if (document.querySelector(`[data-tab="${t.id}"]`)) return;
+      const tab = document.createElement("div");
+      tab.className = "tab";
+      tab.dataset.tab = t.id;
+      tab.dataset.acceso = t.acceso;
+      tab.innerHTML = `${t.icon} ${t.label}${t.badge ? ' <span class="badge-med" style="display:none;background:#ff3b30;color:white;font-size:9px;font-weight:700;padding:1px 6px;border-radius:100px;margin-left:4px">0</span>' : ''}`;
+      tab.onclick = () => window.medicoV2CambiarTab(t.id);
+      tabs.insertBefore(tab, tabs.firstChild);
+    });
+
+    // Crear secciones si no existen
+    const container = document.querySelector(".container");
+
+    if (!$id("sec-mi-dashboard")) {
+      const sec = document.createElement("div");
+      sec.className = "section";
+      sec.id = "sec-mi-dashboard";
+      sec.innerHTML = '<div id="med-dashboard-content"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>';
+      container.appendChild(sec);
+    }
+
+    if (!$id("sec-mis-firmadas")) {
+      const sec = document.createElement("div");
+      sec.className = "section";
+      sec.id = "sec-mis-firmadas";
+      sec.innerHTML = `
+        <div class="card">
+          <div class="card-title"><span class="num">📋</span><span>Mis consultas firmadas</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+            <div class="form-group" style="margin-bottom:0">
+              <label style="font-size:11px;font-weight:600">Últimos días</label>
+              <input type="number" id="med-firmadas-dias" value="30" min="1" max="365" style="font-size:12px" onchange="medicoV2CargarFirmadas()">
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label style="font-size:11px;font-weight:600">Límite</label>
+              <input type="number" id="med-firmadas-limit" value="100" min="10" max="500" style="font-size:12px" onchange="medicoV2CargarFirmadas()">
+            </div>
+          </div>
+          <div id="med-firmadas-lista"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+        </div>
+      `;
+      container.appendChild(sec);
+    }
+
+    if (!$id("sec-mis-notificaciones")) {
+      const sec = document.createElement("div");
+      sec.className = "section";
+      sec.id = "sec-mis-notificaciones";
+      sec.innerHTML = `
+        <div class="card">
+          <div class="card-title"><span class="num">🔔</span><span>Mis notificaciones</span></div>
+          <div style="display:flex;gap:6px;margin-bottom:14px">
+            <button class="btn btn-primary btn-xs" onclick="medicoV2FiltrarNotificaciones('todas', this)">Todas</button>
+            <button class="btn btn-secondary btn-xs" onclick="medicoV2FiltrarNotificaciones('no-leidas', this)">No leídas</button>
+            <button class="btn btn-secondary btn-xs" onclick="medicoV2MarcarTodasLeidas()" style="margin-left:auto">✓ Marcar todas como leídas</button>
+          </div>
+          <div id="med-notificaciones-lista"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+        </div>
+      `;
+      container.appendChild(sec);
+    }
+
+    return true;
+  }
+
+  // ─── Cambiar tab ───
+  window.medicoV2CambiarTab = function(tab) {
+    // Marcar tab activa
+    document.querySelectorAll("#tabs-principales .tab").forEach(t => {
+      t.classList.toggle("active", t.dataset.tab === tab);
+    });
+
+    // Ocultar todas las secciones
+    document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+
+    // Mapeo
+    const secMap = {
+      "mi-dashboard": "sec-mi-dashboard",
+      "por-firmar": "sec-por-firmar",
+      "mis-firmadas": "sec-mis-firmadas",
+      "mis-notificaciones": "sec-mis-notificaciones"
+    };
+
+    const secId = secMap[tab];
+    const sec = secId ? $id(secId) : null;
+    if (sec) sec.classList.add("active");
+
+    // Cargar datos según tab
+    setTimeout(() => {
+      switch (tab) {
+        case "mi-dashboard": window.medicoV2CargarDashboard(); break;
+        case "por-firmar": window.medicoV2CargarPendientes(); break;
+        case "mis-firmadas": window.medicoV2CargarFirmadas(); break;
+        case "mis-notificaciones": window.medicoV2CargarNotificaciones(); break;
+      }
+    }, 100);
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ─── Dashboard ───
+  window.medicoV2CargarDashboard = async function() {
+    const cont = $id("med-dashboard-content");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando KPIs...</p></div>';
+
+    try {
+      const { data: kpis, error } = await window.supabaseClient.rpc("medico_dashboard_kpis");
+      if (error) throw error;
+      MED.cache.kpis = kpis;
+
+      const pendientes = kpis.pendientes_firma || 0;
+      const urgentes = kpis.pendientes_firma_urgentes || 0;
+      const firmadasHoy = kpis.firmadas_hoy || 0;
+      const firmadasSem = kpis.firmadas_semana || 0;
+      const firmadasMes = kpis.firmadas_mes || 0;
+      const tiempoProm = kpis.tiempo_promedio_firma_horas || 0;
+      const notifNoLeidas = kpis.notificaciones_no_leidas || 0;
+      const rechazadas = kpis.rechazadas_mes || 0;
+
+      // Actualizar badge de "Por firmar"
+      const tabPorFirmar = document.querySelector('[data-tab="por-firmar"] .badge-med');
+      if (tabPorFirmar) {
+        if (pendientes > 0) {
+          tabPorFirmar.textContent = pendientes;
+          tabPorFirmar.style.display = "inline-block";
+        } else {
+          tabPorFirmar.style.display = "none";
+        }
+      }
+
+      // Actualizar badge de "Notificaciones"
+      const tabNotif = document.querySelector('[data-tab="mis-notificaciones"] .badge-med');
+      if (tabNotif) {
+        if (notifNoLeidas > 0) {
+          tabNotif.textContent = notifNoLeidas;
+          tabNotif.style.display = "inline-block";
+        } else {
+          tabNotif.style.display = "none";
+        }
+      }
+
+      cont.innerHTML = `
+        <div class="card" style="background:linear-gradient(135deg,var(--accent-light),#d0e8fc);border:2px solid var(--accent);margin-bottom:16px">
+          <div style="text-align:center;padding:8px 0">
+            <div style="font-size:32px;margin-bottom:4px">🩺</div>
+            <h2 style="font-size:18px;font-weight:800;color:var(--corp);margin-bottom:4px">Hola, Dr(a). ${esc(window.usuarioActual?.nombre?.split(" ")[0] || "Médico")}</h2>
+            <p style="font-size:12px;color:var(--text-secondary)">Este es tu resumen del día</p>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">
+          <div class="card" style="background:linear-gradient(135deg,#fff9e6,#fff3cc);border:2px solid #ff9500;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#8a6a00;text-transform:uppercase">Pendientes firma</div>
+            <div style="font-size:32px;font-weight:800;color:#8a6a00;margin-top:4px">${pendientes}</div>
+            ${urgentes > 0 ? `<div style="font-size:10px;color:#ff3b30;margin-top:4px;font-weight:700">🚨 ${urgentes} con +48h</div>` : `<div style="font-size:10px;color:#8a6a00;margin-top:4px">Sin urgencias</div>`}
+          </div>
+
+          <div class="card" style="background:linear-gradient(135deg,#f0fff4,#e8f9ec);border:2px solid #34c759;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#1a4a2a;text-transform:uppercase">Firmadas hoy</div>
+            <div style="font-size:32px;font-weight:800;color:#1a4a2a;margin-top:4px">${firmadasHoy}</div>
+            <div style="font-size:10px;color:#1a4a2a;margin-top:4px">Sem: <strong>${firmadasSem}</strong> · Mes: <strong>${firmadasMes}</strong></div>
+          </div>
+
+          <div class="card" style="background:linear-gradient(135deg,#f0f7ff,#e8f4fd);border:2px solid #0071e3;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#0051a3;text-transform:uppercase">Tiempo promedio</div>
+            <div style="font-size:32px;font-weight:800;color:#0051a3;margin-top:4px">${tiempoProm}h</div>
+            <div style="font-size:10px;color:#0051a3;margin-top:4px">Últimos 30 días</div>
+          </div>
+
+          <div class="card" style="background:linear-gradient(135deg,#fef3f2,#fde8e6);border:2px solid #d4a017;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#8a6a00;text-transform:uppercase">Notificaciones</div>
+            <div style="font-size:32px;font-weight:800;color:#8a6a00;margin-top:4px">${notifNoLeidas}</div>
+            <div style="font-size:10px;color:#8a6a00;margin-top:4px">${notifNoLeidas > 0 ? "sin leer" : "al día"}</div>
+          </div>
+        </div>
+
+        ${pendientes > 0 ? `
+          <div class="card" style="border-left:4px solid #ff3b30;margin-bottom:16px">
+            <div class="card-title"><span class="num" style="background:#ff3b30">!</span><span>Acciones pendientes</span></div>
+            <p style="font-size:13px;line-height:1.6;color:var(--text-primary);margin-bottom:12px">
+              Tienes <strong>${pendientes} consulta(s)</strong> pendiente(s) de firma${urgentes > 0 ? `, de las cuales <strong style="color:#ff3b30">${urgentes} llevan más de 48 horas</strong>` : ""}.
+            </p>
+            <button class="btn btn-warning" onclick="medicoV2CambiarTab('por-firmar')" style="width:100%;font-size:13px">
+              ⏳ Ir a firmar ahora
+            </button>
+          </div>
+        ` : `
+          <div class="card" style="background:#f0fff4;border-left:4px solid #34c759;margin-bottom:16px">
+            <div style="text-align:center;padding:14px">
+              <div style="font-size:32px;margin-bottom:6px">✅</div>
+              <div style="font-size:14px;font-weight:700;color:#1a4a2a;margin-bottom:4px">¡Todo al día!</div>
+              <div style="font-size:11px;color:#1a4a2a">No tienes consultas pendientes de firma</div>
+            </div>
+          </div>
+        `}
+
+        ${rechazadas > 0 ? `
+          <div class="card" style="background:#fff9e6;border-left:4px solid #ff9500">
+            <p style="font-size:12px;color:#8a6a00">
+              ℹ️ Has rechazado <strong>${rechazadas} consulta(s)</strong> este mes.
+            </p>
+          </div>
+        ` : ""}
+
+        <div class="card">
+          <div class="card-title"><span class="num">⚡</span><span>Acciones rápidas</span></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+            <button class="btn btn-primary btn-sm" onclick="medicoV2CambiarTab('por-firmar')" style="font-size:11px">⏳ Ver pendientes</button>
+            <button class="btn btn-secondary btn-sm" onclick="medicoV2CambiarTab('mis-firmadas')" style="font-size:11px">📋 Mis firmadas</button>
+            <button class="btn btn-secondary btn-sm" onclick="cambiarTab('consulta')" style="font-size:11px">🩺 Nueva consulta</button>
+            <button class="btn btn-warning btn-sm" onclick="medicoV2CargarDashboard()" style="font-size:11px">🔄 Refrescar</button>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      console.error("[medicoV2CargarDashboard]", e);
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  // ─── Por firmar ───
+  window.medicoV2CargarPendientes = async function() {
+    const cont = $id("admin-v2-lista-pendientes-firma") || $id("sec-por-firmar");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando pendientes...</p></div>';
+
+    try {
+      const { data, error } = await window.supabaseClient.rpc("medico_consultas_pendientes_firma");
+      if (error) throw error;
+      MED.cache.pendientes = data || [];
+      renderPendientes();
+    } catch (e) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  function renderPendientes() {
+    const cont = $id("admin-v2-lista-pendientes-firma") || $id("sec-por-firmar");
+    if (!cont) return;
+
+    let lista = MED.cache.pendientes.slice();
+
+    // Filtro
+    if (MED.filtros.pendientes === "urgentes") {
+      lista = lista.filter(c => parseFloat(c.horas_esperando) >= 48);
+    } else if (MED.filtros.pendientes === "hoy") {
+      const hoy = new Date().toDateString();
+      lista = lista.filter(c => new Date(c.created_at).toDateString() === hoy);
+    }
+
+    // Búsqueda
+    const q = (MED.filtros.busquedaPendientes || "").toLowerCase().trim();
+    if (q) {
+      lista = lista.filter(c => 
+        (c.paciente_nombre || "").toLowerCase().includes(q) ||
+        (c.cie10_principal || "").toLowerCase().includes(q) ||
+        (c.operador_nombre || "").toLowerCase().includes(q) ||
+        (c.motivo_consulta || "").toLowerCase().includes(q)
+      );
+    }
+
+    if (lista.length === 0) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">✅</div><p>No hay consultas pendientes</p></div>`;
+      return;
+    }
+
+    cont.innerHTML = `
+      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="btn ${MED.filtros.pendientes === 'todos' ? 'btn-primary' : 'btn-secondary'} btn-xs" onclick="medicoV2FiltrarPendientes('todos', this)">Todas (${MED.cache.pendientes.length})</button>
+        <button class="btn ${MED.filtros.pendientes === 'urgentes' ? 'btn-primary' : 'btn-secondary'} btn-xs" onclick="medicoV2FiltrarPendientes('urgentes', this)">🚨 +48h</button>
+        <button class="btn ${MED.filtros.pendientes === 'hoy' ? 'btn-primary' : 'btn-secondary'} btn-xs" onclick="medicoV2FiltrarPendientes('hoy', this)">📅 Hoy</button>
+      </div>
+
+      <div class="form-group" style="margin-bottom:14px">
+        <input type="text" id="med-buscar-pendientes" placeholder="🔍 Buscar por paciente, CIE-10, operador..." 
+               value="${esc(MED.filtros.busquedaPendientes)}"
+               oninput="medicoV2BuscarPendientes(this.value)"
+               style="font-size:12px">
+      </div>
+
+      ${lista.map(c => renderPendienteCard(c)).join("")}
+    `;
+  }
+
+  function renderPendienteCard(c) {
+    const urgente = parseFloat(c.horas_esperando) >= 48;
+    const color = riesgoColor(c.nivel_riesgo);
+
+    return `
+      <div class="card" style="border-left:4px solid ${urgente ? "#ff3b30" : color};padding:14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:220px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+              <div style="font-size:14px;font-weight:700;color:var(--corp)">
+                ${urgente ? '🚨' : '⏳'} ${esc(c.paciente_nombre || "—")}
+              </div>
+              <span style="background:${color};color:white;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px;text-transform:uppercase">
+                ${esc(c.nivel_riesgo)}
+              </span>
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">
+              ${c.paciente_edad || "—"} años · ${esc(c.paciente_sexo || "—")} · ${esc(c.tipo || "consulta")}
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">
+              <strong>Motivo:</strong> ${esc(c.motivo_consulta || "—")}
+            </div>
+            ${c.cie10_principal ? `<div style="font-size:11px;margin-bottom:6px"><strong>CIE-10:</strong> <code style="background:var(--accent-light);color:var(--accent);padding:2px 6px;border-radius:4px">${esc(c.cie10_principal)}</code></div>` : ""}
+            <div style="font-size:10px;color:var(--text-tertiary)">
+              👤 ${esc(c.operador_nombre || "—")} · 📅 ${fechaCorta(c.created_at)} 
+              · <strong style="color:${urgente ? "#ff3b30" : "#ff9500"}">⏱ ${c.horas_esperando}h esperando</strong>
+            </div>
+            <div style="font-size:9px;color:var(--text-tertiary);margin-top:4px;font-family:var(--font-mono)">
+              ${esc(c.case_id)}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:180px">
+            <button class="btn btn-primary btn-sm" onclick="medicoV2VerYFirmar('${c.consulta_id}')" style="font-size:11px">
+              👁️ Ver y firmar
+            </button>
+            <button class="btn btn-success btn-sm" onclick="medicoV2FirmarDirecto('${c.consulta_id}')" style="font-size:11px">
+              ✅ Firmar directo
+            </button>
+            <button class="btn btn-warning btn-sm" onclick="medicoV2Rechazar('${c.consulta_id}')" style="font-size:11px">
+              ❌ Rechazar
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  window.medicoV2FiltrarPendientes = function(filtro, btn) {
+    MED.filtros.pendientes = filtro;
+    renderPendientes();
+  };
+
+  window.medicoV2BuscarPendientes = debounce(function(valor) {
+    MED.filtros.busquedaPendientes = valor;
+    renderPendientes();
+  }, 250);
+
+  window.medicoV2VerYFirmar = function(consultaId) {
+    if (typeof verConsultaFirmada === "function") {
+      verConsultaFirmada(consultaId);
+    } else {
+      toast("Función no disponible", "warning");
+    }
+  };
+
+  window.medicoV2FirmarDirecto = async function(consultaId) {
+    if (!confirm("¿Firmar esta consulta directamente?\n\nSe marcará como firmada con tu CSSPM. Asegúrate de haberla revisado.")) return;
+
+    try {
+      const { data: { session } } = await window.supabaseClient.auth.getSession();
+      if (!session) throw new Error("Sesión inválida");
+
+      // Obtener consulta
+      const { data: consulta, error: errC } = await window.supabaseClient
+        .from("consultas")
+        .select("consulta_id, case_id, medico_csspm")
+        .eq("consulta_id", consultaId)
+        .single();
+      if (errC) throw errC;
+
+      // Obtener CSSPM del perfil del médico
+      const { data: perfil } = await window.supabaseClient
+        .from("profiles")
+        .select("nombre, email")
+        .eq("id", window.usuarioActual.id)
+        .single();
+
+      // Generar hash de firma
+      const hashInput = (perfil?.email || "") + consulta.case_id + new Date().toISOString();
+      const hashBuf = new TextEncoder().encode(hashInput);
+      const hashArr = await crypto.subtle.digest("SHA-256", hashBuf);
+      const firmaHash = Array.from(new Uint8Array(hashArr)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+      // Firmar
+      const { error: errFirma } = await window.supabaseClient
+        .from("consultas")
+        .update({
+          estado: "firmada",
+          firmada_at: new Date().toISOString(),
+          firma_hash: firmaHash,
+          medico_id: window.usuarioActual.id,
+          medico_nombre: window.usuarioActual.nombre
+        })
+        .eq("consulta_id", consultaId);
+
+      if (errFirma) throw errFirma;
+
+      toast("✓ Consulta firmada", "success");
+      await window.medicoV2CargarPendientes();
+      await window.medicoV2CargarDashboard();
+    } catch (e) {
+      console.error("[medicoV2FirmarDirecto]", e);
+      toast("Error: " + e.message, "error");
+    }
+  };
+
+  window.medicoV2Rechazar = async function(consultaId) {
+    const motivo = prompt("Motivo del rechazo (obligatorio):");
+    if (!motivo || !motivo.trim()) {
+      toast("Debes escribir un motivo", "warning");
+      return;
+    }
+
+    try {
+      const { data: consulta, error: errC } = await window.supabaseClient
+        .from("consultas")
+        .select("consulta_id, case_id, created_by")
+        .eq("consulta_id", consultaId)
+        .single();
+      if (errC) throw errC;
+
+      const { error: errR } = await window.supabaseClient
+        .from("consultas")
+        .update({
+          estado: "rechazada",
+          rechazada_at: new Date().toISOString(),
+          rechazada_motivo: motivo.trim(),
+          medico_id: window.usuarioActual.id,
+          medico_nombre: window.usuarioActual.nombre
+        })
+        .eq("consulta_id", consultaId);
+
+      if (errR) throw errR;
+
+      // Notificar al operador
+      if (consulta.created_by) {
+        try {
+          await window.supabaseClient.from("notificaciones_operador").insert({
+            operador_id: consulta.created_by,
+            tipo: "consulta_rechazada",
+            mensaje: `Consulta ${consulta.case_id} rechazada por ${window.usuarioActual.nombre}: ${motivo.trim()}`,
+            payload: { consulta_id: consultaId, motivo: motivo.trim() }
+          });
+        } catch (e) { console.warn("[notif]", e); }
+      }
+
+      toast("✓ Consulta rechazada", "success");
+      await window.medicoV2CargarPendientes();
+      await window.medicoV2CargarDashboard();
+    } catch (e) {
+      console.error("[medicoV2Rechazar]", e);
+      toast("Error: " + e.message, "error");
+    }
+  };
+
+  // ─── Mis firmadas ───
+  window.medicoV2CargarFirmadas = async function() {
+    const cont = $id("med-firmadas-lista");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+
+    const dias = parseInt($id("med-firmadas-dias")?.value) || 30;
+    const limit = parseInt($id("med-firmadas-limit")?.value) || 100;
+
+    try {
+      const { data, error } = await window.supabaseClient.rpc("medico_mis_firmadas", {
+        p_dias: dias,
+        p_limit: limit
+      });
+      if (error) throw error;
+      MED.cache.firmadas = data || [];
+
+      if (!data || data.length === 0) {
+        cont.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>Sin firmas en los últimos ${dias} días</p></div>`;
+        return;
+      }
+
+      cont.innerHTML = `
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">
+          <strong>${data.length}</strong> consulta(s) firmada(s) en los últimos ${dias} días
+        </div>
+        ${data.map(c => {
+          const tiempo = parseFloat(c.tiempo_firma_horas) || 0;
+          const rapida = tiempo < 1;
+          const lenta = tiempo > 48;
+          const color = riesgoColor(c.nivel_riesgo);
+          return `
+            <div class="card" style="border-left:4px solid ${color};padding:12px;margin-bottom:10px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+                <div style="flex:1;min-width:220px">
+                  <div style="font-size:13px;font-weight:700;color:var(--corp)">${esc(c.paciente_nombre || "—")}</div>
+                  <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">
+                    ${esc(c.tipo || "consulta")} · ${esc(c.nivel_riesgo)}
+                  </div>
+                  ${c.cie10_principal ? `<div style="font-size:10px;color:var(--accent);font-weight:600;margin-top:2px">CIE-10: ${esc(c.cie10_principal)}</div>` : ""}
+                  <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
+                    📅 Firmada: ${fechaCorta(c.firmada_at)} · ⏱ Tiempo: <strong style="color:${rapida ? "#ff9500" : lenta ? "#ff3b30" : "#34c759"}">${tiempo}h</strong>
+                  </div>
+                  <div style="font-size:9px;color:var(--text-tertiary);margin-top:2px;font-family:var(--font-mono)">
+                    ${esc(c.case_id)}
+                  </div>
+                </div>
+                <button class="btn btn-secondary btn-xs" onclick="medicoV2VerYFirmar('${c.consulta_id}')" style="font-size:10px">
+                  👁️ Ver
+                </button>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      `;
+    } catch (e) {
+      console.error("[medicoV2CargarFirmadas]", e);
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  // ─── Notificaciones ───
+  window.medicoV2CargarNotificaciones = async function() {
+    const cont = $id("med-notificaciones-lista");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+
+    try {
+      const { data, error } = await window.supabaseClient
+        .from("notificaciones_medicas")
+        .select("*")
+        .eq("medico_id", window.usuarioActual.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      MED.cache.notificaciones = data || [];
+      renderNotificaciones();
+    } catch (e) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  function renderNotificaciones() {
+    const cont = $id("med-notificaciones-lista");
+    if (!cont) return;
+
+    let lista = MED.cache.notificaciones.slice();
+    if (MED.filtros.notificaciones === "no-leidas") {
+      lista = lista.filter(n => !n.leida);
+    }
+
+    if (lista.length === 0) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>Sin notificaciones</p></div>`;
+      return;
+    }
+
+    cont.innerHTML = lista.map(n => {
+      const color = n.prioridad === "critica" ? "#ff3b30"
+                  : n.prioridad === "alta" ? "#ff9500"
+                  : n.prioridad === "media" ? "#0071e3"
+                  : "#86868b";
+      return `
+        <div class="card" style="border-left:4px solid ${color};padding:12px;margin-bottom:8px;background:${n.leida ? "var(--bg-secondary)" : "var(--accent-light)"}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:11px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">
+                ${esc((n.tipo || "").replace(/_/g, " "))}
+              </div>
+              <div style="font-size:12px;color:var(--text-primary);line-height:1.5">
+                ${esc(n.mensaje || "")}
+              </div>
+              <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
+                ${fechaCorta(n.created_at)} · ${tiempoRelativo(n.created_at)}
+              </div>
+            </div>
+            ${!n.leida ? `<button class="btn btn-secondary btn-xs" onclick="medicoV2MarcarLeida('${n.notif_id}')" style="font-size:10px">✓ Marcar leída</button>` : ""}
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  window.medicoV2FiltrarNotificaciones = function(filtro, btn) {
+    MED.filtros.notificaciones = filtro;
+    document.querySelectorAll("#sec-mis-notificaciones .btn").forEach(b => {
+      if (b.textContent.includes("Todas") || b.textContent.includes("No leídas")) {
+        b.classList.remove("btn-primary");
+        b.classList.add("btn-secondary");
+      }
+    });
+    if (btn) { btn.classList.remove("btn-secondary"); btn.classList.add("btn-primary"); }
+    renderNotificaciones();
+  };
+
+  window.medicoV2MarcarLeida = async function(notifId) {
+    try {
+      await window.supabaseClient
+        .from("notificaciones_medicas")
+        .update({ leida: true })
+        .eq("notif_id", notifId);
+      await window.medicoV2CargarNotificaciones();
+      await window.medicoV2CargarDashboard();
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  window.medicoV2MarcarTodasLeidas = async function() {
+    if (!confirm("¿Marcar todas como leídas?")) return;
+    try {
+      await window.supabaseClient
+        .from("notificaciones_medicas")
+        .update({ leida: true })
+        .eq("medico_id", window.usuarioActual.id)
+        .eq("leida", false);
+      toast("✓ Todas marcadas como leídas", "success");
+      await window.medicoV2CargarNotificaciones();
+      await window.medicoV2CargarDashboard();
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  // ─── Sección Por firmar (inyectada al admin-container) ───
+  function inyectarSeccionPorFirmar() {
+    if ($id("sec-por-firmar")) return true;
+    const container = document.querySelector(".container");
+    if (!container) return false;
+
+    const sec = document.createElement("div");
+    sec.className = "section";
+    sec.id = "sec-por-firmar";
+    sec.innerHTML = `
+      <div class="card">
+        <div class="card-title"><span class="num">⏳</span><span>Consultas pendientes de firma</span></div>
+        <div id="admin-v2-lista-pendientes-firma"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+      </div>
+    `;
+    container.appendChild(sec);
+    return true;
+  }
+
+  // ─── Inicialización ───
+  function intentarInicializar() {
+    MED.intentos++;
+
+    if (window.usuarioActual?.rol !== "medico" && window.usuarioActual?.rol !== "admin") {
+      if (MED.intentos < MED.MAX_INTENTOS) setTimeout(intentarInicializar, 250);
+      return;
+    }
+
+    const okHTML = inyectarHTML();
+    const okSec = inyectarSeccionPorFirmar();
+
+    if (okHTML && okSec) {
+      MED.inicializado = true;
+      console.log("[Médico v2.0] ✓ Inicializado en intento", MED.intentos);
+
+      // Cargar dashboard por defecto si estamos en rol médico
+      if (window.usuarioActual?.rol === "medico") {
+        setTimeout(() => {
+          window.medicoV2CambiarTab("mi-dashboard");
+        }, 500);
+      }
+      return;
+    }
+
+    if (MED.intentos < MED.MAX_INTENTOS) setTimeout(intentarInicializar, 250);
+    else console.warn("[Médico v2.0] Timeout. Diagnóstico: __MEDICO_V2.estado()");
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(intentarInicializar, 600));
+  } else {
+    setTimeout(intentarInicializar, 600);
+  }
+
+  console.log("[Médico v2.0] Wrapper cargado. Diagnóstico: __MEDICO_V2.estado()");
+})();
+</script>
 </body>
 </html>
