@@ -25488,5 +25488,1338 @@ document.addEventListener("visibilitychange", function() {
   console.log("[Médico v2.0.1] Forzar tabs manualmente: __MEDICO_V2.forzarTabs()");
 })();
 </script>
+<!-- ═══════════════════════════════════════════════════════════════════
+     PORTAL OPERADOR v2.1 — FASE 1
+     Dashboard + Mis Envíos + Notificaciones
+     
+     CAMBIOS v2.1:
+     - Dashboard personal con KPIs de productividad
+     - Gestión visual de envíos con filtros
+     - Bandeja de notificaciones dedicada
+     - Tabs limpias (solo las 5 del operador)
+     - Auto-reparación de tabs
+     - Compatible con wrappers existentes (Admin, Médico, FaseD)
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+(function() {
+  console.log("[Operador v2.1] Iniciando wrapper con dashboard + envíos + notificaciones...");
+
+  // ═══════════════════════════════════════════════════════════════
+  // CONTROL DE TABS — El operador solo ve sus tabs
+  // ═══════════════════════════════════════════════════════════════
+  const TABS_PERMITIDOS_OPERADOR = [
+    "mi-dashboard",
+    "captura",
+    "consulta",
+    "mis-envios",
+    "mis-notificaciones",
+    "mis-solicitudes",
+    "config"
+  ];
+
+  const TABS_BLOQUEADOS_OPERADOR = [
+    "admin",
+    "prompts",
+    "pacientes",
+    "informes",
+    "por-firmar"
+  ];
+
+  function forzarTabsOperadorVisibles() {
+    const rol = window.usuarioActual?.rol;
+    if (rol !== "operador" && rol !== "admin") return;
+
+    TABS_PERMITIDOS_OPERADOR.forEach(id => {
+      const tab = document.querySelector(`#tabs-principales [data-tab="${id}"]`);
+      if (tab) {
+        tab.style.display = "";
+        tab.style.visibility = "visible";
+        tab.style.position = "";
+        tab.style.pointerEvents = "auto";
+        tab.style.width = "";
+        tab.style.height = "";
+        tab.style.padding = "";
+        tab.style.margin = "";
+        tab.style.border = "";
+        tab.style.overflow = "";
+      }
+    });
+  }
+
+  function ocultarTabsBloqueadosOperador() {
+    const rol = window.usuarioActual?.rol;
+    if (rol !== "operador") return;
+
+    TABS_BLOQUEADOS_OPERADOR.forEach(id => {
+      const tab = document.querySelector(`#tabs-principales [data-tab="${id}"]`);
+      if (tab) tab.style.display = "none";
+    });
+
+    document.querySelectorAll('#tabs-principales .tab[data-acceso="admin"], #tabs-principales .tab[data-acceso="medico"]').forEach(tab => {
+      if (!TABS_PERMITIDOS_OPERADOR.includes(tab.dataset.tab)) {
+        tab.style.display = "none";
+      }
+    });
+  }
+
+  function aplicarControlTabsOperador() {
+    forzarTabsOperadorVisibles();
+    ocultarTabsBloqueadosOperador();
+  }
+
+  window._operadorControlTabs = aplicarControlTabsOperador;
+
+  // ─── Instalar wrapper de ajustarUIPorRol ───
+  let _intentosWrapperAjustar = 0;
+  function instalarWrapperAjustarUIPorRol() {
+    _intentosWrapperAjustar++;
+
+    if (typeof window.ajustarUIPorRol !== "function") {
+      if (_intentosWrapperAjustar < 40) setTimeout(instalarWrapperAjustarUIPorRol, 250);
+      return;
+    }
+
+    if (window.ajustarUIPorRol._operadorFix) return;
+
+    const _orig = window.ajustarUIPorRol;
+    window.ajustarUIPorRol = function(rol) {
+      const result = _orig.apply(this, arguments);
+      if (rol === "operador" || rol === "admin") {
+        setTimeout(aplicarControlTabsOperador, 50);
+        setTimeout(aplicarControlTabsOperador, 200);
+        setTimeout(aplicarControlTabsOperador, 500);
+        setTimeout(aplicarControlTabsOperador, 1000);
+        setTimeout(aplicarControlTabsOperador, 2000);
+      }
+      return result;
+    };
+    window.ajustarUIPorRol._operadorFix = true;
+    console.log("[Operador v2.1] ✓ Wrapper de ajustarUIPorRol instalado");
+  }
+  instalarWrapperAjustarUIPorRol();
+
+  // ─── Auto-reparación cada 3s ───
+  function instalarAutoReparacion() {
+    if (window._operadorAutoReparacionActiva) return;
+    window._operadorAutoReparacionActiva = true;
+
+    setInterval(() => {
+      const rol = window.usuarioActual?.rol;
+      if (rol !== "operador" && rol !== "admin") return;
+
+      let necesitaReparar = false;
+      TABS_PERMITIDOS_OPERADOR.forEach(id => {
+        const tab = document.querySelector(`#tabs-principales [data-tab="${id}"]`);
+        if (tab && (tab.style.display === "none" || tab.offsetWidth === 0)) {
+          necesitaReparar = true;
+        }
+      });
+
+      TABS_BLOQUEADOS_OPERADOR.forEach(id => {
+        const tab = document.querySelector(`#tabs-principales [data-tab="${id}"]`);
+        if (tab && tab.offsetWidth > 0 && rol === "operador") {
+          necesitaReparar = true;
+        }
+      });
+
+      if (necesitaReparar) {
+        aplicarControlTabsOperador();
+      }
+    }, 3000);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ESTADO DEL WRAPPER
+  // ═══════════════════════════════════════════════════════════════
+  const OP = {
+    inicializado: false,
+    intentos: 0,
+    MAX_INTENTOS: 40,
+    planActualPaciente: null,
+    pacienteSeleccionado: null,
+    planSeleccionado: null,
+    solicitudEnviada: null,
+    cache: {
+      kpis: null,
+      envios: [],
+      notificaciones: []
+    },
+    filtros: {
+      enviosDias: 30,
+      enviosEstado: "todos",
+      busquedaEnvios: "",
+      notificacionesFiltro: "todas"
+    }
+  };
+
+  window.OPERADOR_V2 = OP;
+  window.__OP = {
+    estado: () => ({
+      inicializado: OP.inicializado,
+      intentos: OP.intentos,
+      usuario: window.usuarioActual?.rol,
+      planActual: OP.planActualPaciente,
+      kpis: OP.cache.kpis,
+      envios: OP.cache.envios.length,
+      notificaciones: OP.cache.notificaciones.length
+    }),
+    verificarRPCS: async () => {
+      const rpcs = [
+        "operador_dashboard_kpis",
+        "operador_mis_envios",
+        "operador_notificaciones",
+        "obtener_info_plan_paciente"
+      ];
+      const results = {};
+      for (const rpc of rpcs) {
+        try {
+          const args = rpc === "operador_mis_envios" ? { p_dias: 1 }
+                     : rpc === "operador_notificaciones" ? { p_limit: 1 }
+                     : rpc === "obtener_info_plan_paciente" ? { p_subject_id: "TEST" }
+                     : {};
+          const { error } = await window.supabaseClient.rpc(rpc, args);
+          results[rpc] = error && error.code !== "PGRST202" && error.code !== "P0001"
+            ? `❌ ${error.code || error.message}`
+            : "✅";
+        } catch (e) {
+          results[rpc] = `❌ ${e.message}`;
+        }
+      }
+      console.table(results);
+      return results;
+    },
+    forzarTabs: aplicarControlTabsOperador,
+    verificarPlan: (sid) => verificarPlanPaciente(sid),
+    forzarPolling: () => actualizarNotifOperador(),
+    verSolicitudes: () => renderMisSolicitudes()
+  };
+
+  const ADMIN_WHATSAPP = "50378311074";
+
+  const PLANES_INFO = {
+    basico:  { nombre: "Básico",  icono: "🥉", precio: 9.90,  color: "#86868b",
+               cuotas: { consultas: 1, tamizajes: 1, interconsultas: 0, constancias: 1 } },
+    plus:    { nombre: "Plus",    icono: "🥈", precio: 15.00, color: "#0071e3",
+               cuotas: { consultas: 3, tamizajes: 1, interconsultas: 2, constancias: 3 } },
+    premium: { nombre: "Premium", icono: "🥇", precio: 20.00, color: "#d4a017",
+               cuotas: { consultas: 5, tamizajes: 2, interconsultas: 5, constancias: 99 } }
+  };
+
+  // ─── Helpers ───
+  const esc = window.escapeHtml || function(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  };
+  const toast = window.showStatus || function(msg, tipo) {
+    console.log("[Operador v2.1]", tipo || "info", msg);
+  };
+  function $id(id) { return document.getElementById(id); }
+  function debounce(fn, ms) {
+    let t;
+    return function() {
+      clearTimeout(t);
+      const ctx = this, args = arguments;
+      t = setTimeout(() => fn.apply(ctx, args), ms);
+    };
+  }
+  function fechaCorta(iso) {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+    } catch (e) { return iso; }
+  }
+  function tiempoRelativo(iso) {
+    if (!iso) return "—";
+    const ms = Date.now() - new Date(iso).getTime();
+    const min = Math.floor(ms / 60000);
+    if (min < 1) return "ahora";
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h}h`;
+    const d = Math.floor(h / 24);
+    return `${d}d`;
+  }
+  function riesgoColor(nivel) {
+    return nivel === "MUY ALTO" ? "#ff3b30"
+         : nivel === "ALTO" ? "#ff9500"
+         : nivel === "MODERADO" ? "#ffcc00"
+         : "#34c759";
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // INYECCIÓN DE HTML
+  // ═══════════════════════════════════════════════════════════════
+  function inyectarHTML() {
+    const tabs = $id("tabs-principales");
+    if (!tabs) return false;
+
+    const nuevasTabs = [
+      { id: "mi-dashboard", icon: "🏠", label: "Mi Dashboard", acceso: "operador", badge: false },
+      { id: "mis-notificaciones", icon: "🔔", label: "Notificaciones", acceso: "operador", badge: true }
+    ];
+
+    nuevasTabs.forEach(t => {
+      if (document.querySelector(`[data-tab="${t.id}"]`)) return;
+
+      const tab = document.createElement("div");
+      tab.className = "tab";
+      tab.dataset.tab = t.id;
+      tab.dataset.acceso = t.acceso;
+      tab.innerHTML = `${t.icon} ${t.label}${t.badge ? ' <span class="badge-op" style="display:none;background:#ff3b30;color:white;font-size:9px;font-weight:700;padding:1px 6px;border-radius:100px;margin-left:4px">0</span>' : ''}`;
+      tab.onclick = () => window.operadorV2CambiarTab(t.id);
+      tabs.insertBefore(tab, tabs.firstChild);
+    });
+
+    const container = document.querySelector(".container") || document.body;
+
+    if (!$id("sec-mi-dashboard")) {
+      const sec = document.createElement("div");
+      sec.className = "section";
+      sec.id = "sec-mi-dashboard";
+      sec.innerHTML = '<div id="op-dashboard-content"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>';
+      container.appendChild(sec);
+    }
+
+    if (!$id("sec-mis-envios")) {
+      const sec = document.createElement("div");
+      sec.className = "section";
+      sec.id = "sec-mis-envios";
+      sec.innerHTML = `
+        <div class="card">
+          <div class="card-title"><span class="num">📤</span><span>Mis envíos</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+            <div class="form-group" style="margin-bottom:0">
+              <label style="font-size:11px;font-weight:600">Últimos días</label>
+              <select id="op-envios-dias" style="font-size:12px" onchange="operadorV2CargarEnvios()">
+                <option value="7">7 días</option>
+                <option value="30" selected>30 días</option>
+                <option value="90">90 días</option>
+                <option value="180">6 meses</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label style="font-size:11px;font-weight:600">Estado</label>
+              <select id="op-envios-estado" style="font-size:12px" onchange="operadorV2CargarEnvios()">
+                <option value="todos">Todos</option>
+                <option value="borrador">Borrador</option>
+                <option value="pendiente_firma">Pendiente firma</option>
+                <option value="firmada">Firmada</option>
+                <option value="rechazada">Rechazada</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:14px">
+            <input type="text" id="op-envios-buscar" placeholder="🔍 Buscar por paciente, CIE-10, motivo..."
+                   oninput="operadorV2BuscarEnvios(this.value)" style="font-size:12px">
+          </div>
+          <div id="op-envios-lista"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+        </div>
+      `;
+      container.appendChild(sec);
+    }
+
+    if (!$id("sec-mis-notificaciones")) {
+      const sec = document.createElement("div");
+      sec.className = "section";
+      sec.id = "sec-mis-notificaciones";
+      sec.innerHTML = `
+        <div class="card">
+          <div class="card-title"><span class="num">🔔</span><span>Mis notificaciones</span></div>
+          <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-xs" onclick="operadorV2FiltrarNotificaciones('todas', this)">Todas</button>
+            <button class="btn btn-secondary btn-xs" onclick="operadorV2FiltrarNotificaciones('no-leidas', this)">No leídas</button>
+            <button class="btn btn-secondary btn-xs" onclick="operadorV2MarcarTodasLeidas()" style="margin-left:auto">✓ Marcar todas como leídas</button>
+          </div>
+          <div id="op-notificaciones-lista"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+        </div>
+      `;
+      container.appendChild(sec);
+    }
+
+    setTimeout(aplicarControlTabsOperador, 100);
+    setTimeout(aplicarControlTabsOperador, 400);
+
+    return true;
+  }
+
+  window.operadorV2CambiarTab = function(tab) {
+    document.querySelectorAll("#tabs-principales .tab").forEach(t => {
+      t.classList.toggle("active", t.dataset.tab === tab);
+    });
+
+    document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+
+    const secMap = {
+      "mi-dashboard": "sec-mi-dashboard",
+      "mis-envios": "sec-mis-envios",
+      "mis-notificaciones": "sec-mis-notificaciones",
+      "mis-solicitudes": "sec-mis-solicitudes",
+      "captura": "sec-captura",
+      "consulta": "sec-consulta",
+      "config": "sec-config-view"
+    };
+
+    const secId = secMap[tab];
+    const sec = secId ? $id(secId) : null;
+    if (sec) sec.classList.add("active");
+
+    setTimeout(() => {
+      switch (tab) {
+        case "mi-dashboard": window.operadorV2CargarDashboard(); break;
+        case "mis-envios": window.operadorV2CargarEnvios(); break;
+        case "mis-notificaciones": window.operadorV2CargarNotificaciones(); break;
+        case "mis-solicitudes":
+          if (typeof renderMisSolicitudes === "function") renderMisSolicitudes();
+          break;
+      }
+    }, 100);
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // DASHBOARD DEL OPERADOR
+  // ═══════════════════════════════════════════════════════════════
+  window.operadorV2CargarDashboard = async function() {
+    const cont = $id("op-dashboard-content");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando KPIs...</p></div>';
+
+    try {
+      const { data: kpis, error } = await window.supabaseClient.rpc("operador_dashboard_kpis");
+      if (error) throw error;
+      OP.cache.kpis = kpis;
+
+      const borradores = kpis.borradores_pendientes || 0;
+      const enviadosHoy = kpis.enviados_hoy || 0;
+      const enviadosSem = kpis.enviados_semana || 0;
+      const enviadosMes = kpis.enviados_mes || 0;
+      const firmadasMes = kpis.firmadas_mes || 0;
+      const rechazadasMes = kpis.rechazadas_mes || 0;
+      const tasaAprobacion = kpis.tasa_aprobacion_pct || 0;
+      const tiempoProm = kpis.tiempo_promedio_respuesta_horas || 0;
+      const pendientesFirma = kpis.pendientes_firma || 0;
+      const notifNoLeidas = kpis.notificaciones_no_leidas || 0;
+
+      const tabNotif = document.querySelector('[data-tab="mis-notificaciones"] .badge-op');
+      if (tabNotif) {
+        if (notifNoLeidas > 0) {
+          tabNotif.textContent = notifNoLeidas;
+          tabNotif.style.display = "inline-block";
+        } else {
+          tabNotif.style.display = "none";
+        }
+      }
+
+      const productividad = kpis.productividad_30d || [];
+      const maxProd = Math.max(...productividad.map(p => p.count), 1);
+
+      cont.innerHTML = `
+        <div class="card" style="background:linear-gradient(135deg,var(--accent-light),#d0e8fc);border:2px solid var(--accent);margin-bottom:16px">
+          <div style="text-align:center;padding:8px 0">
+            <div style="font-size:32px;margin-bottom:4px">📤</div>
+            <h2 style="font-size:18px;font-weight:800;color:var(--corp);margin-bottom:4px">Hola, ${esc(window.usuarioActual?.nombre?.split(" ")[0] || "Operador")}</h2>
+            <p style="font-size:12px;color:var(--text-secondary)">Este es tu resumen de productividad</p>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">
+          <div class="card" style="background:linear-gradient(135deg,#fff9e6,#fff3cc);border:2px solid #ff9500;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#8a6a00;text-transform:uppercase">Borradores</div>
+            <div style="font-size:32px;font-weight:800;color:#8a6a00;margin-top:4px">${borradores}</div>
+            <div style="font-size:10px;color:#8a6a00;margin-top:4px">${borradores > 0 ? "⚠️ por enviar" : "✅ al día"}</div>
+          </div>
+
+          <div class="card" style="background:linear-gradient(135deg,#f0f7ff,#e8f4fd);border:2px solid #0071e3;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#0051a3;text-transform:uppercase">Enviados hoy</div>
+            <div style="font-size:32px;font-weight:800;color:#0051a3;margin-top:4px">${enviadosHoy}</div>
+            <div style="font-size:10px;color:#0051a3;margin-top:4px">Sem: <strong>${enviadosSem}</strong> · Mes: <strong>${enviadosMes}</strong></div>
+          </div>
+
+          <div class="card" style="background:linear-gradient(135deg,#f0fff4,#e8f9ec);border:2px solid #34c759;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#1a4a2a;text-transform:uppercase">Aprobados</div>
+            <div style="font-size:32px;font-weight:800;color:#1a4a2a;margin-top:4px">${firmadasMes}</div>
+            <div style="font-size:10px;color:#1a4a2a;margin-top:4px">Tasa: <strong>${tasaAprobacion}%</strong></div>
+          </div>
+
+          <div class="card" style="background:linear-gradient(135deg,#fef3f2,#fde8e6);border:2px solid #d4a017;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#8a6a00;text-transform:uppercase">Tiempo respuesta</div>
+            <div style="font-size:32px;font-weight:800;color:#8a6a00;margin-top:4px">${tiempoProm}h</div>
+            <div style="font-size:10px;color:#8a6a00;margin-top:4px">Médicos este mes</div>
+          </div>
+        </div>
+
+        ${borradores > 0 || pendientesFirma > 0 ? `
+          <div class="card" style="border-left:4px solid #ff9500;margin-bottom:16px">
+            <div class="card-title"><span class="num" style="background:#ff9500">!</span><span>Acciones pendientes</span></div>
+            <div style="display:grid;gap:8px">
+              ${borradores > 0 ? `
+                <div style="padding:10px 12px;background:#fff9e6;border-radius:8px;font-size:12px">
+                  <strong style="color:#8a6a00">📝 ${borradores} borrador(es)</strong> sin enviar
+                  <button class="btn btn-warning btn-xs" onclick="operadorV2CambiarTab('mis-envios')" style="margin-left:8px">Ver</button>
+                </div>
+              ` : ""}
+              ${pendientesFirma > 0 ? `
+                <div style="padding:10px 12px;background:#f0f7ff;border-radius:8px;font-size:12px">
+                  <strong style="color:#0051a3">⏳ ${pendientesFirma} en firma médica</strong>
+                  <button class="btn btn-primary btn-xs" onclick="operadorV2CambiarTab('mis-envios')" style="margin-left:8px">Ver</button>
+                </div>
+              ` : ""}
+            </div>
+          </div>
+        ` : `
+          <div class="card" style="background:#f0fff4;border-left:4px solid #34c759;margin-bottom:16px">
+            <div style="text-align:center;padding:14px">
+              <div style="font-size:32px;margin-bottom:6px">✅</div>
+              <div style="font-size:14px;font-weight:700;color:#1a4a2a;margin-bottom:4px">¡Todo al día!</div>
+              <div style="font-size:11px;color:#1a4a2a">Sin borradores ni pendientes de firma</div>
+            </div>
+          </div>
+        `}
+
+        ${productividad.length > 0 ? `
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-title"><span class="num">📊</span><span>Productividad últimos 30 días</span></div>
+            <div style="display:flex;align-items:flex-end;gap:3px;height:80px;padding:8px 0">
+              ${productividad.map(p => {
+                const height = (p.count / maxProd) * 100;
+                return `<div style="flex:1;background:var(--accent);height:${height}%;min-height:4px;border-radius:2px" title="${p.fecha}: ${p.count} envío(s)"></div>`;
+              }).join("")}
+            </div>
+            <div style="font-size:10px;color:var(--text-tertiary);text-align:center;margin-top:4px">
+              Total: ${productividad.reduce((s, p) => s + p.count, 0)} envíos en 30 días
+            </div>
+          </div>
+        ` : ""}
+
+        ${rechazadasMes > 0 ? `
+          <div class="card" style="background:#fff3f3;border-left:4px solid #ff3b30;margin-bottom:16px">
+            <p style="font-size:12px;color:#7a1a1a">
+              ⚠️ Tienes <strong>${rechazadasMes} consulta(s) rechazada(s)</strong> este mes. Revisa los motivos en "Mis envíos".
+            </p>
+          </div>
+        ` : ""}
+
+        <div class="card">
+          <div class="card-title"><span class="num">⚡</span><span>Acciones rápidas</span></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+            <button class="btn btn-primary btn-sm" onclick="cambiarTab('captura')" style="font-size:11px">📋 Nuevo caso</button>
+            <button class="btn btn-secondary btn-sm" onclick="operadorV2CambiarTab('mis-envios')" style="font-size:11px">📤 Ver envíos</button>
+            <button class="btn btn-secondary btn-sm" onclick="operadorV2CambiarTab('mis-notificaciones')" style="font-size:11px">🔔 Notificaciones</button>
+            <button class="btn btn-warning btn-sm" onclick="operadorV2CargarDashboard()" style="font-size:11px">🔄 Refrescar</button>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      console.error("[operadorV2CargarDashboard]", e);
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // MIS ENVÍOS
+  // ═══════════════════════════════════════════════════════════════
+  window.operadorV2CargarEnvios = async function() {
+    const cont = $id("op-envios-lista");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando envíos...</p></div>';
+
+    const dias = parseInt($id("op-envios-dias")?.value) || 30;
+    const estado = $id("op-envios-estado")?.value || "todos";
+
+    try {
+      const args = { p_dias: dias };
+      if (estado !== "todos") args.p_estado = estado;
+
+      const { data, error } = await window.supabaseClient.rpc("operador_mis_envios", args);
+      if (error) throw error;
+      OP.cache.envios = data || [];
+      renderEnvios();
+    } catch (e) {
+      console.error("[operadorV2CargarEnvios]", e);
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  function renderEnvios() {
+    const cont = $id("op-envios-lista");
+    if (!cont) return;
+
+    let lista = OP.cache.envios.slice();
+
+    const q = (OP.filtros.busquedaEnvios || "").toLowerCase().trim();
+    if (q) {
+      lista = lista.filter(e =>
+        (e.paciente_nombre || "").toLowerCase().includes(q) ||
+        (e.cie10_principal || "").toLowerCase().includes(q) ||
+        (e.motivo_consulta || "").toLowerCase().includes(q) ||
+        (e.case_id || "").toLowerCase().includes(q)
+      );
+    }
+
+    if (lista.length === 0) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>Sin envíos en el período</p></div>`;
+      return;
+    }
+
+    const estadoConfig = {
+      borrador: { color: "#86868b", label: "Borrador", icono: "📝" },
+      pendiente_firma: { color: "#ff9500", label: "Pendiente", icono: "⏳" },
+      firmada: { color: "#34c759", label: "Firmada", icono: "✅" },
+      rechazada: { color: "#ff3b30", label: "Rechazada", icono: "❌" }
+    };
+
+    cont.innerHTML = `
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">
+        <strong>${lista.length}</strong> envío(s)
+      </div>
+      ${lista.map(e => {
+        const cfg = estadoConfig[e.estado] || estadoConfig.borrador;
+        const esRechazada = e.estado === "rechazada";
+        const esFirmada = e.estado === "firmada";
+        const esPendiente = e.estado === "pendiente_firma" || e.estado === "borrador";
+        const urgente = esPendiente && parseFloat(e.horas_desde_envio) >= 48;
+
+        return `
+          <div class="card" style="border-left:4px solid ${urgente ? "#ff3b30" : cfg.color};padding:12px;margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+              <div style="flex:1;min-width:220px">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+                  <div style="font-size:14px;font-weight:700;color:var(--corp)">
+                    ${urgente ? '🚨' : cfg.icono} ${esc(e.paciente_nombre || "—")}
+                  </div>
+                  <span style="background:${cfg.color};color:white;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px;text-transform:uppercase">
+                    ${cfg.label}
+                  </span>
+                  ${e.nivel_riesgo ? `<span style="background:${riesgoColor(e.nivel_riesgo)};color:white;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px">${e.nivel_riesgo}</span>` : ""}
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">
+                  ${e.paciente_edad || "—"} años · ${esc(e.paciente_sexo || "—")} · ${esc(e.tipo || "consulta")}
+                </div>
+                ${e.motivo_consulta ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px"><strong>Motivo:</strong> ${esc(e.motivo_consulta)}</div>` : ""}
+                ${e.cie10_principal ? `<div style="font-size:11px;margin-bottom:4px"><strong>CIE-10:</strong> <code style="background:var(--accent-light);color:var(--accent);padding:1px 6px;border-radius:4px">${esc(e.cie10_principal)}</code></div>` : ""}
+                ${esRechazada && e.rechazada_motivo ? `
+                  <div style="font-size:11px;color:#7a1a1a;background:#fff3f3;padding:6px 8px;border-radius:6px;margin-top:6px">
+                    <strong>Motivo rechazo:</strong> ${esc(e.rechazada_motivo)}
+                  </div>
+                ` : ""}
+                <div style="font-size:10px;color:var(--text-tertiary);margin-top:6px">
+                  📅 Enviado: ${fechaCorta(e.created_at)}
+                  ${e.medico_nombre ? ` · 🩺 ${esc(e.medico_nombre)}` : ""}
+                  ${esPendiente ? ` · <strong style="color:${urgente ? "#ff3b30" : "#ff9500"}">⏱ ${e.horas_desde_envio}h esperando</strong>` : ""}
+                  ${esFirmada && e.horas_hasta_firma ? ` · ⏱ Firmada en ${e.horas_hasta_firma}h` : ""}
+                </div>
+                <div style="font-size:9px;color:var(--text-tertiary);margin-top:4px;font-family:var(--font-mono)">
+                  ${esc(e.case_id)}
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;min-width:140px">
+                ${esPendiente && e.medico_nombre ? `
+                  <button class="btn btn-warning btn-xs" onclick="operadorV2RecordarMedico('${e.consulta_id}')" style="font-size:10px">
+                    🔔 Recordar médico
+                  </button>
+                ` : ""}
+                ${esFirmada ? `
+                  <button class="btn btn-success btn-xs" onclick="operadorV2VerCaso('${e.consulta_id}')" style="font-size:10px">
+                    👁️ Ver caso
+                  </button>
+                ` : ""}
+                ${esRechazada ? `
+                  <button class="btn btn-primary btn-xs" onclick="operadorV2ReenviarCaso('${e.consulta_id}')" style="font-size:10px">
+                    🔄 Reenviar
+                  </button>
+                ` : ""}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    `;
+  }
+
+  window.operadorV2BuscarEnvios = debounce(function(valor) {
+    OP.filtros.busquedaEnvios = valor;
+    renderEnvios();
+  }, 250);
+
+  window.operadorV2RecordarMedico = async function(consultaId) {
+    try {
+      const { data: cons } = await window.supabaseClient
+        .from("consultas")
+        .select("medico_id, case_id")
+        .eq("consulta_id", consultaId)
+        .single();
+
+      if (!cons?.medico_id) { toast("Sin médico asignado", "warning"); return; }
+
+      await window.supabaseClient.from("notificaciones_medicas").insert({
+        medico_id: cons.medico_id,
+        tipo: "recordatorio_firma",
+        prioridad: "alta",
+        mensaje: `Recordatorio del operador: consulta ${cons.case_id} pendiente de firma`,
+        payload: { consulta_id: consultaId, recordado_por: "operador" }
+      });
+
+      toast("✓ Recordatorio enviado al médico", "success");
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  window.operadorV2VerCaso = function(consultaId) {
+    if (typeof verConsultaFirmada === "function") verConsultaFirmada(consultaId);
+    else toast("Función no disponible", "warning");
+  };
+
+  window.operadorV2ReenviarCaso = async function(consultaId) {
+    if (!confirm("¿Reenviar esta consulta para revisión médica?\n\nSe notificará al médico asignado.")) return;
+    try {
+      await window.supabaseClient
+        .from("consultas")
+        .update({
+          estado: "pendiente_firma",
+          rechazada_at: null,
+          rechazada_motivo: null,
+          enviada_a_firma_at: new Date().toISOString()
+        })
+        .eq("consulta_id", consultaId);
+
+      toast("✓ Consulta reenviada a firma", "success");
+      await window.operadorV2CargarEnvios();
+      await window.operadorV2CargarDashboard();
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // NOTIFICACIONES
+  // ═══════════════════════════════════════════════════════════════
+  window.operadorV2CargarNotificaciones = async function() {
+    const cont = $id("op-notificaciones-lista");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+
+    try {
+      const { data, error } = await window.supabaseClient.rpc("operador_notificaciones", { p_limit: 50 });
+      if (error) throw error;
+      OP.cache.notificaciones = data || [];
+      renderNotificaciones();
+    } catch (e) {
+      console.error("[operadorV2CargarNotificaciones]", e);
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  function renderNotificaciones() {
+    const cont = $id("op-notificaciones-lista");
+    if (!cont) return;
+
+    let lista = OP.cache.notificaciones.slice();
+    if (OP.filtros.notificacionesFiltro === "no-leidas") {
+      lista = lista.filter(n => !n.leida);
+    }
+
+    if (lista.length === 0) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>Sin notificaciones</p></div>`;
+      return;
+    }
+
+    const tipoConfig = {
+      suscripcion_activada: { color: "#34c759", icono: "✅" },
+      consulta_firmada: { color: "#0071e3", icono: "📋" },
+      consulta_rechazada: { color: "#ff3b30", icono: "❌" },
+      plan_por_vencer: { color: "#ff9500", icono: "⚠️" },
+      solicitud_tamizaje: { color: "#ff9500", icono: "🩺" }
+    };
+
+    cont.innerHTML = lista.map(n => {
+      const cfg = tipoConfig[n.tipo] || { color: "#86868b", icono: "🔔" };
+      return `
+        <div class="card" style="border-left:4px solid ${cfg.color};padding:12px;margin-bottom:8px;background:${n.leida ? "var(--bg-secondary)" : "var(--accent-light)"}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:11px;font-weight:700;color:${cfg.color};text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">
+                ${cfg.icono} ${esc((n.tipo || "").replace(/_/g, " "))}
+              </div>
+              <div style="font-size:12px;color:var(--text-primary);line-height:1.5">
+                ${esc(n.mensaje || "")}
+              </div>
+              <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
+                ${fechaCorta(n.created_at)} · ${tiempoRelativo(n.created_at)}
+              </div>
+            </div>
+            ${!n.leida ? `<button class="btn btn-secondary btn-xs" onclick="operadorV2MarcarLeida('${n.notif_id}')" style="font-size:10px">✓</button>` : ""}
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  window.operadorV2FiltrarNotificaciones = function(filtro, btn) {
+    OP.filtros.notificacionesFiltro = filtro;
+    document.querySelectorAll("#sec-mis-notificaciones .btn").forEach(b => {
+      if (b.textContent.includes("Todas") || b.textContent.includes("No leídas")) {
+        b.classList.remove("btn-primary");
+        b.classList.add("btn-secondary");
+      }
+    });
+    if (btn) { btn.classList.remove("btn-secondary"); btn.classList.add("btn-primary"); }
+    renderNotificaciones();
+  };
+
+  window.operadorV2MarcarLeida = async function(notifId) {
+    try {
+      await window.supabaseClient
+        .from("notificaciones_operador")
+        .update({ leida: true })
+        .eq("notif_id", notifId);
+      await window.operadorV2CargarNotificaciones();
+      await window.operadorV2CargarDashboard();
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  window.operadorV2MarcarTodasLeidas = async function() {
+    if (!confirm("¿Marcar todas como leídas?")) return;
+    try {
+      await window.supabaseClient
+        .from("notificaciones_operador")
+        .update({ leida: true })
+        .eq("operador_id", window.usuarioActual.id)
+        .eq("leida", false);
+      toast("✓ Todas marcadas como leídas", "success");
+      await window.operadorV2CargarNotificaciones();
+      await window.operadorV2CargarDashboard();
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // FUNCIONES DEL WRAPPER v2.0 (mantener)
+  // ═══════════════════════════════════════════════════════════════
+
+  window.verificarPlanPaciente = async function(subjectId) {
+    if (!subjectId || !window.supabaseClient) return null;
+    try {
+      const { data, error } = await window.supabaseClient.rpc(
+        "obtener_info_plan_paciente",
+        { p_subject_id: subjectId }
+      );
+      if (error) throw error;
+      OP.planActualPaciente = data;
+      mostrarPanelSuscripcion(data, subjectId);
+      return data;
+    } catch (e) {
+      console.error("[verificarPlanPaciente]", e);
+      mostrarPanelSuscripcion({ tiene_plan: false, estado: "error" }, subjectId);
+      return null;
+    }
+  };
+
+  function mostrarPanelSuscripcion(planData, subjectId) {
+    let cont = $id("panel-suscripcion-operador");
+    if (!cont) {
+      cont = document.createElement("div");
+      cont.id = "panel-suscripcion-operador";
+      const fichaCard = $id("ficha-paciente-card");
+      const anchor = fichaCard || document.querySelector(".container");
+      if (anchor) anchor.parentNode.insertBefore(cont, anchor.nextSibling);
+    }
+
+    if (!planData || !planData.tiene_plan) {
+      cont.innerHTML = renderSinPlan(subjectId);
+      bloquearFlujo();
+      return;
+    }
+
+    cont.innerHTML = renderConPlan(planData, subjectId);
+    desbloquearFlujo();
+  }
+
+  function renderSinPlan(subjectId) {
+    return `
+      <div class="card" style="background:linear-gradient(135deg,#fff9e6,#ffe9b8);border:2px solid #ff9500;margin-bottom:16px">
+        <div class="card-title">
+          <span class="num" style="background:#ff9500">⚠️</span>
+          <span>Sin suscripción activa</span>
+        </div>
+        <p style="font-size:12px;color:#5a4a00;line-height:1.6;margin-bottom:14px">
+          Este paciente no tiene un plan de suscripción activo.
+        </p>
+        <div style="background:white;border-radius:10px;padding:14px;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:700;color:#8a6a00;text-transform:uppercase;margin-bottom:8px">
+            Planes disponibles
+          </div>
+          <div style="display:grid;gap:8px">
+            ${Object.entries(PLANES_INFO).map(([id, p]) => `
+              <label style="display:flex;align-items:center;gap:10px;padding:10px;background:${p.color}11;border:1.5px solid ${p.color};border-radius:8px;cursor:pointer">
+                <input type="radio" name="op-plan-seleccion" value="${id}"
+                       onchange="OP_seleccionarPlan('${id}')" style="width:auto">
+                <span style="font-size:18px">${p.icono}</span>
+                <div style="flex:1">
+                  <div style="font-size:12px;font-weight:700;color:#1a3a5c">Plan ${p.nombre}</div>
+                  <div style="font-size:10px;color:#666">
+                    ${p.cuotas.consultas} consultas · ${p.cuotas.tamizajes} tamizajes/mes
+                  </div>
+                </div>
+                <div style="font-size:14px;font-weight:800;color:${p.color}">$${p.precio.toFixed(2)}</div>
+              </label>
+            `).join("")}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="OP_contactarAdmin('${subjectId}')" style="flex:1;font-size:12px">
+            💬 Contactar admin
+          </button>
+          <button class="btn btn-success" id="btn-solicitar-plan"
+                  onclick="OP_solicitarPlan('${subjectId}')"
+                  style="flex:1;font-size:12px" disabled>
+            📤 Solicitar plan
+          </button>
+        </div>
+        <div id="op-solicitud-status" style="display:none;margin-top:14px"></div>
+      </div>
+    `;
+  }
+
+  function renderConPlan(planData, subjectId) {
+    const plan = PLANES_INFO[planData.plan] || { nombre: planData.plan, icono: "📦", precio: 0,
+                                                   cuotas: { consultas: 0, tamizajes: 0 } };
+
+    const consultasUsadas = planData.cuota_consultas_usada || 0;
+    const tamizajesUsados = planData.cuota_tamizajes_usada || 0;
+    const consultasDisp = Math.max(0, plan.cuotas.consultas - consultasUsadas);
+    const tamizajesDisp = Math.max(0, plan.cuotas.tamizajes - tamizajesUsados);
+    const agotado = consultasDisp <= 0 && tamizajesDisp <= 0;
+
+    return `
+      <div class="card" style="background:linear-gradient(135deg,#f0fff4,#d4f5dc);border:2px solid #34c759;margin-bottom:16px">
+        <div class="card-title">
+          <span class="num" style="background:#34c759">✓</span>
+          <span>Plan ${plan.nombre} activo</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:14px">
+          <div style="background:white;border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Consultas</div>
+            <div style="font-size:18px;font-weight:800;color:${consultasDisp > 0 ? '#34c759' : '#ff3b30'}">
+              ${consultasDisp}/${plan.cuotas.consultas}
+            </div>
+          </div>
+          <div style="background:white;border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Tamizajes</div>
+            <div style="font-size:18px;font-weight:800;color:${tamizajesDisp > 0 ? '#34c759' : '#ff3b30'}">
+              ${tamizajesDisp}/${plan.cuotas.tamizajes}
+            </div>
+          </div>
+          <div style="background:white;border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Próximo cobro</div>
+            <div style="font-size:11px;font-weight:700;color:#1a3a5c;margin-top:2px">
+              ${planData.fecha_proximo_cobro ? new Date(planData.fecha_proximo_cobro).toLocaleDateString("es-ES") : "—"}
+            </div>
+          </div>
+        </div>
+        ${agotado ? `
+          <div style="background:#fff3f3;border-left:4px solid #ff3b30;padding:10px 12px;border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a;margin-bottom:12px">
+            <strong>⚠️ Cuotas agotadas este mes.</strong>
+          </div>
+          <button class="btn btn-warning" onclick="OP_solicitarAddon('${subjectId}')" style="width:100%;font-size:12px">
+            🎁 Solicitar add-on al admin
+          </button>
+        ` : `
+          <div style="background:white;border-radius:8px;padding:10px;font-size:11px;color:#1a4a2a;text-align:center">
+            ✅ Puedes iniciar el llenado de formularios
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  function bloquearFlujo() {
+    ["sec-estudio", "sec-vitales", "sec-labs", "sec-clinica",
+     "sec-protocolo", "sec-imagenes", "sec-analisis", "sec-consulta"].forEach(id => {
+      const el = $id(id);
+      if (el) el.style.display = "none";
+    });
+    document.body.dataset.planVerificado = "false";
+  }
+
+  function desbloquearFlujo() {
+    ["sec-estudio", "sec-consulta"].forEach(id => {
+      const el = $id(id);
+      if (el) el.style.display = "";
+    });
+    document.body.dataset.planVerificado = "true";
+  }
+
+  window.OP_seleccionarPlan = function(planId) {
+    OP.planSeleccionado = planId;
+    const btn = $id("btn-solicitar-plan");
+    if (btn) btn.disabled = false;
+  };
+
+  window.OP_solicitarPlan = async function(subjectId) {
+    if (!OP.planSeleccionado) { toast("Selecciona un plan primero", "error"); return; }
+    if (!window.supabaseClient) { toast("Sin conexión", "error"); return; }
+
+    const paciente = OP.pacienteSeleccionado || window._pacienteActual;
+    if (!paciente || !paciente.nombre) { toast("Falta paciente", "error"); return; }
+
+    const plan = PLANES_INFO[OP.planSeleccionado];
+
+    try {
+      toast("Registrando solicitud...", "info");
+      const { data, error } = await window.supabaseClient
+        .from("solicitudes_suscripcion")
+        .insert({
+          subject_id: subjectId,
+          paciente_nombre: paciente.nombre,
+          paciente_telefono: paciente.telefono || null,
+          plan_solicitado: OP.planSeleccionado,
+          operador_id: window.usuarioActual.id,
+          operador_nombre: window.usuarioActual.nombre,
+          estado: "pendiente"
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      OP.solicitudEnviada = data;
+
+      const mensaje = construirMensajeSolicitud(paciente, plan);
+      const url = `https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(mensaje)}`;
+      window.open(url, "_blank");
+
+      try { sessionStorage.setItem("ecoradai_ultimo_wa_solicitud", mensaje); } catch (e) {}
+
+      mostrarEstadoSolicitudEnviada(plan);
+      toast(`✓ Solicitud de Plan ${plan.nombre} enviada al admin`, "success");
+    } catch (e) {
+      console.error("[OP_solicitarPlan]", e);
+      toast("Error: " + e.message, "error");
+    }
+  };
+
+  function construirMensajeSolicitud(paciente, plan) {
+    const solicitudId = OP.solicitudEnviada?.solicitud_id || "pendiente";
+    const origin = window.location.origin;
+    const panelUrl = `${origin}/?tab=admin&subtab=solicitudes&solicitud=${solicitudId}`;
+
+    return `🩺 *SOLICITUD DE SUSCRIPCIÓN — EcoRadAi*
+
+Hola admin, necesito activar un plan de suscripción.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+👤 *DATOS DEL PACIENTE*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+*Nombre:* ${paciente.nombre}
+*ID:* ${paciente.subject_id || ""}
+${paciente.dui ? "*DUI:* " + paciente.dui : ""}
+${paciente.telefono ? "*Teléfono:* " + paciente.telefono : ""}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+💳 *PLAN SOLICITADO*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+*Plan:* ${plan.icono} ${plan.nombre}
+*Precio:* $${plan.precio.toFixed(2)}/mes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+👨‍💼 *OPERADOR*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+*Nombre:* ${window.usuarioActual?.nombre || ""}
+*Solicitud ID:* ${solicitudId}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🔗 *APROBAR RÁPIDO*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+${panelUrl}
+
+¡Gracias!`;
+  }
+
+  function mostrarEstadoSolicitudEnviada(plan) {
+    const cont = $id("op-solicitud-status");
+    if (!cont) return;
+
+    cont.innerHTML = `
+      <div style="background:#f0f7ff;border:2px solid #0071e3;border-radius:10px;padding:14px">
+        <div style="font-size:13px;font-weight:700;color:#0051a3;margin-bottom:6px">
+          ✅ Solicitud enviada al admin
+        </div>
+        <div style="font-size:11px;color:#0051a3;line-height:1.6">
+          El admin recibirá tu solicitud por WhatsApp.<br>
+          <strong>Plan:</strong> ${plan.icono} ${plan.nombre}<br>
+          <strong>ID:</strong> <code>${OP.solicitudEnviada?.solicitud_id || "—"}</code>
+        </div>
+        <button class="btn btn-secondary btn-sm"
+                onclick="OP_verificarActivacion('${OP.pacienteSeleccionado?.subject_id || ''}')"
+                style="width:100%;margin-top:10px;font-size:11px">
+          🔄 Verificar si ya fue activada
+        </button>
+      </div>
+    `;
+    cont.style.display = "block";
+  }
+
+  window.OP_verificarActivacion = async function(subjectId) {
+    if (!subjectId) {
+      subjectId = OP.pacienteSeleccionado?.subject_id || window._pacienteActual?.subject_id;
+    }
+    if (!subjectId || !window.supabaseClient) {
+      toast("Falta ID del paciente", "error");
+      return;
+    }
+
+    try {
+      toast("Verificando activación...", "info");
+      const { data, error } = await window.supabaseClient.rpc(
+        "obtener_info_plan_paciente",
+        { p_subject_id: subjectId }
+      );
+      if (error) throw error;
+
+      if (data && data.tiene_plan) {
+        toast(`✓ Plan ${data.plan} activado`, "success");
+        OP.planActualPaciente = data;
+        mostrarPanelSuscripcion(data, subjectId);
+        desbloquearFlujo();
+        if ($id("sec-mi-dashboard")?.classList.contains("active")) {
+          window.operadorV2CargarDashboard();
+        }
+      } else {
+        toast("Aún no se ha activado el plan", "warning");
+      }
+    } catch (e) {
+      console.error("[OP_verificarActivacion]", e);
+      toast("Error: " + e.message, "error");
+    }
+  };
+
+  window.OP_contactarAdmin = function(subjectId) {
+    const paciente = OP.pacienteSeleccionado || window._pacienteActual;
+    const nombre = paciente?.nombre || "paciente";
+    const mensaje = encodeURIComponent(
+      `Hola admin, consulto por el plan de suscripción de: ${nombre}` +
+      (subjectId ? `\nID: ${subjectId}` : "") +
+      `\n\nOperador: ${window.usuarioActual?.nombre || ""}`
+    );
+    window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${mensaje}`, "_blank");
+  };
+
+  window.OP_solicitarAddon = async function(subjectId) {
+    const paciente = OP.pacienteSeleccionado || window._pacienteActual;
+    if (!paciente) { toast("Falta paciente", "error"); return; }
+
+    const mensaje = encodeURIComponent(
+      `🎁 *SOLICITUD DE ADD-ON — EcoRadAi*\n\n` +
+      `👤 *Paciente:* ${paciente.nombre}\n` +
+      (subjectId ? `*ID:* ${subjectId}\n` : "") +
+      `📦 *Motivo:* Cuotas agotadas del plan actual\n` +
+      `👨‍💼 *Operador:* ${window.usuarioActual?.nombre || ""}\n\n` +
+      `Por favor autorizar add-on de consultas/tamizajes.`
+    );
+    window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${mensaje}`, "_blank");
+    toast("Solicitud de add-on enviada al admin", "success");
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // HOOKS: Análisis IA + generación de informes
+  // ═══════════════════════════════════════════════════════════════
+  function instalarHooksAnalisisIA() {
+    if (typeof window.sendToAI === "function" && !window.sendToAI._opHook) {
+      const _orig = window.sendToAI;
+      window.sendToAI = async function(...args) {
+        try {
+          const pid = window._pacienteActual?.subject_id || OP.pacienteSeleccionado?.subject_id;
+          if (pid && document.body.dataset.planVerificado !== "true") {
+            const plan = await verificarPlanPaciente(pid);
+            if (!plan || !plan.tiene_plan) {
+              toast("El paciente no tiene plan activo. Solicita uno primero.", "error");
+              return;
+            }
+          }
+          if (window.supabaseClient) {
+            await window.supabaseClient.from("notificaciones_medicas").insert({
+              tipo: "analisis_pendiente",
+              prioridad: "media",
+              mensaje: `Operador inició análisis IA para: ${window._pacienteActual?.nombre || "paciente"}`,
+              payload: {
+                subject_id: pid,
+                operador_id: window.usuarioActual?.id,
+                operador_nombre: window.usuarioActual?.nombre
+              }
+            }).then(() => {}).catch(e => console.warn("No se pudo notificar pre-IA:", e));
+          }
+          return await _orig.apply(this, args);
+        } catch (e) {
+          console.error("[sendToAI hook]", e);
+          return await _orig.apply(this, args);
+        }
+      };
+      window.sendToAI._opHook = true;
+      console.log("[Operador v2.1] ✓ Hook sendToAI instalado");
+    }
+
+    if (typeof window.generarInformeBase === "function" && !window.generarInformeBase._opHook) {
+      const _orig = window.generarInformeBase;
+      window.generarInformeBase = async function(...args) {
+        const result = await _orig.apply(this, args);
+        try {
+          if (window.supabaseClient) {
+            const pid = window._pacienteActual?.subject_id;
+            if (pid) {
+              await window.supabaseClient.rpc("consumir_cuota_plan", {
+                p_subject_id: pid,
+                p_tipo: "tamizaje"
+              }).then(() => {}).catch(e => console.warn("consumir_cuota_plan:", e));
+            }
+            await window.supabaseClient.from("notificaciones_medicas").insert({
+              tipo: "informe_generado",
+              prioridad: "alta",
+              mensaje: `Informe IA generado para: ${window._pacienteActual?.nombre || "paciente"}`,
+              payload: {
+                subject_id: pid,
+                operador_id: window.usuarioActual?.id,
+                operador_nombre: window.usuarioActual?.nombre,
+                timestamp: new Date().toISOString()
+              }
+            }).then(() => {}).catch(e => console.warn("Notif post-IA:", e));
+          }
+        } catch (e) {
+          console.warn("[generarInformeBase hook]", e);
+        }
+        return result;
+      };
+      window.generarInformeBase._opHook = true;
+      console.log("[Operador v2.1] ✓ Hook generarInformeBase instalado");
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // POLLING DE NOTIFICACIONES (cada 60s)
+  // ═══════════════════════════════════════════════════════════════
+  async function actualizarNotifOperador() {
+    if (!window.supabaseClient || !window.usuarioActual) return;
+    const rol = window.usuarioActual.rol;
+    if (rol !== "operador" && rol !== "admin") return;
+
+    try {
+      const { data, error } = await window.supabaseClient
+        .from("notificaciones_operador")
+        .select("notif_id, tipo, mensaje, leida, created_at")
+        .eq("operador_id", window.usuarioActual.id)
+        .eq("leida", false)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      const noLeidas = data || [];
+
+      const tabNotif = document.querySelector('[data-tab="mis-notificaciones"] .badge-op');
+      if (tabNotif) {
+        if (noLeidas.length > 0) {
+          tabNotif.textContent = noLeidas.length;
+          tabNotif.style.display = "inline-block";
+        } else {
+          tabNotif.style.display = "none";
+        }
+      }
+
+      if (!OP._notifConocidas) OP._notifConocidas = new Set();
+      noLeidas.forEach(n => {
+        if (!OP._notifConocidas.has(n.notif_id)) {
+          OP._notifConocidas.add(n.notif_id);
+          toast(`🔔 ${n.mensaje}`, "info");
+        }
+      });
+
+      if ($id("sec-mis-notificaciones")?.classList.contains("active")) {
+        window.operadorV2CargarNotificaciones();
+      }
+    } catch (e) {
+      console.warn("[actualizarNotifOperador]", e);
+    }
+  }
+
+  function instalarPolling() {
+    if (window._opPollingActivo) return;
+    window._opPollingActivo = true;
+    setInterval(actualizarNotifOperador, 60000);
+    console.log("[Operador v2.1] ✓ Polling de notificaciones activo (60s)");
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ARRANQUE / BOOTSTRAP
+  // ═══════════════════════════════════════════════════════════════
+  function arrancar() {
+    OP.intentos++;
+
+    const rol = window.usuarioActual?.rol;
+    const tabs = $id("tabs-principales");
+
+    if (!tabs || !rol) {
+      if (OP.intentos < OP.MAX_INTENTOS) {
+        setTimeout(arrancar, 250);
+      }
+      return;
+    }
+
+    if (rol !== "operador" && rol !== "admin") {
+      console.log("[Operador v2.1] Rol no aplicable:", rol);
+      return;
+    }
+
+    if (!inyectarHTML()) {
+      if (OP.intentos < OP.MAX_INTENTOS) {
+        setTimeout(arrancar, 250);
+      }
+      return;
+    }
+
+    OP.inicializado = true;
+    aplicarControlTabsOperador();
+    instalarHooksAnalisisIA();
+    instalarPolling();
+    instalarAutoReparacion();
+
+    setTimeout(() => {
+      const activa = document.querySelector("#tabs-principales .tab.active")?.dataset.tab;
+      if (!activa || activa === "mi-dashboard") {
+        window.operadorV2CambiarTab("mi-dashboard");
+      }
+    }, 300);
+
+    console.log("[Operador v2.1] ✓ Wrapper inicializado correctamente");
+  }
+
+  function esperarUsuario() {
+    if (window.usuarioActual?.id) {
+      arrancar();
+    } else {
+      setTimeout(esperarUsuario, 300);
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", esperarUsuario);
+  } else {
+    esperarUsuario();
+  }
+
+  window.addEventListener("ecoradai:login", () => {
+    console.log("[Operador v2.1] Evento login detectado");
+    OP.intentos = 0;
+    arrancar();
+  });
+
+  window.addEventListener("ecoradai:rolCambiado", (e) => {
+    if (e?.detail?.rol === "operador" || e?.detail?.rol === "admin") {
+      OP.intentos = 0;
+      arrancar();
+    }
+  });
+
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════════════════
+     FIN PORTAL OPERADOR v2.1 — FASE 1
+     ═══════════════════════════════════════════════════════════════════ -->
 </body>
 </html>
