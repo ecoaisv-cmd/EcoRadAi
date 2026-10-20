@@ -1160,6 +1160,38 @@ body[data-rol="operador"] #btn-firmar-consulta {
 #sec-captura > .card {
   margin-top: 0 !important;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   FIX v2.0.1 — Bloqueo permanente de tabs para rol MÉDICO
+   El médico solo ve sus tabs clínicas. Nunca Admin/Prompts/Config.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Ocultar tabs prohibidos para médico */
+body[data-rol="medico"] #tabs-principales .tab[data-tab="admin"],
+body[data-rol="medico"] #tabs-principales .tab[data-tab="prompts"],
+body[data-rol="medico"] #tabs-principales .tab[data-tab="config"],
+body[data-rol="medico"] #tabs-principales .tab[data-tab="mis-envios"],
+body[data-rol="medico"] #tabs-principales .tab[data-tab="mis-solicitudes"] {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
+  position: absolute !important;
+  pointer-events: none !important;
+}
+
+/* Asegurar que las tabs del médico SÍ se vean */
+body[data-rol="medico"] #tabs-principales .tab[data-tab="mi-dashboard"],
+body[data-rol="medico"] #tabs-principales .tab[data-tab="por-firmar"],
+body[data-rol="medico"] #tabs-principales .tab[data-tab="mis-firmadas"],
+body[data-rol="medico"] #tabs-principales .tab[data-tab="mis-notificaciones"] {
+  display: inline-flex !important;
+  visibility: visible !important;
+}
 </style>
 </head>
 <body>
@@ -24471,16 +24503,155 @@ document.addEventListener("visibilitychange", function() {
 })();
 </script>
 <!-- ═══════════════════════════════════════════════════════════════════
-     PORTAL MÉDICO v2.0 — FASE 1
-     Dashboard + Por firmar + Notificaciones
-     Compatible con wrappers existentes (Admin, Operador, FaseD)
+     PORTAL MÉDICO v2.0.1 — FASE 1 + FIX DE TABS LIMPIAS
+     Dashboard + Por firmar + Notificaciones + Mis firmadas
+     
+     CAMBIOS v2.0.1:
+     - El médico SOLO ve sus 8 tabs clínicas
+     - Bloqueo permanente de Admin/Prompts/Config/Mis-envios/Mis-solicitudes
+     - Wrapper de ajustarUIPorRol para evitar que oculte las tabs
+     - CSS de refuerzo
+     - Auto-reparación si el DOM se modifica después
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
 "use strict";
 
 (function() {
-  console.log("[Médico v2.0] Iniciando wrapper...");
+  console.log("[Médico v2.0.1] Iniciando wrapper con tabs limpias...");
 
+  // ═══════════════════════════════════════════════════════════════
+  // CONTROL DE TABS — El médico solo ve sus tabs clínicas
+  // ═══════════════════════════════════════════════════════════════
+  const TABS_PERMITIDOS_MEDICO = [
+    "mi-dashboard",
+    "por-firmar",
+    "mis-firmadas",
+    "mis-notificaciones",
+    "captura",
+    "consulta",
+    "pacientes",
+    "informes"
+  ];
+  
+  const TABS_BLOQUEADOS_MEDICO = [
+    "admin",
+    "prompts",
+    "config",
+    "mis-envios",
+    "mis-solicitudes"
+  ];
+
+  function forzarTabsMedicoVisibles() {
+    const rol = window.usuarioActual?.rol;
+    if (rol !== "medico" && rol !== "admin") return;
+    
+    TABS_PERMITIDOS_MEDICO.forEach(id => {
+      const tab = document.querySelector(`#tabs-principales [data-tab="${id}"]`);
+      if (tab) {
+        tab.style.display = "";
+        tab.style.visibility = "visible";
+        tab.style.position = "";
+        tab.style.pointerEvents = "auto";
+        tab.style.width = "";
+        tab.style.height = "";
+        tab.style.padding = "";
+        tab.style.margin = "";
+        tab.style.border = "";
+        tab.style.overflow = "";
+      }
+    });
+  }
+
+  function ocultarTabsBloqueadosMedico() {
+    const rol = window.usuarioActual?.rol;
+    if (rol !== "medico") return;
+    
+    TABS_BLOQUEADOS_MEDICO.forEach(id => {
+      const tab = document.querySelector(`#tabs-principales [data-tab="${id}"]`);
+      if (tab) tab.style.display = "none";
+    });
+    
+    document.querySelectorAll('#tabs-principales .tab[data-acceso="admin"], #tabs-principales .tab[data-acceso="operador"]').forEach(tab => {
+      if (tab.dataset.tab !== "por-firmar" && !TABS_PERMITIDOS_MEDICO.includes(tab.dataset.tab)) {
+        tab.style.display = "none";
+      }
+    });
+  }
+
+  function aplicarControlTabsMedico() {
+    forzarTabsMedicoVisibles();
+    ocultarTabsBloqueadosMedico();
+  }
+
+  window._medicoControlTabs = aplicarControlTabsMedico;
+
+  // ─── Instalar wrapper de ajustarUIPorRol ───
+  let _intentosWrapperAjustar = 0;
+  function instalarWrapperAjustarUIPorRol() {
+    _intentosWrapperAjustar++;
+    
+    if (typeof window.ajustarUIPorRol !== "function") {
+      if (_intentosWrapperAjustar < 40) setTimeout(instalarWrapperAjustarUIPorRol, 250);
+      return;
+    }
+    
+    if (window.ajustarUIPorRol._medicoFix) return;
+    
+    const _orig = window.ajustarUIPorRol;
+    window.ajustarUIPorRol = function(rol) {
+      const result = _orig.apply(this, arguments);
+      if (rol === "medico" || rol === "admin") {
+        setTimeout(aplicarControlTabsMedico, 50);
+        setTimeout(aplicarControlTabsMedico, 200);
+        setTimeout(aplicarControlTabsMedico, 500);
+        setTimeout(aplicarControlTabsMedico, 1000);
+        setTimeout(aplicarControlTabsMedico, 2000);
+      }
+      return result;
+    };
+    window.ajustarUIPorRol._medicoFix = true;
+    console.log("[Médico v2.0.1] ✓ Wrapper de ajustarUIPorRol instalado");
+  }
+  instalarWrapperAjustarUIPorRol();
+
+  // ─── Auto-reparación: vigilar si alguien modifica las tabs ───
+  function instalarAutoReparacion() {
+    if (window._medicoAutoReparacionActiva) return;
+    window._medicoAutoReparacionActiva = true;
+    
+    setInterval(() => {
+      const rol = window.usuarioActual?.rol;
+      if (rol !== "medico" && rol !== "admin") return;
+      
+      // Verificar si alguna tab del médico está oculta
+      let necesitaReparar = false;
+      TABS_PERMITIDOS_MEDICO.forEach(id => {
+        const tab = document.querySelector(`#tabs-principales [data-tab="${id}"]`);
+        if (tab && (tab.style.display === "none" || tab.offsetWidth === 0)) {
+          necesitaReparar = true;
+        }
+      });
+      
+      // Verificar si alguna tab bloqueada está visible
+      TABS_BLOQUEADOS_MEDICO.forEach(id => {
+        const tab = document.querySelector(`#tabs-principales [data-tab="${id}"]`);
+        if (tab && tab.offsetWidth > 0 && rol === "medico") {
+          necesitaReparar = true;
+        }
+      });
+      
+      if (necesitaReparar) {
+        console.log("[Médico v2.0.1] Auto-reparación de tabs activada");
+        aplicarControlTabsMedico();
+      }
+    }, 3000);
+    
+    console.log("[Médico v2.0.1] ✓ Auto-reparación instalada (cada 3s)");
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ESTADO DEL WRAPPER
+  // ═══════════════════════════════════════════════════════════════
   const MED = {
     inicializado: false,
     intentos: 0,
@@ -24531,7 +24702,8 @@ document.addEventListener("visibilitychange", function() {
       }
       console.table(results);
       return results;
-    }
+    },
+    forzarTabs: aplicarControlTabsMedico
   };
 
   // ─── Helpers ───
@@ -24541,7 +24713,7 @@ document.addEventListener("visibilitychange", function() {
     return d.innerHTML;
   };
   const toast = window.showStatus || function(msg, tipo) {
-    console.log("[Médico v2.0]", tipo || "info", msg);
+    console.log("[Médico v2.0.1]", tipo || "info", msg);
   };
   function $id(id) { return document.getElementById(id); }
   function debounce(fn, ms) {
@@ -24576,21 +24748,24 @@ document.addEventListener("visibilitychange", function() {
          : "#34c759";
   }
 
-  // ─── Inyectar HTML ───
+  // ═══════════════════════════════════════════════════════════════
+  // INYECCIÓN DE HTML
+  // ═══════════════════════════════════════════════════════════════
   function inyectarHTML() {
     const tabs = $id("tabs-principales");
     if (!tabs) return false;
 
-    // Añadir 4 tabs nuevas al inicio (visibles solo para médico)
+    // ─── Añadir tabs nuevas del médico ───
     const nuevasTabs = [
-      { id: "mi-dashboard", icon: "🏠", label: "Mi Dashboard", acceso: "medico" },
+      { id: "mi-dashboard", icon: "🏠", label: "Mi Dashboard", acceso: "medico", badge: false },
       { id: "por-firmar", icon: "⏳", label: "Por firmar", acceso: "medico", badge: true },
-      { id: "mis-firmadas", icon: "📋", label: "Mis firmadas", acceso: "medico" },
+      { id: "mis-firmadas", icon: "📋", label: "Mis firmadas", acceso: "medico", badge: false },
       { id: "mis-notificaciones", icon: "🔔", label: "Notificaciones", acceso: "medico", badge: true }
     ];
 
     nuevasTabs.forEach(t => {
       if (document.querySelector(`[data-tab="${t.id}"]`)) return;
+      
       const tab = document.createElement("div");
       tab.className = "tab";
       tab.dataset.tab = t.id;
@@ -24600,8 +24775,8 @@ document.addEventListener("visibilitychange", function() {
       tabs.insertBefore(tab, tabs.firstChild);
     });
 
-    // Crear secciones si no existen
-    const container = document.querySelector(".container");
+    // ─── Crear secciones ───
+    const container = document.querySelector(".container") || document.body;
 
     if (!$id("sec-mi-dashboard")) {
       const sec = document.createElement("div");
@@ -24641,7 +24816,7 @@ document.addEventListener("visibilitychange", function() {
       sec.innerHTML = `
         <div class="card">
           <div class="card-title"><span class="num">🔔</span><span>Mis notificaciones</span></div>
-          <div style="display:flex;gap:6px;margin-bottom:14px">
+          <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
             <button class="btn btn-primary btn-xs" onclick="medicoV2FiltrarNotificaciones('todas', this)">Todas</button>
             <button class="btn btn-secondary btn-xs" onclick="medicoV2FiltrarNotificaciones('no-leidas', this)">No leídas</button>
             <button class="btn btn-secondary btn-xs" onclick="medicoV2MarcarTodasLeidas()" style="margin-left:auto">✓ Marcar todas como leídas</button>
@@ -24652,20 +24827,21 @@ document.addEventListener("visibilitychange", function() {
       container.appendChild(sec);
     }
 
+    // Aplicar control de tabs después de crear todo
+    setTimeout(aplicarControlTabsMedico, 100);
+    setTimeout(aplicarControlTabsMedico, 400);
+
     return true;
   }
 
   // ─── Cambiar tab ───
   window.medicoV2CambiarTab = function(tab) {
-    // Marcar tab activa
     document.querySelectorAll("#tabs-principales .tab").forEach(t => {
       t.classList.toggle("active", t.dataset.tab === tab);
     });
 
-    // Ocultar todas las secciones
     document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
 
-    // Mapeo
     const secMap = {
       "mi-dashboard": "sec-mi-dashboard",
       "por-firmar": "sec-por-firmar",
@@ -24677,7 +24853,6 @@ document.addEventListener("visibilitychange", function() {
     const sec = secId ? $id(secId) : null;
     if (sec) sec.classList.add("active");
 
-    // Cargar datos según tab
     setTimeout(() => {
       switch (tab) {
         case "mi-dashboard": window.medicoV2CargarDashboard(); break;
@@ -24690,7 +24865,9 @@ document.addEventListener("visibilitychange", function() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // ─── Dashboard ───
+  // ═══════════════════════════════════════════════════════════════
+  // DASHBOARD
+  // ═══════════════════════════════════════════════════════════════
   window.medicoV2CargarDashboard = async function() {
     const cont = $id("med-dashboard-content");
     if (!cont || !window.supabaseClient) return;
@@ -24710,7 +24887,6 @@ document.addEventListener("visibilitychange", function() {
       const notifNoLeidas = kpis.notificaciones_no_leidas || 0;
       const rechazadas = kpis.rechazadas_mes || 0;
 
-      // Actualizar badge de "Por firmar"
       const tabPorFirmar = document.querySelector('[data-tab="por-firmar"] .badge-med');
       if (tabPorFirmar) {
         if (pendientes > 0) {
@@ -24721,7 +24897,6 @@ document.addEventListener("visibilitychange", function() {
         }
       }
 
-      // Actualizar badge de "Notificaciones"
       const tabNotif = document.querySelector('[data-tab="mis-notificaciones"] .badge-med');
       if (tabNotif) {
         if (notifNoLeidas > 0) {
@@ -24811,9 +24986,11 @@ document.addEventListener("visibilitychange", function() {
     }
   };
 
-  // ─── Por firmar ───
+  // ═══════════════════════════════════════════════════════════════
+  // POR FIRMAR
+  // ═══════════════════════════════════════════════════════════════
   window.medicoV2CargarPendientes = async function() {
-    const cont = $id("admin-v2-lista-pendientes-firma") || $id("sec-por-firmar");
+    const cont = $id("med-pendientes-lista") || $id("admin-v2-lista-pendientes-firma");
     if (!cont || !window.supabaseClient) return;
     cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando pendientes...</p></div>';
 
@@ -24828,12 +25005,11 @@ document.addEventListener("visibilitychange", function() {
   };
 
   function renderPendientes() {
-    const cont = $id("admin-v2-lista-pendientes-firma") || $id("sec-por-firmar");
+    const cont = $id("med-pendientes-lista") || $id("admin-v2-lista-pendientes-firma");
     if (!cont) return;
 
     let lista = MED.cache.pendientes.slice();
 
-    // Filtro
     if (MED.filtros.pendientes === "urgentes") {
       lista = lista.filter(c => parseFloat(c.horas_esperando) >= 48);
     } else if (MED.filtros.pendientes === "hoy") {
@@ -24841,7 +25017,6 @@ document.addEventListener("visibilitychange", function() {
       lista = lista.filter(c => new Date(c.created_at).toDateString() === hoy);
     }
 
-    // Búsqueda
     const q = (MED.filtros.busquedaPendientes || "").toLowerCase().trim();
     if (q) {
       lista = lista.filter(c => 
@@ -24857,22 +25032,7 @@ document.addEventListener("visibilitychange", function() {
       return;
     }
 
-    cont.innerHTML = `
-      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
-        <button class="btn ${MED.filtros.pendientes === 'todos' ? 'btn-primary' : 'btn-secondary'} btn-xs" onclick="medicoV2FiltrarPendientes('todos', this)">Todas (${MED.cache.pendientes.length})</button>
-        <button class="btn ${MED.filtros.pendientes === 'urgentes' ? 'btn-primary' : 'btn-secondary'} btn-xs" onclick="medicoV2FiltrarPendientes('urgentes', this)">🚨 +48h</button>
-        <button class="btn ${MED.filtros.pendientes === 'hoy' ? 'btn-primary' : 'btn-secondary'} btn-xs" onclick="medicoV2FiltrarPendientes('hoy', this)">📅 Hoy</button>
-      </div>
-
-      <div class="form-group" style="margin-bottom:14px">
-        <input type="text" id="med-buscar-pendientes" placeholder="🔍 Buscar por paciente, CIE-10, operador..." 
-               value="${esc(MED.filtros.busquedaPendientes)}"
-               oninput="medicoV2BuscarPendientes(this.value)"
-               style="font-size:12px">
-      </div>
-
-      ${lista.map(c => renderPendienteCard(c)).join("")}
-    `;
+    cont.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px"><strong>${lista.length}</strong> consulta(s)</div>${lista.map(c => renderPendienteCard(c)).join("")}`;
   }
 
   function renderPendienteCard(c) {
@@ -24907,15 +25067,9 @@ document.addEventListener("visibilitychange", function() {
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;min-width:180px">
-            <button class="btn btn-primary btn-sm" onclick="medicoV2VerYFirmar('${c.consulta_id}')" style="font-size:11px">
-              👁️ Ver y firmar
-            </button>
-            <button class="btn btn-success btn-sm" onclick="medicoV2FirmarDirecto('${c.consulta_id}')" style="font-size:11px">
-              ✅ Firmar directo
-            </button>
-            <button class="btn btn-warning btn-sm" onclick="medicoV2Rechazar('${c.consulta_id}')" style="font-size:11px">
-              ❌ Rechazar
-            </button>
+            <button class="btn btn-primary btn-sm" onclick="medicoV2VerYFirmar('${c.consulta_id}')" style="font-size:11px">👁️ Ver y firmar</button>
+            <button class="btn btn-success btn-sm" onclick="medicoV2FirmarDirecto('${c.consulta_id}')" style="font-size:11px">✅ Firmar directo</button>
+            <button class="btn btn-warning btn-sm" onclick="medicoV2Rechazar('${c.consulta_id}')" style="font-size:11px">❌ Rechazar</button>
           </div>
         </div>
       </div>
@@ -24947,28 +25101,24 @@ document.addEventListener("visibilitychange", function() {
       const { data: { session } } = await window.supabaseClient.auth.getSession();
       if (!session) throw new Error("Sesión inválida");
 
-      // Obtener consulta
       const { data: consulta, error: errC } = await window.supabaseClient
         .from("consultas")
-        .select("consulta_id, case_id, medico_csspm")
+        .select("consulta_id, case_id")
         .eq("consulta_id", consultaId)
         .single();
       if (errC) throw errC;
 
-      // Obtener CSSPM del perfil del médico
       const { data: perfil } = await window.supabaseClient
         .from("profiles")
         .select("nombre, email")
         .eq("id", window.usuarioActual.id)
         .single();
 
-      // Generar hash de firma
       const hashInput = (perfil?.email || "") + consulta.case_id + new Date().toISOString();
       const hashBuf = new TextEncoder().encode(hashInput);
       const hashArr = await crypto.subtle.digest("SHA-256", hashBuf);
       const firmaHash = Array.from(new Uint8Array(hashArr)).map(b => b.toString(16).padStart(2, "0")).join("");
 
-      // Firmar
       const { error: errFirma } = await window.supabaseClient
         .from("consultas")
         .update({
@@ -25019,7 +25169,6 @@ document.addEventListener("visibilitychange", function() {
 
       if (errR) throw errR;
 
-      // Notificar al operador
       if (consulta.created_by) {
         try {
           await window.supabaseClient.from("notificaciones_operador").insert({
@@ -25040,7 +25189,9 @@ document.addEventListener("visibilitychange", function() {
     }
   };
 
-  // ─── Mis firmadas ───
+  // ═══════════════════════════════════════════════════════════════
+  // MIS FIRMADAS
+  // ═══════════════════════════════════════════════════════════════
   window.medicoV2CargarFirmadas = async function() {
     const cont = $id("med-firmadas-lista");
     if (!cont || !window.supabaseClient) return;
@@ -25087,9 +25238,7 @@ document.addEventListener("visibilitychange", function() {
                     ${esc(c.case_id)}
                   </div>
                 </div>
-                <button class="btn btn-secondary btn-xs" onclick="medicoV2VerYFirmar('${c.consulta_id}')" style="font-size:10px">
-                  👁️ Ver
-                </button>
+                <button class="btn btn-secondary btn-xs" onclick="medicoV2VerYFirmar('${c.consulta_id}')" style="font-size:10px">👁️ Ver</button>
               </div>
             </div>
           `;
@@ -25101,7 +25250,9 @@ document.addEventListener("visibilitychange", function() {
     }
   };
 
-  // ─── Notificaciones ───
+  // ═══════════════════════════════════════════════════════════════
+  // NOTIFICACIONES
+  // ═══════════════════════════════════════════════════════════════
   window.medicoV2CargarNotificaciones = async function() {
     const cont = $id("med-notificaciones-lista");
     if (!cont || !window.supabaseClient) return;
@@ -25199,7 +25350,7 @@ document.addEventListener("visibilitychange", function() {
     } catch (e) { toast("Error: " + e.message, "error"); }
   };
 
-  // ─── Sección Por firmar (inyectada al admin-container) ───
+  // ─── Sección por-firmar (por si no existe) ───
   function inyectarSeccionPorFirmar() {
     if ($id("sec-por-firmar")) return true;
     const container = document.querySelector(".container");
@@ -25211,14 +25362,25 @@ document.addEventListener("visibilitychange", function() {
     sec.innerHTML = `
       <div class="card">
         <div class="card-title"><span class="num">⏳</span><span>Consultas pendientes de firma</span></div>
-        <div id="admin-v2-lista-pendientes-firma"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+        <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-xs" onclick="medicoV2FiltrarPendientes('todos', this)">Todas</button>
+          <button class="btn btn-secondary btn-xs" onclick="medicoV2FiltrarPendientes('urgentes', this)">🚨 +48h</button>
+          <button class="btn btn-secondary btn-xs" onclick="medicoV2FiltrarPendientes('hoy', this)">📅 Hoy</button>
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <input type="text" id="med-buscar-pendientes" placeholder="🔍 Buscar por paciente, CIE-10, operador..." 
+                 oninput="medicoV2BuscarPendientes(this.value)" style="font-size:12px">
+        </div>
+        <div id="med-pendientes-lista"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
       </div>
     `;
     container.appendChild(sec);
     return true;
   }
 
-  // ─── Inicialización ───
+  // ═══════════════════════════════════════════════════════════════
+  // INICIALIZACIÓN
+  // ═══════════════════════════════════════════════════════════════
   function intentarInicializar() {
     MED.intentos++;
 
@@ -25232,9 +25394,19 @@ document.addEventListener("visibilitychange", function() {
 
     if (okHTML && okSec) {
       MED.inicializado = true;
-      console.log("[Médico v2.0] ✓ Inicializado en intento", MED.intentos);
+      console.log("[Médico v2.0.1] ✓ Inicializado en intento", MED.intentos);
+      
+      // Aplicar control inmediatamente
+      aplicarControlTabsMedico();
+      setTimeout(aplicarControlTabsMedico, 300);
+      setTimeout(aplicarControlTabsMedico, 800);
+      setTimeout(aplicarControlTabsMedico, 1500);
+      setTimeout(aplicarControlTabsMedico, 3000);
+      
+      // Instalar auto-reparación
+      instalarAutoReparacion();
 
-      // Cargar dashboard por defecto si estamos en rol médico
+      // Ir al dashboard si es médico
       if (window.usuarioActual?.rol === "medico") {
         setTimeout(() => {
           window.medicoV2CambiarTab("mi-dashboard");
@@ -25244,7 +25416,7 @@ document.addEventListener("visibilitychange", function() {
     }
 
     if (MED.intentos < MED.MAX_INTENTOS) setTimeout(intentarInicializar, 250);
-    else console.warn("[Médico v2.0] Timeout. Diagnóstico: __MEDICO_V2.estado()");
+    else console.warn("[Médico v2.0.1] Timeout. Diagnóstico: __MEDICO_V2.estado()");
   }
 
   if (document.readyState === "loading") {
@@ -25253,7 +25425,9 @@ document.addEventListener("visibilitychange", function() {
     setTimeout(intentarInicializar, 600);
   }
 
-  console.log("[Médico v2.0] Wrapper cargado. Diagnóstico: __MEDICO_V2.estado()");
+  console.log("[Médico v2.0.1] Wrapper cargado. Tabs limpias activas.");
+  console.log("[Médico v2.0.1] Diagnóstico: __MEDICO_V2.estado()");
+  console.log("[Médico v2.0.1] Forzar tabs manualmente: __MEDICO_V2.forzarTabs()");
 })();
 </script>
 </body>
