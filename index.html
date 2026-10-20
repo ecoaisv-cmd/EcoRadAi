@@ -5806,16 +5806,12 @@ async function guardarCasoDB(caso) {
     // ═══════════════════════════════════════════════════════
     // 4) AUDIT LOG
     // ═══════════════════════════════════════════════════════
-    await supabaseClient.from("audit_log").insert({
-      user_id: usuarioActual?.id || null,
-      accion: "guardar_caso",
-      case_id: caso.case_id,
-      detalle: {
-        estudio: caso.encounter?.estudio,
-        n_imagenes: caso.acquisition?.imagenes?.length || 0,
-        subject_id: caso.subject.subject_id
-      }
-    });
+          await window.supabaseClient.rpc("admin_log_accion", {
+        p_accion: "admin_crear_usuario",
+        p_entidad: "profiles",
+        p_entidad_id: authUserId,
+        p_detalle: { email, nombre, rol, telefono, paciente_id }
+      });
 
     console.log("[Supabase] ✓ Caso guardado:", caso.case_id, "→ paciente:", caso.subject.subject_id);
     return true;
