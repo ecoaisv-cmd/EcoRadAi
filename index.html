@@ -23555,5 +23555,924 @@ document.addEventListener("visibilitychange", function() {
 });
 </script>
 <script src="observability-wrapper.js?v=999" defer></script>
+<!-- ═══════════════════════════════════════════════════════════════════
+     ADMIN v2.0 — WRAPPER MEJORADO
+     Requiere:
+     - Worker v2.5 con /admin/create-user ✅
+     - SQL de Fase 1 aplicado en Supabase ✅
+     - profiles con: telefono, ultima_sesion, updated_at ✅
+     - Tabla paciente_operador ✅
+     - 9 RPCs admin_* ✅
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+(function() {
+  console.log("[Admin v2.0] Iniciando wrapper...");
+
+  const V2 = {
+    inicializado: false,
+    intentos: 0,
+    MAX_INTENTOS: 40,
+    cache: {
+      usuarios: [],
+      kpis: null,
+      pendientesFirma: [],
+      enviosOperadores: [],
+      auditoria: []
+    },
+    filtros: {
+      rolUsuario: "todos",
+      busquedaUsuario: "",
+      filtroPendientes: "todos"
+    }
+  };
+
+  window.ADMIN_V2 = V2;
+  window.__ADMIN_V2 = {
+    estado: () => ({
+      inicializado: V2.inicializado,
+      intentos: V2.intentos,
+      usuario: window.usuarioActual?.rol,
+      cacheUsuarios: V2.cache.usuarios.length,
+      kpis: V2.cache.kpis
+    }),
+    recargarTodo: () => {
+      V2.cache = { usuarios: [], kpis: null, pendientesFirma: [], enviosOperadores: [], auditoria: [] };
+      window.adminV2CargarDashboard();
+      window.adminV2RefrescarUsuarios();
+      window.adminV2RefrescarPendientesFirma();
+      window.adminV2RefrescarEnvios();
+      window.adminV2RefrescarAuditoria();
+    },
+    verificarRPCS: async () => {
+      const rpcs = [
+        "listar_usuarios_admin", "dashboard_admin_kpis",
+        "admin_actualizar_usuario", "admin_log_accion",
+        "admin_listar_auditoria", "admin_consultas_pendientes_firma",
+        "admin_envios_operadores", "admin_metricas_por_rol",
+        "admin_forzar_logout"
+      ];
+      const results = {};
+      for (const rpc of rpcs) {
+        try {
+          const args = rpc === "listar_usuarios_admin" ? { p_rol: null }
+                     : rpc === "admin_listar_auditoria" ? { p_limit: 1 }
+                     : rpc === "admin_envios_operadores" ? { p_dias: 1 }
+                     : {};
+          const { error } = await window.supabaseClient.rpc(rpc, args);
+          results[rpc] = error ? `❌ ${error.code || error.message}` : "✅";
+        } catch (e) {
+          results[rpc] = `❌ ${e.message}`;
+        }
+      }
+      console.table(results);
+      return results;
+    }
+  };
+
+  const esc = window.escapeHtml || function(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  };
+
+  const toast = window.showStatus || function(msg, tipo) {
+    console.log("[Admin v2.0]", tipo || "info", msg);
+  };
+
+  function $id(id) { return document.getElementById(id); }
+
+  function debounce(fn, ms) {
+    let t;
+    return function() {
+      clearTimeout(t);
+      const ctx = this, args = arguments;
+      t = setTimeout(() => fn.apply(ctx, args), ms);
+    };
+  }
+
+  function fechaCorta(iso) {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+    } catch (e) { return iso; }
+  }
+
+  function tiempoRelativo(iso) {
+    if (!iso) return "—";
+    const ms = Date.now() - new Date(iso).getTime();
+    const min = Math.floor(ms / 60000);
+    if (min < 1) return "ahora";
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h}h`;
+    const d = Math.floor(h / 24);
+    if (d < 30) return `${d}d`;
+    return fechaCorta(iso);
+  }
+
+  async function logAccion(accion, entidad, entidadId, detalle) {
+    if (!window.supabaseClient) return;
+    try {
+      await window.supabaseClient.rpc("admin_log_accion", {
+        p_accion: accion,
+        p_entidad: entidad || null,
+        p_entidad_id: entidadId ? String(entidadId) : null,
+        p_detalle: detalle || {}
+      });
+    } catch (e) { console.warn("[Admin v2.0] logAccion:", e); }
+  }
+
+  const ROL_LABELS = { admin: "Administrador", medico: "Médico", operador: "Operador", paciente: "Paciente" };
+  const ROL_ICONOS = { admin: "🔧", medico: "👨‍⚕️", operador: "📤", paciente: "👤" };
+  const ROL_COLORES = { admin: "#d4a017", medico: "#0071e3", operador: "#34c759", paciente: "#86868b" };
+
+  function inyectarHTML() {
+    const container = document.querySelector(".admin-container");
+    if (!container) return false;
+
+    const subtabs = $id("admin-subtabs");
+    if (subtabs && !subtabs.querySelector('[data-subtab="dashboard"]')) {
+      const nuevos = [
+        { id: "dashboard", icon: "🏠", label: "Dashboard" },
+        { id: "usuarios", icon: "👥", label: "Usuarios" },
+        { id: "por-firmar", icon: "⏳", label: "Por firmar" },
+        { id: "envios", icon: "📤", label: "Envíos" },
+        { id: "auditoria", icon: "📊", label: "Auditoría" }
+      ];
+      subtabs.insertAdjacentHTML("afterbegin", nuevos.map(n =>
+        `<div class="admin-subtab" data-subtab="${n.id}" onclick="cambiarSubtabAdmin('${n.id}')">${n.icon} ${n.label}</div>`
+      ).join(""));
+    }
+
+    if (!$id("admin-sec-dashboard")) {
+      const sec = document.createElement("div");
+      sec.className = "admin-section";
+      sec.id = "admin-sec-dashboard";
+      sec.innerHTML = '<div id="admin-dashboard-content"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>';
+      container.appendChild(sec);
+    }
+
+    if (!$id("admin-sec-usuarios")) {
+      const sec = document.createElement("div");
+      sec.className = "admin-section";
+      sec.id = "admin-sec-usuarios";
+      sec.innerHTML = `
+        <div class="admin-alert"><strong>👥 Gestión de usuarios</strong> — Administra cuentas de médicos, operadores y pacientes.</div>
+        <div class="btn-row" style="margin-bottom:14px">
+          <button class="btn btn-primary btn-sm" onclick="adminV2AbrirModalCrearUsuario()">+ Nuevo usuario</button>
+          <button class="btn btn-secondary btn-sm" onclick="adminV2RefrescarUsuarios()">🔄 Recargar</button>
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <input type="text" id="admin-v2-buscar-usuario" placeholder="🔍 Buscar por nombre o email..." oninput="adminV2FiltrarUsuarios(this.value)">
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-xs admin-v2-filtro-rol" data-rol="todos" onclick="adminV2CambiarFiltroRol('todos', this)">Todos</button>
+          <button class="btn btn-secondary btn-xs admin-v2-filtro-rol" data-rol="operador" onclick="adminV2CambiarFiltroRol('operador', this)">📤 Operadores</button>
+          <button class="btn btn-secondary btn-xs admin-v2-filtro-rol" data-rol="medico" onclick="adminV2CambiarFiltroRol('medico', this)">👨‍⚕️ Médicos</button>
+          <button class="btn btn-secondary btn-xs admin-v2-filtro-rol" data-rol="paciente" onclick="adminV2CambiarFiltroRol('paciente', this)">👤 Pacientes</button>
+          <button class="btn btn-secondary btn-xs admin-v2-filtro-rol" data-rol="admin" onclick="adminV2CambiarFiltroRol('admin', this)">🔧 Admins</button>
+        </div>
+        <div id="admin-v2-lista-usuarios"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+      `;
+      container.appendChild(sec);
+    }
+
+    if (!$id("admin-sec-por-firmar")) {
+      const sec = document.createElement("div");
+      sec.className = "admin-section";
+      sec.id = "admin-sec-por-firmar";
+      sec.innerHTML = `
+        <div class="admin-alert"><strong>⏳ Consultas pendientes de firma</strong> — Supervisa la carga de trabajo de los médicos.</div>
+        <div class="btn-row" style="margin-bottom:14px">
+          <button class="btn btn-secondary btn-sm" onclick="adminV2RefrescarPendientesFirma()">🔄 Recargar</button>
+          <button class="btn btn-warning btn-sm" onclick="adminV2RecordarATodos()">🔔 Recordar a todos</button>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-xs admin-v2-filtro-pf" data-filtro="todos" onclick="adminV2CambiarFiltroPendientes('todos', this)">Todas</button>
+          <button class="btn btn-secondary btn-xs admin-v2-filtro-pf" data-filtro="urgentes" onclick="adminV2CambiarFiltroPendientes('urgentes', this)">🚨 +48h</button>
+          <button class="btn btn-secondary btn-xs admin-v2-filtro-pf" data-filtro="hoy" onclick="adminV2CambiarFiltroPendientes('hoy', this)">📅 Hoy</button>
+        </div>
+        <div id="admin-v2-lista-pendientes-firma"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+      `;
+      container.appendChild(sec);
+    }
+
+    if (!$id("admin-sec-envios")) {
+      const sec = document.createElement("div");
+      sec.className = "admin-section";
+      sec.id = "admin-sec-envios";
+      sec.innerHTML = `
+        <div class="admin-alert"><strong>📤 Envíos de operadores</strong> — Timeline de todos los envíos.</div>
+        <div class="btn-row" style="margin-bottom:14px">
+          <button class="btn btn-secondary btn-sm" onclick="adminV2RefrescarEnvios()">🔄 Recargar</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+          <div class="form-group" style="margin-bottom:0">
+            <label style="font-size:11px;font-weight:600">Días hacia atrás</label>
+            <input type="number" id="admin-v2-dias-envios" value="30" min="1" max="365" style="font-size:12px" onchange="adminV2RefrescarEnvios()">
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label style="font-size:11px;font-weight:600">Estado</label>
+            <select id="admin-v2-filtro-envios-estado" style="font-size:12px" onchange="adminV2RefrescarEnvios()">
+              <option value="todos">Todos</option>
+              <option value="borrador">Borrador</option>
+              <option value="pendiente_firma">Pendiente firma</option>
+              <option value="firmada">Firmada</option>
+              <option value="rechazada">Rechazada</option>
+            </select>
+          </div>
+        </div>
+        <div id="admin-v2-metricas-operadores" style="margin-bottom:14px"></div>
+        <div id="admin-v2-lista-envios"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+      `;
+      container.appendChild(sec);
+    }
+
+    if (!$id("admin-sec-auditoria")) {
+      const sec = document.createElement("div");
+      sec.className = "admin-section";
+      sec.id = "admin-sec-auditoria";
+      sec.innerHTML = `
+        <div class="admin-alert"><strong>📊 Auditoría</strong> — Log de acciones sensibles del sistema.</div>
+        <div class="btn-row" style="margin-bottom:14px">
+          <button class="btn btn-secondary btn-sm" onclick="adminV2RefrescarAuditoria()">🔄 Recargar</button>
+          <button class="btn btn-primary btn-sm" onclick="adminV2ExportarAuditoriaCSV()">📥 Exportar CSV</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+          <div class="form-group" style="margin-bottom:0">
+            <label style="font-size:11px;font-weight:600">Acción</label>
+            <select id="admin-v2-filtro-auditoria-accion" style="font-size:12px" onchange="adminV2RefrescarAuditoria()">
+              <option value="">Todas</option>
+              <option value="admin_actualizar_usuario">Actualizar usuario</option>
+              <option value="admin_crear_usuario">Crear usuario</option>
+              <option value="admin_forzar_logout">Forzar logout</option>
+              <option value="guardar_caso">Guardar caso</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label style="font-size:11px;font-weight:600">Límite</label>
+            <input type="number" id="admin-v2-limit-auditoria" value="100" min="10" max="1000" style="font-size:12px" onchange="adminV2RefrescarAuditoria()">
+          </div>
+        </div>
+        <div id="admin-v2-lista-auditoria"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+      `;
+      container.appendChild(sec);
+    }
+
+    return true;
+  }
+
+  window.adminV2CargarDashboard = async function() {
+    const cont = $id("admin-dashboard-content");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando KPIs...</p></div>';
+
+    try {
+      const { data: kpis, error } = await window.supabaseClient.rpc("dashboard_admin_kpis");
+      if (error) throw error;
+      V2.cache.kpis = kpis;
+      const roles = kpis.usuarios_por_rol || {};
+      const rolesList = ["admin", "medico", "operador", "paciente"];
+
+      cont.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px">
+          <div class="admin-card" style="background:linear-gradient(135deg,#f0f7ff,#e8f4fd);border:2px solid #0071e3">
+            <div style="font-size:10px;font-weight:700;color:#0051a3;text-transform:uppercase">Consultas hoy</div>
+            <div style="font-size:32px;font-weight:800;color:#0051a3;margin-top:4px">${kpis.consultas_hoy || 0}</div>
+            <div style="font-size:10px;color:#0051a3;margin-top:4px">Sem: <strong>${kpis.consultas_semana || 0}</strong> · Mes: <strong>${kpis.consultas_mes || 0}</strong></div>
+          </div>
+          <div class="admin-card" style="background:linear-gradient(135deg,#fff9e6,#fff3cc);border:2px solid #ff9500">
+            <div style="font-size:10px;font-weight:700;color:#8a6a00;text-transform:uppercase">Pendientes firma</div>
+            <div style="font-size:32px;font-weight:800;color:#8a6a00;margin-top:4px">${kpis.pendientes_firma || 0}</div>
+            ${(kpis.pendientes_firma_urgentes || 0) > 0 
+              ? `<div style="font-size:10px;color:#ff3b30;margin-top:4px;font-weight:700">🚨 ${kpis.pendientes_firma_urgentes} con +48h</div>`
+              : `<div style="font-size:10px;color:#8a6a00;margin-top:4px">Sin urgencias</div>`}
+          </div>
+          <div class="admin-card" style="background:linear-gradient(135deg,#f0fff4,#e8f9ec);border:2px solid #34c759">
+            <div style="font-size:10px;font-weight:700;color:#1a4a2a;text-transform:uppercase">Suscripciones</div>
+            <div style="font-size:32px;font-weight:800;color:#1a4a2a;margin-top:4px">${kpis.suscripciones_activas || 0}</div>
+            <div style="font-size:10px;color:#1a4a2a;margin-top:4px">${(kpis.suscripciones_por_vencer || 0) > 0 ? `⚠️ ${kpis.suscripciones_por_vencer} por vencer` : `✅ Al día`}</div>
+          </div>
+          <div class="admin-card" style="background:linear-gradient(135deg,#fef3f2,#fde8e6);border:2px solid #d4a017">
+            <div style="font-size:10px;font-weight:700;color:#8a6a00;text-transform:uppercase">MRR</div>
+            <div style="font-size:32px;font-weight:800;color:#8a6a00;margin-top:4px">$${(kpis.mrr || 0).toFixed(2)}</div>
+            <div style="font-size:10px;color:#8a6a00;margin-top:4px">Mes: <strong>$${(kpis.ingresos_mes || 0).toFixed(2)}</strong></div>
+          </div>
+        </div>
+        <div class="admin-card" style="margin-bottom:20px">
+          <div class="admin-card-header"><div><div class="admin-card-title">👥 Usuarios por rol</div></div></div>
+          <div class="admin-card-body">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+              ${rolesList.map(rol => {
+                const count = roles[rol] || 0;
+                return `<div style="background:${ROL_COLORES[rol]}11;border:1.5px solid ${ROL_COLORES[rol]};border-radius:8px;padding:12px;text-align:center">
+                  <div style="font-size:24px">${ROL_ICONOS[rol]}</div>
+                  <div style="font-size:10px;font-weight:700;color:${ROL_COLORES[rol]};text-transform:uppercase;margin-top:4px">${ROL_LABELS[rol]}</div>
+                  <div style="font-size:20px;font-weight:800;color:${ROL_COLORES[rol]};margin-top:2px">${count}</div>
+                </div>`;
+              }).join("")}
+            </div>
+          </div>
+        </div>
+        ${(kpis.pendientes_firma_urgentes > 0 || kpis.suscripciones_por_vencer > 0) ? `
+          <div class="admin-card" style="border-left:4px solid #ff9500">
+            <div class="admin-card-header"><div><div class="admin-card-title">🚨 Alertas</div></div></div>
+            <div class="admin-card-body">
+              ${(kpis.pendientes_firma_urgentes || 0) > 0 
+                ? `<div style="padding:8px 12px;background:#fff3f3;border-radius:6px;margin-bottom:6px;font-size:12px">
+                    <strong style="color:#7a1a1a">⚠️ ${kpis.pendientes_firma_urgentes} consulta(s) con +48h sin firmar</strong>
+                    <button class="btn btn-warning btn-xs" onclick="cambiarSubtabAdmin('por-firmar')" style="margin-left:8px">Ver</button>
+                  </div>` : ""}
+              ${(kpis.suscripciones_por_vencer || 0) > 0 
+                ? `<div style="padding:8px 12px;background:#fff9e6;border-radius:6px;font-size:12px">
+                    <strong style="color:#8a6a00">⚠️ ${kpis.suscripciones_por_vencer} suscripción(es) vencen esta semana</strong>
+                    <button class="btn btn-warning btn-xs" onclick="cambiarSubtabAdmin('suscripciones')" style="margin-left:8px">Ver</button>
+                  </div>` : ""}
+            </div>
+          </div>
+        ` : ""}
+        <div class="admin-card">
+          <div class="admin-card-header"><div><div class="admin-card-title">⚡ Acciones rápidas</div></div></div>
+          <div class="admin-card-body">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">
+              <button class="btn btn-primary btn-sm" onclick="adminV2AbrirModalCrearUsuario()" style="font-size:11px">➕ Nuevo usuario</button>
+              <button class="btn btn-warning btn-sm" onclick="cambiarSubtabAdmin('por-firmar')" style="font-size:11px">⏳ Ver pendientes</button>
+              <button class="btn btn-success btn-sm" onclick="cambiarSubtabAdmin('suscripciones')" style="font-size:11px">💳 Suscripciones</button>
+              <button class="btn btn-secondary btn-sm" onclick="adminV2CargarDashboard()" style="font-size:11px">🔄 Refrescar</button>
+            </div>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  window.adminV2RefrescarUsuarios = async function() {
+    const cont = $id("admin-v2-lista-usuarios");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando usuarios...</p></div>';
+    try {
+      const { data, error } = await window.supabaseClient.rpc("listar_usuarios_admin", { p_rol: null });
+      if (error) throw error;
+      V2.cache.usuarios = data || [];
+      renderUsuarios();
+    } catch (e) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  function renderUsuarios() {
+    const cont = $id("admin-v2-lista-usuarios");
+    if (!cont) return;
+    let lista = V2.cache.usuarios.slice();
+    if (V2.filtros.rolUsuario !== "todos") lista = lista.filter(u => u.rol === V2.filtros.rolUsuario);
+    const q = V2.filtros.busquedaUsuario.toLowerCase().trim();
+    if (q) lista = lista.filter(u => (u.nombre || "").toLowerCase().includes(q) || (u.email || "").toLowerCase().includes(q));
+
+    if (lista.length === 0) {
+      cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No hay usuarios que coincidan</p></div>';
+      return;
+    }
+    cont.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">Mostrando <strong>${lista.length}</strong> usuario(s)</div>${lista.map(renderUsuarioCard).join("")}`;
+  }
+
+  function renderUsuarioCard(u) {
+    const rol = u.rol || "paciente";
+    const activo = u.activo !== false;
+    const color = ROL_COLORES[rol] || "#86868b";
+    const icono = ROL_ICONOS[rol] || "👤";
+    const label = ROL_LABELS[rol] || rol;
+
+    return `
+      <div class="admin-card" style="border-left:4px solid ${color};padding:12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:220px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+              <div style="font-size:13px;font-weight:700;color:var(--corp)">${icono} ${esc(u.nombre || "Sin nombre")}</div>
+              <span style="background:${color};color:white;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px;text-transform:uppercase">${esc(label)}</span>
+              ${activo ? '<span style="background:#f0fff4;color:#1a4a2a;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px">● Activo</span>' : '<span style="background:#fff3f3;color:#7a1a1a;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px">✗ Inactivo</span>'}
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);font-family:var(--font-mono);word-break:break-all">${esc(u.email || "—")}</div>
+            ${u.telefono ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">📱 ${esc(u.telefono)}</div>` : ""}
+            ${u.paciente_id ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">Paciente: ${esc(u.paciente_id)}</div>` : ""}
+            <div style="font-size:10px;color:var(--text-tertiary);margin-top:6px">📅 ${fechaCorta(u.created_at)}${u.ultima_sesion ? ` · 🕐 ${tiempoRelativo(u.ultima_sesion)}` : ""}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:170px">
+            <button class="btn btn-primary btn-xs" onclick="adminV2AbrirModalEditarUsuario('${u.id}')" style="font-size:10px">✏️ Editar</button>
+            <button class="btn btn-warning btn-xs" onclick="adminV2ResetearPassword('${u.id}', '${esc(u.email)}')" style="font-size:10px">🔑 Resetear contraseña</button>
+            ${activo ? `<button class="btn btn-danger btn-xs" onclick="adminV2DesactivarUsuario('${u.id}')" style="font-size:10px">🚫 Desactivar</button>` : `<button class="btn btn-success btn-xs" onclick="adminV2ActivarUsuario('${u.id}')" style="font-size:10px">✅ Activar</button>`}
+            <button class="btn btn-secondary btn-xs" onclick="adminV2ForzarLogout('${u.id}', '${esc(u.email)}')" style="font-size:10px">🔒 Forzar logout</button>
+            ${(rol === "operador" || rol === "medico") ? `<button class="btn btn-secondary btn-xs" onclick="adminV2VerEstadisticas('${u.id}', '${rol}')" style="font-size:10px">📊 Estadísticas</button>` : ""}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  window.adminV2CambiarFiltroRol = function(rol, btn) {
+    V2.filtros.rolUsuario = rol;
+    document.querySelectorAll(".admin-v2-filtro-rol").forEach(b => { b.classList.remove("btn-primary"); b.classList.add("btn-secondary"); });
+    if (btn) { btn.classList.remove("btn-secondary"); btn.classList.add("btn-primary"); }
+    renderUsuarios();
+  };
+
+  window.adminV2FiltrarUsuarios = debounce(function(valor) {
+    V2.filtros.busquedaUsuario = valor;
+    renderUsuarios();
+  }, 250);
+
+  window.adminV2AbrirModalCrearUsuario = function() {
+    const html = `
+      <div class="admin-alert warning"><strong>⚠️ Nuevo usuario</strong> — Se creará con contraseña temporal.</div>
+      <div class="form-group"><label>Nombre completo *</label><input type="text" id="admin-v2-nuevo-nombre" placeholder="Ej: Juan Pérez" required></div>
+      <div class="form-group"><label>Email *</label><input type="email" id="admin-v2-nuevo-email" placeholder="usuario@eco.com" required></div>
+      <div class="form-group"><label>Teléfono</label><input type="tel" id="admin-v2-nuevo-telefono" placeholder="+503 7777-7777"></div>
+      <div class="form-group">
+        <label>Rol *</label>
+        <select id="admin-v2-nuevo-rol" onchange="adminV2ActualizarModalPorRol()">
+          <option value="operador">📤 Operador</option>
+          <option value="medico">👨‍⚕️ Médico</option>
+          <option value="paciente">👤 Paciente</option>
+          <option value="admin">🔧 Administrador</option>
+        </select>
+      </div>
+      <div class="form-group" id="admin-v2-nuevo-paciente-id-wrap" style="display:none">
+        <label>Subject ID del paciente</label>
+        <input type="text" id="admin-v2-nuevo-paciente-id" placeholder="PAC-XXXX-XXXX">
+      </div>
+      <div class="form-group">
+        <label>Contraseña temporal *</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="admin-v2-nuevo-password" readonly style="background:var(--accent-light);font-family:var(--font-mono);flex:1">
+          <button class="btn btn-secondary btn-sm" onclick="adminV2GenerarPassword()" style="width:auto">🎲 Generar</button>
+        </div>
+      </div>
+      <div id="admin-v2-nuevo-error" style="display:none;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+    `;
+    adminAbrirModal("➕ Nuevo usuario", html, "Crear usuario", () => adminV2CrearUsuario());
+    setTimeout(() => { adminV2GenerarPassword(); adminV2ActualizarModalPorRol(); }, 100);
+  };
+
+  window.adminV2ActualizarModalPorRol = function() {
+    const rol = $id("admin-v2-nuevo-rol")?.value;
+    const wrap = $id("admin-v2-nuevo-paciente-id-wrap");
+    if (wrap) wrap.style.display = (rol === "paciente") ? "block" : "none";
+  };
+
+  window.adminV2GenerarPassword = function() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+    let pwd = "";
+    for (let i = 0; i < 14; i++) pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    const el = $id("admin-v2-nuevo-password");
+    if (el) el.value = pwd;
+  };
+
+  window.adminV2CrearUsuario = async function() {
+    const errEl = $id("admin-v2-nuevo-error");
+    const setErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; } };
+    if (errEl) errEl.style.display = "none";
+
+    const nombre = $id("admin-v2-nuevo-nombre")?.value.trim();
+    const email = $id("admin-v2-nuevo-email")?.value.trim();
+    const telefono = $id("admin-v2-nuevo-telefono")?.value.trim();
+    const rol = $id("admin-v2-nuevo-rol")?.value;
+    const password = $id("admin-v2-nuevo-password")?.value;
+    const pacienteId = $id("admin-v2-nuevo-paciente-id")?.value.trim();
+
+    if (!nombre) { setErr("El nombre es obligatorio"); return false; }
+    if (!email) { setErr("El email es obligatorio"); return false; }
+    if (!rol) { setErr("El rol es obligatorio"); return false; }
+    if (!password || password.length < 8) { setErr("La contraseña debe tener al menos 8 caracteres"); return false; }
+
+    try {
+      const workerUrl = window.WORKER_URL || "https://ecokimi2.emazzini2020.workers.dev";
+      const { data: { session } } = await window.supabaseClient.auth.getSession();
+      if (!session) throw new Error("Sesión inválida");
+
+      const resp = await fetch(`${workerUrl}/admin/create-user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + session.access_token },
+        body: JSON.stringify({ email, password, nombre, rol, telefono, paciente_id: pacienteId || null })
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || err.message || `Error ${resp.status}`);
+      }
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error || "Error al crear usuario");
+
+      adminCerrarModal();
+      toast(`✓ Usuario ${nombre} creado`, "success");
+      setTimeout(() => {
+        alert(`Usuario creado.\n\nEmail: ${email}\nContraseña temporal: ${password}\n\n⚠️ COPIA AHORA. No se volverá a mostrar.`);
+      }, 300);
+      await adminV2RefrescarUsuarios();
+      return true;
+    } catch (e) {
+      setErr(e.message || "Error desconocido");
+      return false;
+    }
+  };
+
+  window.adminV2AbrirModalEditarUsuario = function(userId) {
+    const u = V2.cache.usuarios.find(x => x.id === userId);
+    if (!u) { toast("Usuario no encontrado", "error"); return; }
+    const html = `
+      <div class="admin-alert">Editando a <strong>${esc(u.nombre)}</strong></div>
+      <div class="form-group"><label>Nombre completo</label><input type="text" id="admin-v2-edit-nombre" value="${esc(u.nombre || "")}"></div>
+      <div class="form-group"><label>Email (no editable)</label><input type="email" value="${esc(u.email || "")}" disabled style="background:var(--bg-tertiary)"></div>
+      <div class="form-group"><label>Teléfono</label><input type="tel" id="admin-v2-edit-telefono" value="${esc(u.telefono || "")}"></div>
+      <div class="form-group">
+        <label>Rol</label>
+        <select id="admin-v2-edit-rol">
+          <option value="operador" ${u.rol === "operador" ? "selected" : ""}>📤 Operador</option>
+          <option value="medico" ${u.rol === "medico" ? "selected" : ""}>👨‍⚕️ Médico</option>
+          <option value="paciente" ${u.rol === "paciente" ? "selected" : ""}>👤 Paciente</option>
+          <option value="admin" ${u.rol === "admin" ? "selected" : ""}>🔧 Administrador</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="admin-v2-edit-activo" ${u.activo !== false ? "checked" : ""} style="width:auto">
+          <span>Cuenta activa</span>
+        </label>
+      </div>
+      <div id="admin-v2-edit-error" style="display:none;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+    `;
+    adminAbrirModal("✏️ Editar usuario", html, "Guardar cambios", () => adminV2GuardarEdicionUsuario(userId));
+  };
+
+  window.adminV2GuardarEdicionUsuario = async function(userId) {
+    const errEl = $id("admin-v2-edit-error");
+    const setErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; } };
+    if (errEl) errEl.style.display = "none";
+    const nombre = $id("admin-v2-edit-nombre")?.value.trim();
+    const telefono = $id("admin-v2-edit-telefono")?.value.trim();
+    const rol = $id("admin-v2-edit-rol")?.value;
+    const activo = $id("admin-v2-edit-activo")?.checked;
+    if (!nombre) { setErr("El nombre es obligatorio"); return false; }
+    try {
+      const { error } = await window.supabaseClient.rpc("admin_actualizar_usuario", {
+        p_user_id: userId, p_nombre: nombre, p_email: null,
+        p_telefono: telefono || null, p_rol: rol, p_activo: activo
+      });
+      if (error) throw error;
+      await logAccion("admin_editar_usuario", "profiles", userId, { nombre, telefono, rol, activo });
+      adminCerrarModal();
+      toast("✓ Usuario actualizado", "success");
+      await adminV2RefrescarUsuarios();
+      return true;
+    } catch (e) {
+      setErr(e.message);
+      return false;
+    }
+  };
+
+  window.adminV2ResetearPassword = async function(userId, email) {
+    if (!confirm(`¿Enviar email de reseteo a ${email}?`)) return;
+    try {
+      const { error } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + "/?reset=true"
+      });
+      if (error) throw error;
+      await logAccion("admin_reset_password", "profiles", userId, { email });
+      toast(`✓ Email de reseteo enviado a ${email}`, "success");
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  window.adminV2DesactivarUsuario = async function(userId) {
+    if (!confirm("¿Desactivar este usuario?")) return;
+    try {
+      const { error } = await window.supabaseClient.rpc("admin_actualizar_usuario", { p_user_id: userId, p_activo: false });
+      if (error) throw error;
+      await logAccion("admin_desactivar_usuario", "profiles", userId, {});
+      toast("✓ Usuario desactivado", "success");
+      await adminV2RefrescarUsuarios();
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  window.adminV2ActivarUsuario = async function(userId) {
+    try {
+      const { error } = await window.supabaseClient.rpc("admin_actualizar_usuario", { p_user_id: userId, p_activo: true });
+      if (error) throw error;
+      await logAccion("admin_activar_usuario", "profiles", userId, {});
+      toast("✓ Usuario activado", "success");
+      await adminV2RefrescarUsuarios();
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  window.adminV2ForzarLogout = async function(userId, email) {
+    if (!confirm(`¿Forzar logout de ${email}? Se desactivará la cuenta.`)) return;
+    try {
+      const { error } = await window.supabaseClient.rpc("admin_forzar_logout", { p_user_id: userId });
+      if (error) throw error;
+      await logAccion("admin_forzar_logout", "profiles", userId, { email });
+      toast("✓ Sesión revocada", "success");
+      await adminV2RefrescarUsuarios();
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  window.adminV2VerEstadisticas = async function(userId, rol) {
+    try {
+      const { data: metricas } = await window.supabaseClient.rpc("admin_metricas_por_rol");
+      const stats = rol === "medico"
+        ? metricas?.por_medico?.find(m => m.medico_id === userId)
+        : metricas?.por_operador?.find(o => o.operador_id === userId);
+      const html = `
+        <div class="admin-alert"><strong>📊 Estadísticas</strong></div>
+        ${!stats ? '<div class="empty-state"><div class="icon">📭</div><p>Sin actividad</p></div>'
+          : rol === "medico"
+            ? `<div style="display:grid;gap:10px">
+                <div class="admin-card"><div class="admin-card-body"><div style="font-size:11px;color:var(--text-secondary)">Firmadas</div><div style="font-size:24px;font-weight:800;color:var(--positive)">${stats.total_firmadas || 0}</div></div></div>
+                <div class="admin-card"><div class="admin-card-body"><div style="font-size:11px;color:var(--text-secondary)">Tiempo promedio</div><div style="font-size:24px;font-weight:800;color:var(--accent)">${stats.tiempo_promedio_horas || 0}h</div></div></div>
+                <div class="admin-card"><div class="admin-card-body"><div style="font-size:11px;color:var(--text-secondary)">Pendientes</div><div style="font-size:24px;font-weight:800;color:#ff9500">${stats.pendientes || 0}</div></div></div>
+              </div>`
+            : `<div style="display:grid;gap:10px">
+                <div class="admin-card"><div class="admin-card-body"><div style="font-size:11px;color:var(--text-secondary)">Total envíos</div><div style="font-size:24px;font-weight:800;color:var(--accent)">${stats.total_envios || 0}</div></div></div>
+                <div class="admin-card"><div class="admin-card-body"><div style="font-size:11px;color:var(--text-secondary)">Aprobados</div><div style="font-size:24px;font-weight:800;color:var(--positive)">${stats.firmadas || 0}</div></div></div>
+                <div class="admin-card"><div class="admin-card-body"><div style="font-size:11px;color:var(--text-secondary)">Tasa aprobación</div><div style="font-size:24px;font-weight:800;color:${(stats.tasa_aprobacion_pct || 0) > 80 ? '#34c759' : '#ff9500'}">${stats.tasa_aprobacion_pct || 0}%</div></div></div>
+              </div>`}
+      `;
+      adminAbrirModal("📊 Estadísticas", html, "Cerrar", () => true);
+      setTimeout(() => { const btn = $id("admin-modal-save"); if (btn) btn.style.display = "none"; }, 100);
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  window.adminV2RefrescarPendientesFirma = async function() {
+    const cont = $id("admin-v2-lista-pendientes-firma");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+    try {
+      const { data, error } = await window.supabaseClient.rpc("admin_consultas_pendientes_firma");
+      if (error) throw error;
+      V2.cache.pendientesFirma = data || [];
+      renderPendientesFirma();
+    } catch (e) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  function renderPendientesFirma() {
+    const cont = $id("admin-v2-lista-pendientes-firma");
+    if (!cont) return;
+    let lista = V2.cache.pendientesFirma.slice();
+    const filtro = V2.filtros.filtroPendientes;
+    if (filtro === "urgentes") lista = lista.filter(c => parseFloat(c.horas_esperando) >= 48);
+    else if (filtro === "hoy") {
+      const hoy = new Date().toDateString();
+      lista = lista.filter(c => new Date(c.created_at).toDateString() === hoy);
+    }
+    if (lista.length === 0) {
+      cont.innerHTML = '<div class="empty-state"><div class="icon">✅</div><p>No hay consultas pendientes</p></div>';
+      return;
+    }
+    cont.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px"><strong>${lista.length}</strong> pendiente(s)</div>${lista.map(c => {
+      const urgente = parseFloat(c.horas_esperando) >= 48;
+      const color = urgente ? "#ff3b30" : "#ff9500";
+      return `<div class="admin-card" style="border-left:4px solid ${color};padding:12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:13px;font-weight:700;color:var(--corp)">${urgente ? '🚨' : '⏳'} ${esc(c.paciente_nombre || "—")}</div>
+            <div style="font-size:10px;color:var(--text-secondary);font-family:var(--font-mono);margin-top:2px">${esc(c.case_id)} · ${esc(c.subject_id)}</div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">👤 ${esc(c.operador_nombre || "—")} · 🩺 ${esc(c.medico_nombre || "Sin asignar")}</div>
+            <div style="font-size:10px;margin-top:4px;color:${color};font-weight:700">⏱ ${c.horas_esperando}h esperando</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:140px">
+            <button class="btn btn-warning btn-xs" onclick="adminV2RecordarMedico('${c.consulta_id}')" style="font-size:10px">🔔 Recordar</button>
+            <button class="btn btn-primary btn-xs" onclick="adminV2VerConsulta('${c.consulta_id}')" style="font-size:10px">👁️ Ver consulta</button>
+          </div>
+        </div>
+      </div>`;
+    }).join("")}`;
+  }
+
+  window.adminV2CambiarFiltroPendientes = function(filtro, btn) {
+    V2.filtros.filtroPendientes = filtro;
+    document.querySelectorAll(".admin-v2-filtro-pf").forEach(b => { b.classList.remove("btn-primary"); b.classList.add("btn-secondary"); });
+    if (btn) { btn.classList.remove("btn-secondary"); btn.classList.add("btn-primary"); }
+    renderPendientesFirma();
+  };
+
+  window.adminV2RecordarMedico = async function(consultaId) {
+    try {
+      const { data: cons } = await window.supabaseClient.from("consultas").select("medico_id, case_id").eq("consulta_id", consultaId).single();
+      if (!cons?.medico_id) { toast("Sin médico asignado", "warning"); return; }
+      await window.supabaseClient.from("notificaciones_medicas").insert({
+        medico_id: cons.medico_id, tipo: "recordatorio_firma", prioridad: "alta",
+        mensaje: `Recordatorio: consulta ${cons.case_id} pendiente de firma`,
+        payload: { consulta_id: consultaId }
+      });
+      await logAccion("admin_recordar_medico", "consultas", consultaId, {});
+      toast("✓ Recordatorio enviado", "success");
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  window.adminV2RecordarATodos = async function() {
+    if (!confirm("¿Enviar recordatorio a todos los médicos con pendientes?")) return;
+    try {
+      const pendientes = V2.cache.pendientesFirma;
+      let count = 0;
+      for (const c of pendientes) {
+        if (c.medico_id) {
+          await window.supabaseClient.from("notificaciones_medicas").insert({
+            medico_id: c.medico_id, tipo: "recordatorio_firma", prioridad: "alta",
+            mensaje: `Recordatorio masivo: ${pendientes.length} consulta(s) pendientes`,
+            payload: { consulta_id: c.consulta_id, masivo: true }
+          });
+          count++;
+        }
+      }
+      await logAccion("admin_recordar_masivo", "consultas", null, { count });
+      toast(`✓ ${count} recordatorio(s) enviado(s)`, "success");
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  window.adminV2VerConsulta = function(consultaId) {
+    if (typeof verConsultaFirmada === "function") verConsultaFirmada(consultaId);
+    else toast("Función no disponible", "warning");
+  };
+
+  window.adminV2RefrescarEnvios = async function() {
+    const cont = $id("admin-v2-lista-envios");
+    if (!cont || !window.supabaseClient) return;
+    const dias = parseInt($id("admin-v2-dias-envios")?.value) || 30;
+    const estadoFiltro = $id("admin-v2-filtro-envios-estado")?.value || "todos";
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+    try {
+      const { data, error } = await window.supabaseClient.rpc("admin_envios_operadores", { p_dias: dias });
+      if (error) throw error;
+      let envios = data || [];
+      if (estadoFiltro !== "todos") envios = envios.filter(e => e.estado === estadoFiltro);
+      V2.cache.enviosOperadores = envios;
+      await cargarMetricasOperadores();
+      renderEnvios();
+    } catch (e) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  async function cargarMetricasOperadores() {
+    const cont = $id("admin-v2-metricas-operadores");
+    if (!cont) return;
+    try {
+      const { data: metricas } = await window.supabaseClient.rpc("admin_metricas_por_rol");
+      const porOperador = metricas?.por_operador || [];
+      if (porOperador.length === 0) { cont.innerHTML = ""; return; }
+      cont.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--corp);text-transform:uppercase;margin-bottom:8px">📊 Productividad</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">
+          ${porOperador.map(o => `<div style="background:var(--bg-secondary);border-radius:8px;padding:10px">
+            <div style="font-size:11px;font-weight:700;color:var(--corp)">${esc(o.operador_nombre || "—")}</div>
+            <div style="font-size:10px;color:var(--text-secondary);margin-top:2px">${o.total_envios} envíos · ${o.firmadas} firmados</div>
+            <div style="font-size:14px;font-weight:800;color:${(o.tasa_aprobacion_pct || 0) > 80 ? '#34c759' : '#ff9500'};margin-top:4px">${o.tasa_aprobacion_pct || 0}%</div>
+          </div>`).join("")}
+        </div>`;
+    } catch (e) {}
+  }
+
+  function renderEnvios() {
+    const cont = $id("admin-v2-lista-envios");
+    if (!cont) return;
+    const envios = V2.cache.enviosOperadores;
+    if (envios.length === 0) {
+      cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No hay envíos</p></div>';
+      return;
+    }
+    const porOperador = {};
+    envios.forEach(e => {
+      const key = e.operador_id || "sin_operador";
+      if (!porOperador[key]) porOperador[key] = { nombre: e.operador_nombre || "Sin nombre", items: [] };
+      porOperador[key].items.push(e);
+    });
+    cont.innerHTML = Object.values(porOperador).map(op => `
+      <div class="admin-card" style="margin-bottom:14px">
+        <div class="admin-card-header"><div><div class="admin-card-title">📤 ${esc(op.nombre)}</div><div class="admin-card-subtitle">${op.items.length} envío(s)</div></div></div>
+        <div class="admin-card-body">
+          ${op.items.map(e => {
+            const cfg = { borrador: { c: "#86868b", l: "Borrador" }, pendiente_firma: { c: "#ff9500", l: "Pendiente" }, firmada: { c: "#34c759", l: "Firmada" }, rechazada: { c: "#ff3b30", l: "Rechazada" } }[e.estado] || { c: "#86868b", l: e.estado };
+            return `<div style="background:var(--bg-secondary);border-left:3px solid ${cfg.c};border-radius:0 6px 6px 0;padding:8px 10px;margin-bottom:6px">
+              <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                <div style="flex:1;min-width:180px">
+                  <div style="font-size:12px;font-weight:600;color:var(--corp)">${esc(e.paciente_nombre || "—")}</div>
+                  <div style="font-size:10px;color:var(--text-secondary)">${esc(e.case_id)} · ${esc(e.tipo || "")} · ${tiempoRelativo(e.created_at)}</div>
+                </div>
+                <span style="background:${cfg.c};color:white;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px;height:fit-content">${cfg.l}</span>
+              </div>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>
+    `).join("");
+  }
+
+  window.adminV2RefrescarAuditoria = async function() {
+    const cont = $id("admin-v2-lista-auditoria");
+    if (!cont || !window.supabaseClient) return;
+    const limit = parseInt($id("admin-v2-limit-auditoria")?.value) || 100;
+    const accion = $id("admin-v2-filtro-auditoria-accion")?.value || null;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+    try {
+      const { data, error } = await window.supabaseClient.rpc("admin_listar_auditoria", { p_limit: limit, p_user_id: null, p_accion: accion || null });
+      if (error) throw error;
+      V2.cache.auditoria = data || [];
+      renderAuditoria();
+    } catch (e) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  function renderAuditoria() {
+    const cont = $id("admin-v2-lista-auditoria");
+    if (!cont) return;
+    const items = V2.cache.auditoria;
+    if (items.length === 0) {
+      cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Sin registros</p></div>';
+      return;
+    }
+    cont.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">Mostrando <strong>${items.length}</strong> registro(s)</div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="background:var(--bg-secondary)">
+          <th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase">Fecha</th>
+          <th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase">Usuario</th>
+          <th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase">Acción</th>
+          <th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase">Entidad</th>
+          <th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase">Detalle</th>
+        </tr></thead>
+        <tbody>${items.map(a => `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 8px;color:var(--text-secondary);font-size:10px;white-space:nowrap">${fechaCorta(a.created_at)}</td>
+          <td style="padding:6px 8px"><div style="font-weight:600;color:var(--corp)">${esc(a.user_email || "—")}</div><div style="font-size:9px;color:var(--text-tertiary)">${esc(a.user_rol || "")}</div></td>
+          <td style="padding:6px 8px"><code style="background:var(--accent-light);color:var(--accent);padding:2px 6px;border-radius:4px;font-size:10px">${esc(a.accion)}</code></td>
+          <td style="padding:6px 8px;font-size:10px;color:var(--text-secondary)">${esc(a.entidad || "—")}${a.entidad_id ? `<br><code style="font-size:9px">${esc(a.entidad_id)}</code>` : ""}</td>
+          <td style="padding:6px 8px;font-size:9px;color:var(--text-tertiary);max-width:300px;word-break:break-all">${a.detalle ? esc(JSON.stringify(a.detalle)) : "—"}</td>
+        </tr>`).join("")}</tbody>
+      </table></div>`;
+  }
+
+  window.adminV2ExportarAuditoriaCSV = function() {
+    const items = V2.cache.auditoria;
+    if (items.length === 0) { toast("Sin datos", "warning"); return; }
+    const headers = ["Fecha", "Usuario", "Rol", "Acción", "Entidad", "Entidad ID", "Detalle"];
+    const rows = items.map(a => [a.created_at, a.user_email || "", a.user_rol || "", a.accion, a.entidad || "", a.entidad_id || "", a.detalle ? JSON.stringify(a.detalle) : ""]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `auditoria_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast("✓ CSV exportado", "success");
+  };
+
+  function instalarWrapperSubtab() {
+    if (!window.cambiarSubtabAdmin || window.cambiarSubtabAdmin._adminV2Wrapped) return true;
+    const _original = window.cambiarSubtabAdmin;
+    window.cambiarSubtabAdmin = function(subtab) {
+      const result = _original.apply(this, arguments);
+      setTimeout(() => {
+        try {
+          switch (subtab) {
+            case "dashboard": window.adminV2CargarDashboard(); break;
+            case "usuarios": window.adminV2RefrescarUsuarios(); break;
+            case "por-firmar": window.adminV2RefrescarPendientesFirma(); break;
+            case "envios": window.adminV2RefrescarEnvios(); break;
+            case "auditoria": window.adminV2RefrescarAuditoria(); break;
+          }
+        } catch (e) { console.error("[Admin v2.0] Error subtab:", e); }
+      }, 150);
+      return result;
+    };
+    window.cambiarSubtabAdmin._adminV2Wrapped = true;
+    return true;
+  }
+
+  function intentarInicializar() {
+    V2.intentos++;
+    if (window.usuarioActual?.rol !== "admin") {
+      if (V2.intentos < V2.MAX_INTENTOS) setTimeout(intentarInicializar, 250);
+      return;
+    }
+    const okHTML = inyectarHTML();
+    const okWrapper = instalarWrapperSubtab();
+    if (okHTML && okWrapper) {
+      V2.inicializado = true;
+      console.log("[Admin v2.0] ✓ Inicializado en intento", V2.intentos);
+      return;
+    }
+    if (V2.intentos < V2.MAX_INTENTOS) setTimeout(intentarInicializar, 250);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(intentarInicializar, 600));
+  } else {
+    setTimeout(intentarInicializar, 600);
+  }
+
+  console.log("[Admin v2.0] Wrapper cargado. Diagnóstico: __ADMIN_V2.estado()");
+})();
+</script>
 </body>
 </html>
