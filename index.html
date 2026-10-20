@@ -1875,6 +1875,64 @@ body[data-rol="medico"] #tabs-principales .tab[data-tab="mis-notificaciones"] {
 <div class="section" id="sec-informes">
   <div class="card"><div class="card-title"><span class="num">📁</span>Casos guardados</div><div id="informes-lista-container"><div class="empty-state"><div class="icon">📁</div><p>No hay casos guardados</p></div></div></div>
 </div>
+<!-- ═══════════════════════════════════════════════════════════════
+     ARCHIVO: FASE1_OPERADOR_HTML.html
+     Portal Operador Fase 1 — Secciones HTML
+     Ubicación: después de #sec-informes, antes de #sec-prompts-config
+     ═══════════════════════════════════════════════════════════════ -->
+
+<!-- Sección: Mi Dashboard del Operador -->
+<div class="section" id="sec-mi-dashboard-operador">
+  <div id="ope-dashboard-content">
+    <div class="empty-state"><div class="icon">⏳</div><p>Cargando dashboard...</p></div>
+  </div>
+</div>
+
+<!-- Sección: Mis Envíos del Operador -->
+<div class="section" id="sec-mis-envios-operador">
+  <div class="card">
+    <div class="card-title">
+      <span class="num">📤</span>
+      <span>Mis envíos</span>
+      <button class="btn btn-secondary btn-xs" style="margin-left:auto" onclick="opeCargarEnvios()">🔄</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-xs ope-filtro-envio" data-estado="todos" onclick="opeCambiarFiltroEnvio('todos', this)">Todos</button>
+      <button class="btn btn-secondary btn-xs ope-filtro-envio" data-estado="borrador" onclick="opeCambiarFiltroEnvio('borrador', this)">📝 Borradores</button>
+      <button class="btn btn-secondary btn-xs ope-filtro-envio" data-estado="pendiente_firma" onclick="opeCambiarFiltroEnvio('pendiente_firma', this)">⏳ Pendientes</button>
+      <button class="btn btn-secondary btn-xs ope-filtro-envio" data-estado="firmada" onclick="opeCambiarFiltroEnvio('firmada', this)">✅ Firmadas</button>
+      <button class="btn btn-secondary btn-xs ope-filtro-envio" data-estado="rechazada" onclick="opeCambiarFiltroEnvio('rechazada', this)">❌ Rechazadas</button>
+    </div>
+    <div class="form-group" style="margin-bottom:14px">
+      <input type="text" id="ope-buscar-envios" placeholder="🔍 Buscar por paciente, CIE-10, motivo..." oninput="opeBuscarEnvios(this.value)" style="font-size:12px">
+    </div>
+    <div id="ope-envios-lista">
+      <div class="empty-state"><div class="icon">⏳</div><p>Cargando envíos...</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- Sección: Notificaciones del Operador -->
+<div class="section" id="sec-notificaciones-operador">
+  <div class="card">
+    <div class="card-title">
+      <span class="num">🔔</span>
+      <span>Mis notificaciones</span>
+      <button class="btn btn-secondary btn-xs" style="margin-left:auto" onclick="opeCargarNotificaciones()">🔄</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-xs ope-filtro-notif" data-filtro="todas" onclick="opeCambiarFiltroNotif('todas', this)">Todas</button>
+      <button class="btn btn-secondary btn-xs ope-filtro-notif" data-filtro="no-leidas" onclick="opeCambiarFiltroNotif('no-leidas', this)">No leídas</button>
+      <button class="btn btn-success btn-xs" style="margin-left:auto;font-size:10px" onclick="opeMarcarTodasLeidas()">✓ Marcar todas leídas</button>
+    </div>
+    <div id="ope-notificaciones-lista">
+      <div class="empty-state"><div class="icon">⏳</div><p>Cargando notificaciones...</p></div>
+    </div>
+  </div>
+</div>
+<!-- ═══════════════════════════════════════════════════════════════
+     FIN ARCHIVO: FASE1_OPERADOR_HTML.html
+     ═══════════════════════════════════════════════════════════════ -->
 <div class="section" id="sec-prompts-config">
   <div class="card">
     <div class="card-title"><span class="num">🧠</span>Prompts clínicos</div>
@@ -5485,7 +5543,14 @@ function ajustarUIPorRol(rol) {
                "por-firmar", "prompts", "admin", "config"],
     medico:   ["captura", "consulta", "pacientes", "informes", 
                "por-firmar"],
-    operador: ["captura", "consulta","mis-envios", "mis-solicitudes", "config"]
+    operador: ["sec-captura", "sec-empleado", "sec-estudio", "sec-vitales",
+               "sec-labs", "sec-clinica", "sec-protocolo", "sec-imagenes",
+               "sec-analisis", "sec-consulta", "sec-pacientes",
+               "sec-mi-dashboard-operador",
+               "sec-mis-envios-operador",
+               "sec-notificaciones-operador",
+               "sec-mis-envios",
+               "sec-mis-solicitudes", "sec-config-view", "sec-config"]
                
   };
   
@@ -25430,5 +25495,422 @@ document.addEventListener("visibilitychange", function() {
   console.log("[Médico v2.0.1] Forzar tabs manualmente: __MEDICO_V2.forzarTabs()");
 })();
 </script>
+<!-- ═══════════════════════════════════════════════════════════════
+     ARCHIVO: FASE1_OPERADOR_WRAPPER.js
+     Portal Operador Fase 1 — Wrapper JS (integrado al monolito)
+     Ubicación: después del último script, antes de </body>
+     ═══════════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+(function() {
+  console.log("[OPE Fase 1] Cargando módulo...");
+
+  const OPE = {
+    inicializado: false,
+    intentos: 0,
+    MAX_INTENTOS: 40,
+    cache: { kpis: null, productividad: [], envios: [], notificaciones: [] },
+    filtros: { envios: "todos", busquedaEnvios: "", notificaciones: "todas" },
+    chartProductividad: null,
+    pollingId: null
+  };
+  window.__OPE = OPE;
+
+  const esc = window.escapeHtml || (s => {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  });
+  const toast = window.showStatus || ((msg, tipo) => console.log("[OPE]", tipo, msg));
+  const $id = (id) => document.getElementById(id);
+
+  function fechaCorta(iso) {
+    if (!iso) return "—";
+    try { return new Date(iso).toLocaleString("es-ES", {day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}); }
+    catch (e) { return iso; }
+  }
+  function tiempoRel(iso) {
+    if (!iso) return "—";
+    const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (min < 1) return "ahora";
+    if (min < 60) return min + " min";
+    const h = Math.floor(min / 60);
+    if (h < 24) return h + "h";
+    return Math.floor(h / 24) + "d";
+  }
+  function debounce(fn, ms) {
+    let t; return function() {
+      clearTimeout(t);
+      const ctx = this, args = arguments;
+      t = setTimeout(() => fn.apply(ctx, args), ms);
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // DASHBOARD
+  // ═══════════════════════════════════════════════════════
+  window.opeCargarDashboard = async function() {
+    const cont = $id("ope-dashboard-content");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+    try {
+      const [kpi, prod] = await Promise.all([
+        window.supabaseClient.rpc("operador_dashboard_kpis"),
+        window.supabaseClient.rpc("operador_productividad_30d")
+      ]);
+      if (kpi.error) throw kpi.error;
+      if (prod.error) throw prod.error;
+      const k = kpi.data || {};
+      OPE.cache.kpis = k;
+      OPE.cache.productividad = prod.data || [];
+      actualizarBadges(k.borradores_pendientes || 0, k.notificaciones_no_leidas || 0);
+
+      const nombre = window.usuarioActual?.nombre?.split(" ")[0] || "Operador";
+      cont.innerHTML = `
+        <div class="card" style="background:linear-gradient(135deg,var(--accent-light),#d0e8fc);border:2px solid var(--accent);margin-bottom:16px">
+          <div style="text-align:center;padding:8px 0">
+            <div style="font-size:32px;margin-bottom:4px">📤</div>
+            <h2 style="font-size:18px;font-weight:800;color:var(--corp);margin-bottom:4px">Hola, ${esc(nombre)}</h2>
+            <p style="font-size:12px;color:var(--text-secondary)">Tu resumen de productividad</p>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">
+          <div class="card" style="background:linear-gradient(135deg,#f0f7ff,#e8f4fd);border:2px solid #0071e3;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#0051a3;text-transform:uppercase">Enviados hoy</div>
+            <div style="font-size:32px;font-weight:800;color:#0051a3;margin-top:4px">${k.enviados_hoy || 0}</div>
+            <div style="font-size:10px;color:#0051a3;margin-top:4px">Sem: <strong>${k.enviados_semana || 0}</strong> · Mes: <strong>${k.enviados_mes || 0}</strong></div>
+          </div>
+          <div class="card" style="background:linear-gradient(135deg,#f0fff4,#e8f9ec);border:2px solid #34c759;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#1a4a2a;text-transform:uppercase">Aprobados mes</div>
+            <div style="font-size:32px;font-weight:800;color:#1a4a2a;margin-top:4px">${k.aprobados_mes || 0}</div>
+            <div style="font-size:10px;color:#1a4a2a;margin-top:4px">Tasa: <strong>${k.tasa_aprobacion_pct || 0}%</strong></div>
+          </div>
+          <div class="card" style="background:linear-gradient(135deg,#fff9e6,#fff3cc);border:2px solid #ff9500;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#8a6a00;text-transform:uppercase">Borradores</div>
+            <div style="font-size:32px;font-weight:800;color:#8a6a00;margin-top:4px">${k.borradores_pendientes || 0}</div>
+            <div style="font-size:10px;color:#8a6a00;margin-top:4px">${k.borradores_pendientes > 0 ? "⚠️ sin enviar" : "✅ al día"}</div>
+          </div>
+          <div class="card" style="background:linear-gradient(135deg,#fef3f2,#fde8e6);border:2px solid #d4a017;padding:14px">
+            <div style="font-size:10px;font-weight:700;color:#8a6a00;text-transform:uppercase">Tiempo prom.</div>
+            <div style="font-size:32px;font-weight:800;color:#8a6a00;margin-top:4px">${k.tiempo_promedio_respuesta_horas || 0}h</div>
+            <div style="font-size:10px;color:#8a6a00;margin-top:4px">Últimos 30 días</div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title"><span class="num">📈</span><span>Productividad (30 días)</span></div>
+          <div class="metric-chart-container" style="border:none;padding:0">
+            <canvas id="ope-chart-productividad" style="max-height:220px"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title"><span class="num">⚡</span><span>Acciones rápidas</span></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+            <button class="btn btn-primary btn-sm" onclick="cambiarTab('captura')" style="font-size:11px">📋 Nuevo caso</button>
+            <button class="btn btn-secondary btn-sm" onclick="cambiarTab('mis-solicitudes')" style="font-size:11px">📩 Mis solicitudes</button>
+            <button class="btn btn-success btn-sm" onclick="cambiarTab('consulta')" style="font-size:11px">🩺 Nueva consulta</button>
+            <button class="btn btn-warning btn-sm" onclick="opeCargarDashboard()" style="font-size:11px">🔄 Refrescar</button>
+          </div>
+        </div>
+      `;
+      renderChart(OPE.cache.productividad);
+    } catch (e) {
+      console.error("[opeCargarDashboard]", e);
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p><button class="btn btn-warning btn-sm" onclick="opeCargarDashboard()" style="margin-top:12px;width:auto">Reintentar</button></div>`;
+    }
+  };
+
+  function renderChart(datos) {
+    const c = $id("ope-chart-productividad");
+    if (!c || typeof Chart === "undefined") return;
+    if (OPE.chartProductividad) { try { OPE.chartProductividad.destroy(); } catch (e) {} }
+    const labels = datos.map(d => {
+      try { return new Date(d.dia + "T12:00:00").toLocaleDateString("es-ES",{day:"2-digit",month:"short"}); }
+      catch (e) { return d.dia; }
+    });
+    OPE.chartProductividad = new Chart(c.getContext("2d"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          { label: "Enviados", data: datos.map(d => +d.enviados || 0), borderColor: "#0071e3", backgroundColor: "rgba(0,113,227,0.1)", tension: 0.3, fill: true, pointRadius: 2 },
+          { label: "Firmados", data: datos.map(d => +d.firmados || 0), borderColor: "#34c759", backgroundColor: "rgba(52,199,89,0.1)", tension: 0.3, fill: true, pointRadius: 2 }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { font: { size: 11 }, boxWidth: 12 } } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } }, x: { ticks: { font: { size: 9 }, maxRotation: 45 } } } }
+    });
+  }
+
+  function actualizarBadges(borradores, noLeidas) {
+    const tEnv = document.querySelector('[data-tab="mis-envios"]');
+    if (tEnv) {
+      let b = tEnv.querySelector(".ope-badge");
+      if (!b) { b = document.createElement("span"); b.className = "ope-badge"; b.style.cssText = "background:#ff9500;color:white;font-size:9px;font-weight:700;padding:1px 6px;border-radius:100px;margin-left:4px"; tEnv.appendChild(b); }
+      if (borradores > 0) { b.textContent = borradores; b.style.display = "inline-block"; } else b.style.display = "none";
+    }
+    const tNot = document.querySelector('[data-tab="mis-notificaciones"]');
+    if (tNot) {
+      let b = tNot.querySelector(".ope-badge");
+      if (!b) { b = document.createElement("span"); b.className = "ope-badge"; b.style.cssText = "background:#ff3b30;color:white;font-size:9px;font-weight:700;padding:1px 6px;border-radius:100px;margin-left:4px"; tNot.appendChild(b); }
+      if (noLeidas > 0) { b.textContent = noLeidas; b.style.display = "inline-block"; } else b.style.display = "none";
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // MIS ENVÍOS
+  // ═══════════════════════════════════════════════════════
+  window.opeCargarEnvios = async function() {
+    const cont = $id("ope-envios-lista");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando envíos...</p></div>';
+    try {
+      const { data, error } = await window.supabaseClient.rpc("operador_mis_envios", {
+        p_dias: 30,
+        p_estado: OPE.filtros.envios === "todos" ? null : OPE.filtros.envios,
+        p_busqueda: OPE.filtros.busquedaEnvios || null
+      });
+      if (error) throw error;
+      OPE.cache.envios = data || [];
+      renderEnvios();
+    } catch (e) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  function renderEnvios() {
+    const cont = $id("ope-envios-lista");
+    if (!cont) return;
+    const envios = OPE.cache.envios;
+    if (envios.length === 0) { cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No hay envíos</p></div>'; return; }
+    cont.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">Mostrando <strong>${envios.length}</strong> envío(s)</div>` +
+      envios.map(e => {
+        const cfg = { borrador:{c:"#86868b",i:"📝",l:"Borrador"}, pendiente_firma:{c:"#ff9500",i:"⏳",l:"Pendiente"}, firmada:{c:"#34c759",i:"✅",l:"Firmada"}, rechazada:{c:"#ff3b30",i:"❌",l:"Rechazada"} }[e.estado] || {c:"#86868b",i:"📄",l:e.estado};
+        const h = parseFloat(e.horas_espera) || 0;
+        return `<div class="informe-card" style="border-left:4px solid ${cfg.c};flex-direction:column;align-items:stretch;gap:8px;padding:14px">
+          <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <div style="flex:1;min-width:200px">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                <div style="font-size:13px;font-weight:700;color:var(--corp)">${cfg.i} ${esc(e.patient_name || "—")}</div>
+                <span style="background:${cfg.c};color:white;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px;text-transform:uppercase">${cfg.l}</span>
+              </div>
+              <div style="font-size:10px;color:var(--text-secondary);font-family:var(--font-mono);margin-bottom:4px">${esc(e.subject_id || "")} · ${esc(e.case_id || "")}</div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px"><strong>${esc((e.tipo || "").replace(/_/g," "))}</strong>${e.cie10_principal ? " · " + esc(e.cie10_principal) : ""}</div>
+              <div style="font-size:10px;color:var(--text-tertiary)">📅 ${fechaCorta(e.created_at)}${e.medico_nombre ? " · 🩺 " + esc(e.medico_nombre) : ""} · <strong>⏱ ${h}h</strong></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:150px">
+              ${e.estado === "borrador" ? `<button class="btn btn-primary btn-xs" onclick="opeVerEnvio('${e.consulta_id}','borrador')" style="font-size:10px">✏️ Continuar</button>` :
+                e.estado === "pendiente_firma" ? `<button class="btn btn-warning btn-xs" onclick="opeRecordarMedico('${e.consulta_id}')" style="font-size:10px">🔔 Recordar</button><button class="btn btn-secondary btn-xs" onclick="opeVerEnvio('${e.consulta_id}','${e.estado}')" style="font-size:10px">👁️ Ver</button>` :
+                `<button class="btn btn-secondary btn-xs" onclick="opeVerEnvio('${e.consulta_id}','${e.estado}')" style="font-size:10px">👁️ Ver</button>`}
+            </div>
+          </div>
+        </div>`;
+      }).join("");
+  }
+
+  window.opeCambiarFiltroEnvio = function(estado, btn) {
+    OPE.filtros.envios = estado;
+    document.querySelectorAll(".ope-filtro-envio").forEach(b => { b.classList.remove("btn-primary"); b.classList.add("btn-secondary"); });
+    if (btn) { btn.classList.remove("btn-secondary"); btn.classList.add("btn-primary"); }
+    opeCargarEnvios();
+  };
+  window.opeBuscarEnvios = debounce((v) => { OPE.filtros.busquedaEnvios = v || ""; opeCargarEnvios(); }, 300);
+  window.opeVerEnvio = async function(id, estado) {
+    if (estado === "borrador" && typeof abrirConsultaBorrador === "function") await abrirConsultaBorrador(id);
+    else if (typeof verConsultaFirmada === "function") await verConsultaFirmada(id);
+  };
+  window.opeRecordarMedico = async function(id) {
+    if (!confirm("¿Enviar recordatorio al médico?")) return;
+    try {
+      const { data } = await window.supabaseClient.from("consultas").select("medico_id, case_id").eq("consulta_id", id).single();
+      if (!data?.medico_id) { toast("Sin médico asignado", "warning"); return; }
+      await window.supabaseClient.from("notificaciones_medicas").insert({ medico_id: data.medico_id, tipo: "recordatorio_firma", prioridad: "alta", mensaje: "Recordatorio: " + data.case_id + " pendiente de firma", payload: { consulta_id: id } });
+      toast("✓ Recordatorio enviado", "success");
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // NOTIFICACIONES
+  // ═══════════════════════════════════════════════════════
+  window.opeCargarNotificaciones = async function() {
+    const cont = $id("ope-notificaciones-lista");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+    try {
+      const { data, error } = await window.supabaseClient.rpc("operador_mis_notificaciones", {
+        p_solo_no_leidas: OPE.filtros.notificaciones === "no-leidas",
+        p_limit: 50
+      });
+      if (error) throw error;
+      OPE.cache.notificaciones = data || [];
+      renderNotifs();
+    } catch (e) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  };
+
+  function renderNotifs() {
+    const cont = $id("ope-notificaciones-lista");
+    if (!cont) return;
+    const notifs = OPE.cache.notificaciones;
+    if (notifs.length === 0) { cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Sin notificaciones</p></div>'; return; }
+    cont.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px"><strong>${notifs.length}</strong> notificación(es)</div>` +
+      notifs.map(n => {
+        const col = n.prioridad === "critica" ? "#ff3b30" : n.prioridad === "alta" ? "#ff9500" : n.prioridad === "media" ? "#0071e3" : "#86868b";
+        return `<div class="card" style="border-left:4px solid ${col};padding:12px;margin-bottom:8px;background:${n.leida ? "var(--bg-secondary)" : "var(--accent-light)"}">
+          <div style="display:flex;justify-content:space-between;gap:10px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:11px;font-weight:700;color:${col};text-transform:uppercase;margin-bottom:4px">${esc((n.tipo||"").replace(/_/g," "))}${!n.leida ? ' <span style="background:#ff3b30;color:white;font-size:8px;padding:1px 5px;border-radius:100px;margin-left:6px">NUEVA</span>' : ''}</div>
+              <div style="font-size:12px;color:var(--text-primary);line-height:1.5">${esc(n.mensaje || "")}</div>
+              <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">${fechaCorta(n.created_at)} · ${tiempoRel(n.created_at)}</div>
+            </div>
+            ${!n.leida ? `<button class="btn btn-secondary btn-xs" onclick="opeMarcarLeida('${n.notif_id}')" style="font-size:10px;flex-shrink:0">✓ Leída</button>` : ""}
+          </div>
+        </div>`;
+      }).join("");
+  }
+
+  window.opeCambiarFiltroNotif = function(filtro, btn) {
+    OPE.filtros.notificaciones = filtro;
+    document.querySelectorAll(".ope-filtro-notif").forEach(b => { b.classList.remove("btn-primary"); b.classList.add("btn-secondary"); });
+    if (btn) { btn.classList.remove("btn-secondary"); btn.classList.add("btn-primary"); }
+    opeCargarNotificaciones();
+  };
+  window.opeMarcarLeida = async function(id) {
+    try {
+      await window.supabaseClient.from("notificaciones_operador").update({ leida: true }).eq("notif_id", id);
+      await opeCargarNotificaciones();
+      if (OPE.cache.kpis && OPE.cache.kpis.notificaciones_no_leidas > 0) {
+        OPE.cache.kpis.notificaciones_no_leidas--;
+        actualizarBadges(OPE.cache.kpis.borradores_pendientes || 0, OPE.cache.kpis.notificaciones_no_leidas);
+      }
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+  window.opeMarcarTodasLeidas = async function() {
+    if (!confirm("¿Marcar todas como leídas?")) return;
+    try {
+      await window.supabaseClient.from("notificaciones_operador").update({ leida: true }).eq("operador_id", window.usuarioActual.id).eq("leida", false);
+      toast("✓ Todas leídas", "success");
+      await opeCargarNotificaciones();
+      await opeCargarDashboard();
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // POLLING
+  // ═══════════════════════════════════════════════════════
+  function iniciarPolling() {
+    if (OPE.pollingId) return;
+    OPE.pollingId = setInterval(() => {
+      if (window.usuarioActual?.rol !== "operador" || document.hidden) return;
+      opeCargarNotificaciones().catch(() => {});
+    }, 60000);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (window.usuarioActual?.rol !== "operador") return;
+    if (document.hidden) { if (OPE.pollingId) { clearInterval(OPE.pollingId); OPE.pollingId = null; } }
+    else iniciarPolling();
+  });
+
+  // ═══════════════════════════════════════════════════════
+  // TABS + WRAPPER DE cambiarTab
+  // ═══════════════════════════════════════════════════════
+  function inyectarTabs() {
+    const tabs = $id("tabs-principales");
+    if (!tabs || window.usuarioActual?.rol !== "operador") return false;
+    if (document.querySelector('[data-tab="mi-dashboard-ope"]')) return true;
+
+    const tDash = document.createElement("div");
+    tDash.className = "tab";
+    tDash.dataset.tab = "mi-dashboard-ope";
+    tDash.dataset.acceso = "operador";
+    tDash.innerHTML = "🏠 Mi Dashboard";
+    tDash.onclick = () => cambiarTab("mi-dashboard-ope");
+    tabs.insertBefore(tDash, tabs.firstChild);
+
+    const tEnv = tabs.querySelector('[data-tab="mis-envios"]');
+    const tNot = document.createElement("div");
+    tNot.className = "tab";
+    tNot.dataset.tab = "mis-notificaciones";
+    tNot.dataset.acceso = "operador";
+    tNot.innerHTML = '🔔 Notificaciones <span class="ope-badge" style="display:none;background:#ff3b30;color:white;font-size:9px;font-weight:700;padding:1px 6px;border-radius:100px;margin-left:4px">0</span>';
+    tNot.onclick = () => cambiarTab("mis-notificaciones");
+    if (tEnv) tEnv.parentNode.insertBefore(tNot, tEnv.nextSibling);
+    else tabs.appendChild(tNot);
+    return true;
+  }
+
+  function instalarWrapperCambiarTab() {
+    if (typeof window.cambiarTab !== "function") return false;
+    if (window.cambiarTab._opeWrapped) return true;
+    const orig = window.cambiarTab;
+    window.cambiarTab = function(tab) {
+      if (tab === "mi-dashboard-ope") {
+        document.querySelectorAll("#tabs-principales .tab").forEach(t => t.classList.toggle("active", t.dataset.tab === "mi-dashboard-ope"));
+        document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+        const sec = $id("sec-mi-dashboard-operador");
+        if (sec) sec.classList.add("active");
+        setTimeout(opeCargarDashboard, 100);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      if (tab === "mis-notificaciones") {
+        document.querySelectorAll("#tabs-principales .tab").forEach(t => t.classList.toggle("active", t.dataset.tab === "mis-notificaciones"));
+        document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+        const sec = $id("sec-notificaciones-operador");
+        if (sec) sec.classList.add("active");
+        setTimeout(opeCargarNotificaciones, 100);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      if (tab === "mis-envios") {
+        document.querySelectorAll("#tabs-principales .tab").forEach(t => t.classList.toggle("active", t.dataset.tab === "mis-envios"));
+        document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+        const sec = $id("sec-mis-envios-operador");
+        if (sec) sec.classList.add("active");
+        setTimeout(opeCargarEnvios, 100);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      return orig.apply(this, arguments);
+    };
+    window.cambiarTab._opeWrapped = true;
+    return true;
+  }
+
+  // Stub para silenciar el bug previo de actualizarNotifOperador
+  if (typeof window.actualizarNotifOperador === "undefined") {
+    window.actualizarNotifOperador = function() {
+      if (window.__OPE && typeof opeCargarNotificaciones === "function") opeCargarNotificaciones().catch(() => {});
+    };
+  }
+
+  function intentarInit() {
+    OPE.intentos++;
+    if (window.usuarioActual?.rol !== "operador") {
+      if (OPE.intentos < OPE.MAX_INTENTOS) setTimeout(intentarInit, 250);
+      return;
+    }
+    const ok1 = inyectarTabs();
+    const ok2 = instalarWrapperCambiarTab();
+    if (ok1 && ok2) {
+      OPE.inicializado = true;
+      iniciarPolling();
+      setTimeout(opeCargarDashboard, 500);
+      console.log("[OPE Fase 1] ✓ Inicializado en intento " + OPE.intentos);
+      return;
+    }
+    if (OPE.intentos < OPE.MAX_INTENTOS) setTimeout(intentarInit, 250);
+    else console.warn("[OPE Fase 1] Timeout. Estado:", window.__OPE);
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(intentarInit, 700));
+  else setTimeout(intentarInit, 700);
+
+  console.log("[OPE Fase 1] Módulo cargado. Diagnóstico: __OPE.inicializado");
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════════════
+     FIN ARCHIVO: FASE1_OPERADOR_WRAPPER.js
+     ═══════════════════════════════════════════════════════════════ -->
 </body>
 </html>
