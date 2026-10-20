@@ -14051,67 +14051,137 @@ function construirPayloadConsulta() {
   };
 }
 
-window.guardarConsultaBorrador = async function() {
+window.guardarConsultaBorrador = async function(evento) {
   const s = window._consultaState;
-  if (!s.paciente) { showStatus("Falta paciente", "error"); return; }
-  if (!window.supabaseClient) { showStatus("Sin conexión", "error"); return; }
-  
-  const btn = event?.target;
+  if (!s.paciente) { showStatus("Falta paciente", "error"); return null; }
+  if (!window.supabaseClient) { showStatus("Sin conexión", "error"); return null; }
+
+  const btn = (evento && evento.target) || (window.event && window.event.target) || null;
   const original = btn ? btn.textContent : "Guardar borrador";
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Guardando...';
   }
-  
+
   try {
     const payload = construirPayloadConsulta();
-    
-    // Generar case_id si es nuevo
+
+    // CASO 1: Ya tenemos consultaId → solo UPDATE
+    if (s.consultaId) {
+      const { error } = await window.supabaseClient
+        .from("consultas")
+        .update({
+          payload: payload,
+          motivo_consulta: payload.S_subjetivo.motivo_consulta,
+          cie10_principal: payload.A_analisis.diagnosticos.find(d => d.tipo === "principal")?.cie10 || null,
+          cie10_secundarios: payload.A_analisis.diagnosticos.filter(d => d.tipo !== "principal").map(d => d.cie10).filter(Boolean),
+          nivel_riesgo: payload.A_analisis.nivel_riesgo,
+          complejidad: s.complejidadFinal || s.complejidadCalculada,
+          updated_at: new Date().toISOString()
+        })
+        .eq("consulta_id", s.consultaId);
+
+      if (error) throw error;
+      console.log("[guardarConsultaBorrador] ✓ Update:", s.consultaId);
+      showStatus(`✓ Borrador actualizado: ${s.caseId}`, "success");
+      return s.consultaId;
+    }
+
+    // CASO 2: Sin consultaId → crear borrador nuevo
     if (!s.caseId) {
       const { data, error } = await window.supabaseClient.rpc("generar_case_id_consulta");
       if (error) throw error;
       s.caseId = data;
+      console.log("[guardarConsultaBorrador] case_id generado:", s.caseId);
     }
-    
-    const registro = {
-      case_id: s.caseId,
-      subject_id: s.paciente.subject_id,
-      created_by: window.usuarioActual?.id || null,
-      operador_nombre: window.usuarioActual?.nombre || null,
-      fecha_consulta: new Date().toISOString().slice(0, 10),
-      tipo: s.tipoConsulta,
-      modalidad: "presencial",
-      estado: "borrador",
-      payload: payload,
-      motivo_consulta: payload.S_subjetivo.motivo_consulta,
-      cie10_principal: payload.A_analisis.diagnosticos.find(d => d.tipo === "principal")?.cie10 || null,
-      cie10_secundarios: payload.A_analisis.diagnosticos.filter(d => d.tipo !== "principal").map(d => d.cie10).filter(Boolean),
-      nivel_riesgo: payload.A_analisis.nivel_riesgo,
-      complejidad: s.complejidadFinal || s.complejidadCalculada
-    };
-    
-    if (s.consultaId) {
-      // Update
-      const { error } = await window.supabaseClient
-        .from("consultas")
-        .update(registro)
-        .eq("consulta_id", s.consultaId);
-      if (error) throw error;
-    } else {
-      // Insert
+
+    // Intentar INSERT con recuperación automática si hay conflicto
+    let consultaId = null;
+    let ultimoError = null;
+
+    for (let intento = 1; intento <= 3; intento++) {
+      const registro = {
+        case_id: s.caseId,
+        subject_id: s.paciente.subject_id,
+        created_by: window.usuarioActual?.id || null,
+        operador_nombre: window.usuarioActual?.nombre || null,
+        fecha_consulta: new Date().toISOString().slice(0, 10),
+        tipo: s.tipoConsulta,
+        modalidad: "presencial",
+        estado: "borrador",
+        payload: payload,
+        motivo_consulta: payload.S_subjetivo.motivo_consulta,
+        cie10_principal: payload.A_analisis.diagnosticos.find(d => d.tipo === "principal")?.cie10 || null,
+        cie10_secundarios: payload.A_analisis.diagnosticos.filter(d => d.tipo !== "principal").map(d => d.cie10).filter(Boolean),
+        nivel_riesgo: payload.A_analisis.nivel_riesgo,
+        complejidad: s.complejidadFinal || s.complejidadCalculada
+      };
+
       const { data, error } = await window.supabaseClient
         .from("consultas")
         .insert(registro)
-        .select("consulta_id")
+        .select("consulta_id, case_id")
         .single();
-      if (error) throw error;
-      s.consultaId = data.consulta_id;
+
+      if (!error && data) {
+        consultaId = data.consulta_id;
+        s.caseId = data.case_id;
+        console.log(`[guardarConsultaBorrador] ✓ Insert (intento ${intento}):`, consultaId);
+        break;
+      }
+
+      ultimoError = error;
+
+      // Si hay conflicto de case_id, reintentar con uno nuevo
+      if (error && (error.code === "23505" || error.message?.includes("duplicate key"))) {
+        console.warn(`[guardarConsultaBorrador] Conflicto en intento ${intento}, regenerando...`);
+
+        // ¿Ya existe con este case_id?
+        const { data: existente } = await window.supabaseClient
+          .from("consultas")
+          .select("consulta_id, case_id, estado")
+          .eq("case_id", s.caseId)
+          .maybeSingle();
+
+        // Si existe y NO está firmada → recuperar
+        if (existente && existente.estado !== "firmada") {
+          consultaId = existente.consulta_id;
+          console.log("[guardarConsultaBorrador] ✓ Recuperado existente:", consultaId);
+          break;
+        }
+
+        // Si existe firmada o no existe → regenerar
+        const { data: nuevoCase, error: errGen } = await window.supabaseClient.rpc("generar_case_id_consulta");
+        if (errGen) throw errGen;
+
+        // Si el RPC devuelve el mismo (por cache), forzar sufijo
+        if (nuevoCase === s.caseId) {
+          const suffix = String(Date.now()).slice(-4);
+          s.caseId = nuevoCase.replace(/-\d{4}$/, '-' + suffix);
+          console.warn("[guardarConsultaBorrador] ⚠️ RPC devolvió mismo ID, usando sufijo:", s.caseId);
+        } else {
+          s.caseId = nuevoCase;
+        }
+
+        await new Promise(r => setTimeout(r, 100));
+        continue;
+      }
+
+      throw error;
     }
-    
+
+    if (!consultaId) {
+      throw ultimoError || new Error("No se pudo guardar después de 3 intentos");
+    }
+
+    s.consultaId = consultaId;
     showStatus(`✓ Borrador guardado: ${s.caseId}`, "success");
+    return consultaId;
+
   } catch (e) {
     console.error("[guardarConsultaBorrador]", e);
-    showStatus("Error: " + e.message, "error");
+    showStatus("Error al guardar: " + e.message, "error");
+    return null;
   } finally {
     if (btn) {
       btn.disabled = false;
