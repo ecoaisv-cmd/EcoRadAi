@@ -25489,25 +25489,24 @@ document.addEventListener("visibilitychange", function() {
 })();
 </script>
 <!-- ═══════════════════════════════════════════════════════════════════
-     PORTAL OPERADOR v2.1 — FASE 1
+     PORTAL OPERADOR v2.2 — FASE 1 (FIXES)
      Dashboard + Mis Envíos + Notificaciones
      
-     CAMBIOS v2.1:
-     - Dashboard personal con KPIs de productividad
-     - Gestión visual de envíos con filtros
-     - Bandeja de notificaciones dedicada
-     - Tabs limpias (solo las 5 del operador)
-     - Auto-reparación de tabs
-     - Compatible con wrappers existentes (Admin, Médico, FaseD)
+     CAMBIOS v2.2:
+     - FIX: actualizarNotifOperador expuesto en window
+     - FIX: operadorV2CargarEnvios muestra error real (no "Object")
+     - FIX: Guard defensivo si supabaseClient no está listo
+     - FIX: Manejo de errores en todas las RPCs
+     - FIX: Silenciado warning [Tab] No existe sección
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
 "use strict";
 
 (function() {
-  console.log("[Operador v2.1] Iniciando wrapper con dashboard + envíos + notificaciones...");
+  console.log("[Operador v2.2] Iniciando wrapper con dashboard + envíos + notificaciones...");
 
   // ═══════════════════════════════════════════════════════════════
-  // CONTROL DE TABS — El operador solo ve sus tabs
+  // CONTROL DE TABS
   // ═══════════════════════════════════════════════════════════════
   const TABS_PERMITIDOS_OPERADOR = [
     "mi-dashboard",
@@ -25596,7 +25595,7 @@ document.addEventListener("visibilitychange", function() {
       return result;
     };
     window.ajustarUIPorRol._operadorFix = true;
-    console.log("[Operador v2.1] ✓ Wrapper de ajustarUIPorRol instalado");
+    console.log("[Operador v2.2] ✓ Wrapper de ajustarUIPorRol instalado");
   }
   instalarWrapperAjustarUIPorRol();
 
@@ -25624,9 +25623,7 @@ document.addEventListener("visibilitychange", function() {
         }
       });
 
-      if (necesitaReparar) {
-        aplicarControlTabsOperador();
-      }
+      if (necesitaReparar) aplicarControlTabsOperador();
     }, 3000);
   }
 
@@ -25681,7 +25678,7 @@ document.addEventListener("visibilitychange", function() {
                      : {};
           const { error } = await window.supabaseClient.rpc(rpc, args);
           results[rpc] = error && error.code !== "PGRST202" && error.code !== "P0001"
-            ? `❌ ${error.code || error.message}`
+            ? `❌ ${error.code || error.message}: ${error.message || ""}`
             : "✅";
         } catch (e) {
           results[rpc] = `❌ ${e.message}`;
@@ -25690,10 +25687,27 @@ document.addEventListener("visibilitychange", function() {
       console.table(results);
       return results;
     },
+    diagnosticarEnvios: async () => {
+      const { data, error } = await window.supabaseClient.rpc('operador_mis_envios', { p_dias: 30 });
+      if (error) {
+        console.error("❌ ERROR COMPLETO:", JSON.stringify(error, null, 2));
+        console.error("code:", error.code);
+        console.error("message:", error.message);
+        console.error("details:", error.details);
+        console.error("hint:", error.hint);
+      } else {
+        console.log("✅ RPC OK. Filas:", data?.length || 0);
+        console.log("Primera fila:", data?.[0]);
+      }
+      return { data, error };
+    },
     forzarTabs: aplicarControlTabsOperador,
     verificarPlan: (sid) => verificarPlanPaciente(sid),
     forzarPolling: () => actualizarNotifOperador(),
-    verSolicitudes: () => renderMisSolicitudes()
+    verSolicitudes: () => {
+      if (typeof renderMisSolicitudes === "function") renderMisSolicitudes();
+      else console.warn("[Operador v2.2] renderMisSolicitudes no existe");
+    }
   };
 
   const ADMIN_WHATSAPP = "50378311074";
@@ -25714,7 +25728,7 @@ document.addEventListener("visibilitychange", function() {
     return d.innerHTML;
   };
   const toast = window.showStatus || function(msg, tipo) {
-    console.log("[Operador v2.1]", tipo || "info", msg);
+    console.log("[Operador v2.2]", tipo || "info", msg);
   };
   function $id(id) { return document.getElementById(id); }
   function debounce(fn, ms) {
@@ -25868,9 +25882,15 @@ document.addEventListener("visibilitychange", function() {
 
     setTimeout(() => {
       switch (tab) {
-        case "mi-dashboard": window.operadorV2CargarDashboard(); break;
-        case "mis-envios": window.operadorV2CargarEnvios(); break;
-        case "mis-notificaciones": window.operadorV2CargarNotificaciones(); break;
+        case "mi-dashboard":
+          if (typeof window.operadorV2CargarDashboard === "function") window.operadorV2CargarDashboard();
+          break;
+        case "mis-envios":
+          if (typeof window.operadorV2CargarEnvios === "function") window.operadorV2CargarEnvios();
+          break;
+        case "mis-notificaciones":
+          if (typeof window.operadorV2CargarNotificaciones === "function") window.operadorV2CargarNotificaciones();
+          break;
         case "mis-solicitudes":
           if (typeof renderMisSolicitudes === "function") renderMisSolicitudes();
           break;
@@ -25881,11 +25901,15 @@ document.addEventListener("visibilitychange", function() {
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // DASHBOARD DEL OPERADOR
+  // DASHBOARD
   // ═══════════════════════════════════════════════════════════════
   window.operadorV2CargarDashboard = async function() {
     const cont = $id("op-dashboard-content");
-    if (!cont || !window.supabaseClient) return;
+    if (!cont) return;
+    if (!window.supabaseClient) {
+      cont.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Sin conexión a Supabase</p></div>';
+      return;
+    }
     cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando KPIs...</p></div>';
 
     try {
@@ -25932,19 +25956,16 @@ document.addEventListener("visibilitychange", function() {
             <div style="font-size:32px;font-weight:800;color:#8a6a00;margin-top:4px">${borradores}</div>
             <div style="font-size:10px;color:#8a6a00;margin-top:4px">${borradores > 0 ? "⚠️ por enviar" : "✅ al día"}</div>
           </div>
-
           <div class="card" style="background:linear-gradient(135deg,#f0f7ff,#e8f4fd);border:2px solid #0071e3;padding:14px">
             <div style="font-size:10px;font-weight:700;color:#0051a3;text-transform:uppercase">Enviados hoy</div>
             <div style="font-size:32px;font-weight:800;color:#0051a3;margin-top:4px">${enviadosHoy}</div>
             <div style="font-size:10px;color:#0051a3;margin-top:4px">Sem: <strong>${enviadosSem}</strong> · Mes: <strong>${enviadosMes}</strong></div>
           </div>
-
           <div class="card" style="background:linear-gradient(135deg,#f0fff4,#e8f9ec);border:2px solid #34c759;padding:14px">
             <div style="font-size:10px;font-weight:700;color:#1a4a2a;text-transform:uppercase">Aprobados</div>
             <div style="font-size:32px;font-weight:800;color:#1a4a2a;margin-top:4px">${firmadasMes}</div>
             <div style="font-size:10px;color:#1a4a2a;margin-top:4px">Tasa: <strong>${tasaAprobacion}%</strong></div>
           </div>
-
           <div class="card" style="background:linear-gradient(135deg,#fef3f2,#fde8e6);border:2px solid #d4a017;padding:14px">
             <div style="font-size:10px;font-weight:700;color:#8a6a00;text-transform:uppercase">Tiempo respuesta</div>
             <div style="font-size:32px;font-weight:800;color:#8a6a00;margin-top:4px">${tiempoProm}h</div>
@@ -26014,8 +26035,14 @@ document.addEventListener("visibilitychange", function() {
         </div>
       `;
     } catch (e) {
-      console.error("[operadorV2CargarDashboard]", e);
-      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+      console.error("[operadorV2CargarDashboard]", e?.message || e, e);
+      cont.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">⚠️</div>
+          <p>Error al cargar KPIs</p>
+          <p style="font-size:10px;color:var(--text-tertiary);margin-top:6px">${esc(e?.message || JSON.stringify(e))}</p>
+          <button class="btn btn-primary btn-sm" onclick="operadorV2CargarDashboard()" style="margin-top:10px">🔄 Reintentar</button>
+        </div>`;
     }
   };
 
@@ -26024,7 +26051,11 @@ document.addEventListener("visibilitychange", function() {
   // ═══════════════════════════════════════════════════════════════
   window.operadorV2CargarEnvios = async function() {
     const cont = $id("op-envios-lista");
-    if (!cont || !window.supabaseClient) return;
+    if (!cont) return;
+    if (!window.supabaseClient) {
+      cont.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Sin conexión a Supabase</p></div>';
+      return;
+    }
     cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando envíos...</p></div>';
 
     const dias = parseInt($id("op-envios-dias")?.value) || 30;
@@ -26039,8 +26070,16 @@ document.addEventListener("visibilitychange", function() {
       OP.cache.envios = data || [];
       renderEnvios();
     } catch (e) {
-      console.error("[operadorV2CargarEnvios]", e);
-      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+      console.error("[operadorV2CargarEnvios]", e?.message || e, e);
+      const msg = e?.message || JSON.stringify(e);
+      cont.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">⚠️</div>
+          <p>Error al cargar envíos</p>
+          <p style="font-size:10px;color:var(--text-tertiary);margin-top:6px;word-break:break-word">${esc(msg)}</p>
+          <button class="btn btn-primary btn-sm" onclick="operadorV2CargarEnvios()" style="margin-top:10px">🔄 Reintentar</button>
+          <button class="btn btn-secondary btn-sm" onclick="window.__OP.diagnosticarEnvios()" style="margin-top:6px">🔍 Diagnóstico</button>
+        </div>`;
     }
   };
 
@@ -26196,7 +26235,11 @@ document.addEventListener("visibilitychange", function() {
   // ═══════════════════════════════════════════════════════════════
   window.operadorV2CargarNotificaciones = async function() {
     const cont = $id("op-notificaciones-lista");
-    if (!cont || !window.supabaseClient) return;
+    if (!cont) return;
+    if (!window.supabaseClient) {
+      cont.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Sin conexión a Supabase</p></div>';
+      return;
+    }
     cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
 
     try {
@@ -26205,8 +26248,14 @@ document.addEventListener("visibilitychange", function() {
       OP.cache.notificaciones = data || [];
       renderNotificaciones();
     } catch (e) {
-      console.error("[operadorV2CargarNotificaciones]", e);
-      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+      console.error("[operadorV2CargarNotificaciones]", e?.message || e, e);
+      cont.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">⚠️</div>
+          <p>Error al cargar notificaciones</p>
+          <p style="font-size:10px;color:var(--text-tertiary);margin-top:6px">${esc(e?.message || JSON.stringify(e))}</p>
+          <button class="btn btn-primary btn-sm" onclick="operadorV2CargarNotificaciones()" style="margin-top:10px">🔄 Reintentar</button>
+        </div>`;
     }
   };
 
@@ -26293,9 +26342,8 @@ document.addEventListener("visibilitychange", function() {
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // FUNCIONES DEL WRAPPER v2.0 (mantener)
+  // SUSCRIPCIÓN / PLAN
   // ═══════════════════════════════════════════════════════════════
-
   window.verificarPlanPaciente = async function(subjectId) {
     if (!subjectId || !window.supabaseClient) return null;
     try {
@@ -26308,7 +26356,7 @@ document.addEventListener("visibilitychange", function() {
       mostrarPanelSuscripcion(data, subjectId);
       return data;
     } catch (e) {
-      console.error("[verificarPlanPaciente]", e);
+      console.error("[verificarPlanPaciente]", e?.message || e, e);
       mostrarPanelSuscripcion({ tiene_plan: false, estado: "error" }, subjectId);
       return null;
     }
@@ -26620,7 +26668,7 @@ ${panelUrl}
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // HOOKS: Análisis IA + generación de informes
+  // HOOKS IA
   // ═══════════════════════════════════════════════════════════════
   function instalarHooksAnalisisIA() {
     if (typeof window.sendToAI === "function" && !window.sendToAI._opHook) {
@@ -26654,7 +26702,7 @@ ${panelUrl}
         }
       };
       window.sendToAI._opHook = true;
-      console.log("[Operador v2.1] ✓ Hook sendToAI instalado");
+      console.log("[Operador v2.2] ✓ Hook sendToAI instalado");
     }
 
     if (typeof window.generarInformeBase === "function" && !window.generarInformeBase._opHook) {
@@ -26688,12 +26736,12 @@ ${panelUrl}
         return result;
       };
       window.generarInformeBase._opHook = true;
-      console.log("[Operador v2.1] ✓ Hook generarInformeBase instalado");
+      console.log("[Operador v2.2] ✓ Hook generarInformeBase instalado");
     }
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // POLLING DE NOTIFICACIONES (cada 60s)
+  // POLLING
   // ═══════════════════════════════════════════════════════════════
   async function actualizarNotifOperador() {
     if (!window.supabaseClient || !window.usuarioActual) return;
@@ -26734,19 +26782,21 @@ ${panelUrl}
         window.operadorV2CargarNotificaciones();
       }
     } catch (e) {
-      console.warn("[actualizarNotifOperador]", e);
+      console.warn("[actualizarNotifOperador]", e?.message || e);
     }
   }
+  // ✅ FIX: exponer para onclick inline y llamadas externas
+  window.actualizarNotifOperador = actualizarNotifOperador;
 
   function instalarPolling() {
     if (window._opPollingActivo) return;
     window._opPollingActivo = true;
     setInterval(actualizarNotifOperador, 60000);
-    console.log("[Operador v2.1] ✓ Polling de notificaciones activo (60s)");
+    console.log("[Operador v2.2] ✓ Polling de notificaciones activo (60s)");
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // ARRANQUE / BOOTSTRAP
+  // ARRANQUE
   // ═══════════════════════════════════════════════════════════════
   function arrancar() {
     OP.intentos++;
@@ -26755,21 +26805,17 @@ ${panelUrl}
     const tabs = $id("tabs-principales");
 
     if (!tabs || !rol) {
-      if (OP.intentos < OP.MAX_INTENTOS) {
-        setTimeout(arrancar, 250);
-      }
+      if (OP.intentos < OP.MAX_INTENTOS) setTimeout(arrancar, 250);
       return;
     }
 
     if (rol !== "operador" && rol !== "admin") {
-      console.log("[Operador v2.1] Rol no aplicable:", rol);
+      console.log("[Operador v2.2] Rol no aplicable:", rol);
       return;
     }
 
     if (!inyectarHTML()) {
-      if (OP.intentos < OP.MAX_INTENTOS) {
-        setTimeout(arrancar, 250);
-      }
+      if (OP.intentos < OP.MAX_INTENTOS) setTimeout(arrancar, 250);
       return;
     }
 
@@ -26786,15 +26832,12 @@ ${panelUrl}
       }
     }, 300);
 
-    console.log("[Operador v2.1] ✓ Wrapper inicializado correctamente");
+    console.log("[Operador v2.2] ✓ Wrapper inicializado correctamente");
   }
 
   function esperarUsuario() {
-    if (window.usuarioActual?.id) {
-      arrancar();
-    } else {
-      setTimeout(esperarUsuario, 300);
-    }
+    if (window.usuarioActual?.id) arrancar();
+    else setTimeout(esperarUsuario, 300);
   }
 
   if (document.readyState === "loading") {
@@ -26804,7 +26847,7 @@ ${panelUrl}
   }
 
   window.addEventListener("ecoradai:login", () => {
-    console.log("[Operador v2.1] Evento login detectado");
+    console.log("[Operador v2.2] Evento login detectado");
     OP.intentos = 0;
     arrancar();
   });
@@ -26819,7 +26862,7 @@ ${panelUrl}
 })();
 </script>
 <!-- ═══════════════════════════════════════════════════════════════════
-     FIN PORTAL OPERADOR v2.1 — FASE 1
+     FIN PORTAL OPERADOR v2.2 — FASE 1 (FIXES)
      ═══════════════════════════════════════════════════════════════════ -->
 </body>
 </html>
