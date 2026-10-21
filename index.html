@@ -28239,7 +28239,7 @@ REGLAS:
         <div style="font-size:10px;color:var(--accent);font-weight:700;text-transform:uppercase;margin-bottom:8px">
           ✏️ Modo edición — Modifica el texto directamente
         </div>
-        <textarea id="ad-ia-narrativa-edit" style="width:100%;min-height:500px;font-size:12px;line-height:1.6;padding:12px;border:2px solid var(--accent);border-radius:8px;font-family:var(--font-sans);background:white;resize:vertical"></textarea>
+        <textarea id="ad-ia-narrativa-edit" style="width:100%;min-height:500px;font-size:12px;line-height:1.6;padding:12px;border:2px solid var(--accent);border-radius:8px;font-family:var(--font-sans);background:#ffffff !important;color:#1d1d1f !important;resize:vertical"></textarea>
       `;
       const textarea = $id("ad-ia-narrativa-edit");
       if (textarea) {
@@ -28951,9 +28951,9 @@ REGLAS:
           </div>
         ` : ""}
 
-        <div class="ad-firma" style="margin-top:30px;padding:20px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;text-align:center">
+        <div class="ad-firma" style="margin-top:50px;padding:30px 20px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;text-align:center;border-top:4px solid #0071e3">
           ${selloUrl ? `<img src="${selloUrl}" crossorigin="anonymous" style="max-width:280px;max-height:140px;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto">` : ""}
-          <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:0 auto 8px"></div>
+        <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:0 auto 8px"></div>
           <div style="font-size:14px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(acta.medico_nombre || "Médico")}</div>
           <div style="font-size:11px;color:#333;margin-bottom:2px">CSSPM: ${esc(acta.medico_csspm || "N/E")}</div>
           <div style="font-size:11px;color:#666;margin-bottom:8px">${esc(acta.medico_especialidad || "Médico General")}</div>
@@ -29113,10 +29113,10 @@ REGLAS:
     return `
       <div style="font-family:Helvetica,Arial,sans-serif;color:#000;background:#fff;width:800px;font-size:11px;line-height:1.5">
 
-        <div class="alc-header" style="text-align:center;padding:20px 0;border-bottom:3px double #000;margin-bottom:16px">
-          <div style="font-size:13px;font-weight:700;letter-spacing:1px">REPÚBLICA DE EL SALVADOR</div>
-          <div style="font-size:12px;font-weight:600;letter-spacing:1px;margin-top:2px">MINISTERIO DE SALUD</div>
-          <div style="font-size:16px;font-weight:700;letter-spacing:2px;margin-top:8px">ACTA DE DEFUNCIÓN</div>
+        <div class="alc-header" style="text-align:center;padding:20px 0;border-bottom:3px double #1a3a5c;margin-bottom:16px">
+          <div style="font-size:13px;font-weight:700;letter-spacing:1px;color:#1a3a5c">ECOSISTEMA DE SALUD ECORADAI</div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:1px;margin-top:2px;color:#0071e3">INFORME MÉDICO</div>
+          <div style="font-size:16px;font-weight:700;letter-spacing:2px;margin-top:8px;color:#1a3a5c">ACTA DE DEFUNCIÓN</div>
           <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:10px">
             <div><strong>N° de Acta:</strong> ${e((registro?.acta_id || "").substring(0, 8).toUpperCase())}</div>
             <div><strong>Código único:</strong> ${e(acta.subject_id || "—")}</div>
