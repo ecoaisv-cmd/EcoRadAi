@@ -5223,7 +5223,19 @@ function renderBloqueFirma(firma, fecha, opciones = {}) {
   const nombre = firma?.nombre || datosMedico.nombre || "Médico Validador";
   const especialidad = firma?.especialidad || datosMedico.especialidad || "Médico Responsable";
   const csspm = firma?.csspm || datosMedico.csspm || "N/E";
-  const urlSello = obtenerURLSello(medicoId);
+    // Prioridad de la URL del sello:
+  // 1. firma.urlSello (que pasa el wrapper)
+  // 2. datosMedico.urlSello (de MEDICOS_DATOS)
+  // 3. construir desde carpeta + SELLOS_BASE_URL
+  const urlSello = firma?.urlSello 
+  || datosMedico?.urlSello 
+  || (() => {
+  const carpetaFinal = firma?.carpeta || datosMedico?.carpeta || "edumazzini";
+  const tieneSelloFinal = firma?.tieneSello || datosMedico?.tieneSello || carpetaFinal === "edumazzini";
+  if (!window.SELLOS_BASE_URL) return null;
+  if (!tieneSelloFinal) return null;
+  return `${window.SELLOS_BASE_URL}/${carpetaFinal}/sello-firma.png`;
+  })();
 
   return `
     <div style="text-align:center;padding:24px 20px;margin-top:20px;page-break-inside:avoid;break-inside:avoid">
@@ -26935,31 +26947,23 @@ ${panelUrl}
      FIN PORTAL OPERADOR v2.2 — FASE 1 (FIXES)
  
     ═══════════════════════════════════════════════════════════════════ -->
- <!-- ═══════════════════════════════════════════════════════════════════
-     WRAPPER FLUJO CLÍNICO v1.0
+<!-- ═══════════════════════════════════════════════════════════════════
+     WRAPPER FLUJO CLÍNICO v1.1
      
-     Resuelve el ciclo completo en UN SOLO lugar:
-     
-     OPERADOR:
-       - Al enviar a firma → modal para elegir médico
-       - Asigna medico_id + notifica SOLO al elegido
-       - Ordena médicos por zona geográfica del paciente
-     
-     MÉDICO:
-       - Al firmar → guarda su medico_id real
-       - El PDF sale con SUS datos (nombre, CSSPM, especialidad)
-       - Funciona con 1 o N médicos
-     
-     NO modifica el monolito base. Compatible con:
-       - Admin v2.0, Médico v2.0.1, Operador v2.1, FaseD, Suscripciones
-     
-     Tu caso (admin+médico Eduardo Mazzini) sigue funcionando igual.
+     Resuelve el ciclo operador → médico en un solo lugar.
+     Incluye:
+       - SELLOS_BASE_URL auto-inicializada
+       - Carpeta correcta (edumazzini) preservada
+       - Verificación de sello en Storage
+       - Alias EDUARDO_MAZZINI apuntando a ambos perfiles
+       - Modal de asignación con prioridad geográfica
+       - Firma con médico real
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
 "use strict";
 
 (function() {
-  console.log("[FlujoClínico v1.0] Iniciando wrapper único operador + médico...");
+  console.log("[FlujoClínico v1.1] Iniciando wrapper...");
 
   const FC = {
     inicializado: false,
@@ -26980,7 +26984,8 @@ ${panelUrl}
       medicosDisponibles: Object.keys(window.MEDICOS_DATOS || {}).length,
       rol: window.usuarioActual?.rol,
       medicoActual: FC.medicoActualPerfil?.nombre,
-      medicoActualCSSPM: FC.medicoActualPerfil?.csspm
+      medicoActualCSSPM: FC.medicoActualPerfil?.csspm,
+      sellosBaseURL: window.SELLOS_BASE_URL
     }),
     recargar: () => {
       FC.medicosCargados = false;
@@ -26988,7 +26993,17 @@ ${panelUrl}
       FC.intentos = 0;
       inicializar();
     },
-    verMedicos: () => console.table(window.MEDICOS_DATOS || {})
+    verMedicos: () => console.table(window.MEDICOS_DATOS || {}),
+    verSellos: () => {
+      Object.entries(window.MEDICOS_DATOS || {}).forEach(([k, m]) => {
+        console.log(`${k}:`, {
+          nombre: m.nombre,
+          carpeta: m.carpeta,
+          tieneSello: m.tieneSello,
+          urlSello: m.urlSello
+        });
+      });
+    }
   };
 
   const esc = window.escapeHtml || function(s) {
@@ -26998,24 +27013,71 @@ ${panelUrl}
   };
 
   // ═══════════════════════════════════════════════════════════
-  // PARTE 1 — CARGAR MÉDICOS EN MEDICOS_DATOS
-  // (común para ambos roles)
+  // INICIALIZAR SELLOS_BASE_URL
+  // ═══════════════════════════════════════════════════════════
+  function asegurarSellosURL() {
+    if (window.SELLOS_BASE_URL) return true;
+
+    if (window.SUPABASE_URL) {
+      window.SELLOS_BASE_URL = `${window.SUPABASE_URL}/storage/v1/object/public/firmas-medicos`;
+      console.log("[FlujoClínico] ✓ SELLOS_BASE_URL:", window.SELLOS_BASE_URL);
+      return true;
+    }
+
+    if (typeof window.initSellosURL === "function") {
+      try {
+        window.initSellosURL();
+        if (window.SELLOS_BASE_URL) {
+          console.log("[FlujoClínico] ✓ SELLOS_BASE_URL vía initSellosURL:", window.SELLOS_BASE_URL);
+          return true;
+        }
+      } catch (e) {}
+    }
+
+    console.warn("[FlujoClínico] ⚠️ SELLOS_BASE_URL no inicializada");
+    return false;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // CARGAR MÉDICOS CON CARPETA Y SELLO
   // ═══════════════════════════════════════════════════════════
   async function cargarMedicosEnMemoria() {
     if (!window.supabaseClient) return false;
+    asegurarSellosURL();
 
     try {
       const { data: medicos, error } = await window.supabaseClient
         .from("profiles")
-        .select("id, nombre, email, especialidad, csspm, telefono, departamento, municipio, zona_geografica")
-        .eq("rol", "medico")
+        .select("id, nombre, email, especialidad, csspm, telefono, departamento, municipio, zona_geografica, rol")
+        .in("rol", ["medico", "admin"])
         .eq("activo", true);
 
       if (error) throw error;
 
       if (!window.MEDICOS_DATOS) window.MEDICOS_DATOS = {};
 
-      (medicos || []).forEach(m => {
+      // Perfiles especiales: emails que usan la carpeta edumazzini
+      const PERFILES_ESPECIALES = {
+        "ecoaisv@gmail.com": { carpeta: "edumazzini", alias: "EDUARDO_MAZZINI" },
+        "emazzini2020@gmail.com": { carpeta: "edumazzini", alias: "EDUARDO_MAZZINI" }
+      };
+
+      for (const m of (medicos || [])) {
+        const emailLower = (m.email || "").toLowerCase();
+        const perfilEspecial = PERFILES_ESPECIALES[emailLower];
+
+        let carpeta;
+        if (perfilEspecial?.carpeta) {
+          carpeta = perfilEspecial.carpeta;
+        } else if (window.MEDICOS_DATOS[m.id]?.carpeta) {
+          carpeta = window.MEDICOS_DATOS[m.id].carpeta;
+        } else {
+          carpeta = String(m.nombre || "medico")
+            .toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, "");
+        }
+
         window.MEDICOS_DATOS[m.id] = {
           id: m.id,
           nombre: m.nombre,
@@ -27026,24 +27088,50 @@ ${panelUrl}
           departamento: m.departamento,
           municipio: m.municipio,
           zona_geografica: m.zona_geografica,
-          carpeta: String(m.nombre || "medico")
-            .toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .replace(/[^a-z0-9]/g, ""),
+          rol: m.rol,
+          carpeta: carpeta,
           tieneSello: false
         };
 
-        // Alias retro-compatible
-        if ((m.email || "").includes("mazzini") || (m.email || "").includes("emazzini")) {
-          window.MEDICOS_DATOS["EDUARDO_MAZZINI"] = window.MEDICOS_DATOS[m.id];
+        if (perfilEspecial?.alias) {
+          // Solo asignar el alias si aún no existe O si el nuevo es admin
+          if (!window.MEDICOS_DATOS[perfilEspecial.alias] || m.rol === "admin") {
+            window.MEDICOS_DATOS[perfilEspecial.alias] = window.MEDICOS_DATOS[m.id];
+          }
         }
-      });
+      }
+
+      // Verificar sello para cada médico
+      if (window.SELLOS_BASE_URL) {
+        for (const id of Object.keys(window.MEDICOS_DATOS)) {
+          const m = window.MEDICOS_DATOS[id];
+          if (!m.carpeta) continue;
+
+          const nombres = ["sello-firma.png", "sello.png", "firma.png"];
+          for (const nombre of nombres) {
+            const url = `${window.SELLOS_BASE_URL}/${m.carpeta}/${nombre}`;
+            try {
+              const resp = await fetch(url, { method: "HEAD" });
+              if (resp.ok) {
+                m.tieneSello = true;
+                m.urlSello = url;
+                console.log(`[FlujoClínico] ✓ Sello: ${m.nombre} → ${url}`);
+                break;
+              }
+            } catch (e) {}
+          }
+          if (!m.tieneSello) {
+            console.warn(`[FlujoClínico] ⚠️ Sin sello: ${m.nombre} (${m.carpeta})`);
+          }
+        }
+      }
 
       FC.medicosCargados = true;
-      console.log(`[FlujoClínico] ✓ ${(medicos || []).length} médico(s) cargados`);
+      console.log(`[FlujoClínico] ✓ ${(medicos || []).length} perfil(es) cargados`);
       return true;
 
     } catch (e) {
-      console.error("[FlujoClínico] Error cargando médicos:", e);
+      console.error("[FlujoClínico] Error:", e);
       return false;
     }
   }
@@ -27051,7 +27139,7 @@ ${panelUrl}
   window.cargarMedicosEnMemoria = cargarMedicosEnMemoria;
 
   // ═══════════════════════════════════════════════════════════
-  // PARTE 2 — CARGAR PERFIL DEL MÉDICO ACTUAL
+  // CARGAR PERFIL DEL USUARIO ACTUAL
   // ═══════════════════════════════════════════════════════════
   async function cargarPerfilMedicoActual() {
     if (!window.supabaseClient || !window.usuarioActual) return null;
@@ -27072,7 +27160,12 @@ ${panelUrl}
       FC.medicoActual = data.id;
 
       if (window.MEDICOS_DATOS) {
+        const carpetaActual = window.MEDICOS_DATOS[data.id]?.carpeta 
+          || (data.email || "").includes("mazzini") ? "edumazzini"
+          : String(data.nombre || "medico").toLowerCase().replace(/[^a-z0-9]/g, "");
+
         window.MEDICOS_DATOS[data.id] = {
+          ...(window.MEDICOS_DATOS[data.id] || {}),
           id: data.id,
           nombre: data.nombre,
           especialidad: data.especialidad || "Medicina General",
@@ -27082,10 +27175,8 @@ ${panelUrl}
           departamento: data.departamento,
           municipio: data.municipio,
           zona_geografica: data.zona_geografica,
-          carpeta: String(data.nombre || "medico")
-            .toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .replace(/[^a-z0-9]/g, ""),
-          tieneSello: false
+          carpeta: carpetaActual,
+          tieneSello: window.MEDICOS_DATOS[data.id]?.tieneSello || false
         };
       }
 
@@ -27099,8 +27190,7 @@ ${panelUrl}
   }
 
   // ═══════════════════════════════════════════════════════════
-  // PARTE 3 — WRAPPER OPERADOR: enviarConsultaAFirma
-  // Muestra modal para elegir médico y asigna
+  // WRAPPER OPERADOR: enviarConsultaAFirma
   // ═══════════════════════════════════════════════════════════
   function instalarWrapperEnviarFirma() {
     if (typeof window.enviarConsultaAFirma !== "function") return false;
@@ -27113,77 +27203,73 @@ ${panelUrl}
       if (!s.paciente) { showStatus("Falta paciente", "error"); return; }
       if (!window.supabaseClient) { showStatus("Sin conexión", "error"); return; }
 
-      // 1. Guardar el borrador primero (usa el guardarConsultaBorrador existente)
       const consultaId = await window.guardarConsultaBorrador(evento);
       if (!consultaId) {
         showStatus("No se pudo guardar el borrador", "error");
         return;
       }
 
-      // 2. Cargar médicos
       if (!FC.medicosCargados) await cargarMedicosEnMemoria();
 
-      // 3. Obtener médicos ordenados por zona del paciente
       let medicos = [];
       try {
         const { data, error } = await window.supabaseClient
           .rpc("medicos_para_paciente", { p_subject_id: s.paciente.subject_id });
+        if (!error && data && data.length > 0) medicos = data;
+      } catch (e) {}
 
-        if (!error && data && data.length > 0) {
-          medicos = data;
-        } else {
-          // Fallback: usar MEDICOS_DATOS
-          medicos = Object.values(window.MEDICOS_DATOS || {}).filter(m => m.id);
-        }
-      } catch (e) {
-        console.warn("[FlujoClínico] RPC falló, usando fallback:", e);
-        medicos = Object.values(window.MEDICOS_DATOS || {}).filter(m => m.id);
+      if (medicos.length === 0) {
+        medicos = Object.values(window.MEDICOS_DATOS || {})
+          .filter(m => m.rol === "medico" || m.rol === "admin")
+          .map(m => ({
+            medico_id: m.id,
+            medico_nombre: m.nombre,
+            medico_email: m.email,
+            especialidad: m.especialidad,
+            csspm: m.csspm,
+            departamento: m.departamento,
+            municipio: m.municipio,
+            zona_geografica: m.zona_geografica,
+            prioridad_geo: 4,
+            etiqueta_geo: "⚪",
+            pendientes: 0
+          }));
       }
 
-      // Deduplicar por id
       const medicosUnicos = [];
       const vistos = new Set();
       medicos.forEach(m => {
-        if (m.medico_id && !vistos.has(m.medico_id)) {
-          vistos.add(m.medico_id);
+        const id = m.medico_id || m.id;
+        if (id && !vistos.has(id)) {
+          vistos.add(id);
           medicosUnicos.push({
-            id: m.medico_id,
-            nombre: m.medico_nombre,
-            email: m.medico_email,
+            id: id,
+            nombre: m.medico_nombre || m.nombre,
+            email: m.medico_email || m.email,
             especialidad: m.especialidad,
             csspm: m.csspm,
             departamento: m.departamento,
             municipio: m.municipio,
             zona_geografica: m.zona_geografica,
             prioridad_geo: m.prioridad_geo || 4,
-            etiqueta_geo: m.etiqueta_geo || "⚪ Otra ubicación",
+            etiqueta_geo: m.etiqueta_geo || "⚪",
             pendientes: m.pendientes || 0
-          });
-        } else if (m.id && !vistos.has(m.id)) {
-          vistos.add(m.id);
-          medicosUnicos.push({
-            ...m,
-            prioridad_geo: 4,
-            etiqueta_geo: "⚪ Sin zona",
-            pendientes: 0
           });
         }
       });
 
       if (medicosUnicos.length === 0) {
-        showStatus("No hay médicos activos para asignar", "error");
+        showStatus("No hay médicos activos", "error");
         return;
       }
 
-      // 4. Mostrar modal
       abrirModalAsignarMedico(consultaId, medicosUnicos, s);
     };
 
     _conFlujoClinico._flujoClinicoFix = true;
     _conFlujoClinico._original = _original;
     window.enviarConsultaAFirma = _conFlujoClinico;
-
-    console.log("[FlujoClínico] ✓ enviarConsultaAFirma envuelto (operador)");
+    console.log("[FlujoClínico] ✓ enviarConsultaAFirma envuelto");
     return true;
   }
 
@@ -27196,76 +27282,45 @@ ${panelUrl}
 
     overlay.innerHTML = `
       <div style="background:var(--bg);border-radius:16px;max-width:540px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4);max-height:90vh;overflow-y:auto">
-
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">
-            👨‍⚕️ Asignar médico para firma
-          </h3>
+          <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">👨‍⚕️ Asignar médico para firma</h3>
           <button onclick="document.getElementById('modal-asignar-medico').remove()"
                   style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
         </div>
-
         <div style="background:var(--accent-light);border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px">
-          <div style="font-weight:700;color:var(--accent-dark);margin-bottom:4px">
-            Consulta: ${esc(s.caseId)}
-          </div>
-          <div style="color:var(--accent-dark)">
-            Paciente: ${esc(s.paciente.nombre)} · ${s.paciente.edad || "—"} años
-            ${s.paciente.municipio ? ` · ${esc(s.paciente.municipio)}` : ""}
-          </div>
+          <div style="font-weight:700;color:var(--accent-dark);margin-bottom:4px">Consulta: ${esc(s.caseId)}</div>
+          <div style="color:var(--accent-dark)">Paciente: ${esc(s.paciente.nombre)} · ${s.paciente.edad || "—"} años</div>
         </div>
-
-        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">
-          Selecciona el médico que revisará y firmará esta consulta:
-        </p>
-
+        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Selecciona el médico:</p>
         <div style="display:grid;gap:8px;margin-bottom:16px">
           ${medicos.map(m => {
             const prioridadColor = m.prioridad_geo === 1 ? "#34c759"
                                  : m.prioridad_geo === 2 ? "#ffcc00"
-                                 : m.prioridad_geo === 3 ? "#ff9500"
-                                 : "#86868b";
+                                 : m.prioridad_geo === 3 ? "#ff9500" : "#86868b";
             return `
-              <label style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg-secondary);border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.2s"
+              <label style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg-secondary);border:2px solid var(--border);border-radius:10px;cursor:pointer"
                      onmouseover="this.style.borderColor='var(--accent)'"
                      onmouseout="if(!this.querySelector('input').checked) this.style.borderColor='var(--border)'">
                 <input type="radio" name="medico-seleccion" value="${m.id}"
-                       onchange="seleccionarMedicoFirma('${m.id}', this)"
-                       style="width:auto">
+                       onchange="seleccionarMedicoFirma('${m.id}', this)" style="width:auto">
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:13px;font-weight:700;color:var(--corp)">
-                    Dr(a). ${esc(m.nombre)}
-                  </div>
+                  <div style="font-size:13px;font-weight:700;color:var(--corp)">Dr(a). ${esc(m.nombre)}</div>
                   <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">
                     ${esc(m.especialidad || "Medicina General")} · CSSPM: ${esc(m.csspm || "N/E")}
                   </div>
                   <div style="font-size:10px;margin-top:4px">
-                    <span style="background:${prioridadColor}22;color:${prioridadColor};font-weight:700;padding:2px 6px;border-radius:4px;font-size:9px">
-                      ${esc(m.etiqueta_geo)}
-                    </span>
-                    <span style="color:var(--text-tertiary);margin-left:8px">
-                      ${m.pendientes} pendiente(s)
-                    </span>
+                    <span style="background:${prioridadColor}22;color:${prioridadColor};font-weight:700;padding:2px 6px;border-radius:4px;font-size:9px">${esc(m.etiqueta_geo)}</span>
+                    <span style="color:var(--text-tertiary);margin-left:8px">${m.pendientes} pendiente(s)</span>
                   </div>
                 </div>
               </label>
             `;
           }).join("")}
         </div>
-
         <div id="modal-asignar-medico-error" style="display:none;margin-bottom:12px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
-
         <div style="display:flex;gap:8px">
-          <button class="btn btn-secondary"
-                  onclick="document.getElementById('modal-asignar-medico').remove()"
-                  style="flex:1;font-size:12px">
-            Cancelar
-          </button>
-          <button class="btn btn-success" id="btn-confirmar-asignacion"
-                  onclick="confirmarAsignacionMedico('${consultaId}')"
-                  style="flex:1;font-size:12px" disabled>
-            ✓ Enviar a firma
-          </button>
+          <button class="btn btn-secondary" onclick="document.getElementById('modal-asignar-medico').remove()" style="flex:1;font-size:12px">Cancelar</button>
+          <button class="btn btn-success" id="btn-confirmar-asignacion" onclick="confirmarAsignacionMedico('${consultaId}')" style="flex:1;font-size:12px" disabled>✓ Enviar a firma</button>
         </div>
       </div>
     `;
@@ -27294,21 +27349,19 @@ ${panelUrl}
   window.confirmarAsignacionMedico = async function(consultaId) {
     const medicoId = FC.medicoSeleccionadoFirma;
     const errEl = document.getElementById("modal-asignar-medico-error");
-    const setErr = (msg) => {
-      if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
-    };
     if (errEl) errEl.style.display = "none";
-
-    if (!medicoId) { setErr("Selecciona un médico"); return; }
+    if (!medicoId) {
+      if (errEl) { errEl.textContent = "Selecciona un médico"; errEl.style.display = "block"; }
+      return;
+    }
 
     const s = window._consultaState;
     const btn = document.getElementById("btn-confirmar-asignacion");
-    const original = btn ? btn.textContent : "Enviar a firma";
+    const original = btn ? btn.textContent : "Enviar";
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Enviando...'; }
 
     try {
-      // 1. Actualizar consulta con médico asignado
-      const { error: errUpd } = await window.supabaseClient
+      await window.supabaseClient
         .from("consultas")
         .update({
           estado: "pendiente_firma",
@@ -27319,9 +27372,6 @@ ${panelUrl}
         })
         .eq("consulta_id", consultaId);
 
-      if (errUpd) throw errUpd;
-
-      // 2. Notificar SOLO al médico asignado
       await window.supabaseClient.from("notificaciones_medicas").insert({
         medico_id: medicoId,
         tipo: "consulta_pendiente_firma",
@@ -27329,37 +27379,27 @@ ${panelUrl}
         referencia_id: consultaId,
         referencia_tipo: "consulta",
         mensaje: `Nueva consulta de ${s.paciente.nombre} pendiente de firma (${s.caseId})`,
-        payload: {
-          consulta_id: consultaId,
-          case_id: s.caseId,
-          paciente_nombre: s.paciente.nombre,
-          operador_nombre: window.usuarioActual?.nombre
-        }
+        payload: { consulta_id: consultaId, case_id: s.caseId, paciente_nombre: s.paciente.nombre }
       });
 
-      // 3. Cerrar modal y confirmar
       document.getElementById("modal-asignar-medico")?.remove();
-      showStatus(`✓ Consulta ${s.caseId} asignada y enviada a firma`, "success");
+      showStatus(`✓ Consulta ${s.caseId} asignada`, "success");
 
-      // 4. Ofrecer ir a Mis envíos
       setTimeout(() => {
-        if (confirm("✓ Consulta enviada a firma.\n\n¿Ir a Mis envíos para ver el estado?")) {
-          if (typeof window.operadorV2CambiarTab === "function") {
-            window.operadorV2CambiarTab("mis-envios");
-          }
+        if (confirm("✓ Consulta enviada.\n\n¿Ir a Mis envíos?")) {
+          if (typeof window.operadorV2CambiarTab === "function") window.operadorV2CambiarTab("mis-envios");
         }
       }, 300);
 
     } catch (e) {
-      console.error("[confirmarAsignacionMedico]", e);
-      setErr("Error: " + e.message);
+      console.error(e);
+      if (errEl) { errEl.textContent = "Error: " + e.message; errEl.style.display = "block"; }
       if (btn) { btn.disabled = false; btn.textContent = original; }
     }
   };
 
   // ═══════════════════════════════════════════════════════════
-  // PARTE 4 — WRAPPER MÉDICO: renderBloqueFirma
-  // Usa el medico_id real del que firmó
+  // WRAPPER MÉDICO: renderBloqueFirma
   // ═══════════════════════════════════════════════════════════
   function instalarWrapperRenderBloqueFirma() {
     if (typeof window.renderBloqueFirma !== "function") return false;
@@ -27386,15 +27426,10 @@ ${panelUrl}
           medico_id: medicoId,
           nombre: firma?.nombre || datosMedico.nombre,
           especialidad: firma?.especialidad || datosMedico.especialidad,
-          csspm: firma?.csspm || datosMedico.csspm
-        };
-      } else if (FC.medicoActualPerfil && medicoId === FC.medicoActual) {
-        firmaEnriquecida = {
-          ...firma,
-          medico_id: medicoId,
-          nombre: firma?.nombre || FC.medicoActualPerfil.nombre,
-          especialidad: firma?.especialidad || FC.medicoActualPerfil.especialidad,
-          csspm: firma?.csspm || FC.medicoActualPerfil.csspm
+          csspm: firma?.csspm || datosMedico.csspm,
+          tieneSello: datosMedico.tieneSello,
+          urlSello: datosMedico.urlSello,
+          carpeta: datosMedico.carpeta
         };
       }
 
@@ -27404,14 +27439,12 @@ ${panelUrl}
     _conFlujoClinico._flujoClinicoFix = true;
     _conFlujoClinico._original = _original;
     window.renderBloqueFirma = _conFlujoClinico;
-
-    console.log("[FlujoClínico] ✓ renderBloqueFirma envuelto (médico)");
+    console.log("[FlujoClínico] ✓ renderBloqueFirma envuelto");
     return true;
   }
 
   // ═══════════════════════════════════════════════════════════
-  // PARTE 5 — WRAPPER MÉDICO: firmarYGenerarConsulta
-  // Guarda y corrige el medico_id real
+  // WRAPPER MÉDICO: firmarYGenerarConsulta
   // ═══════════════════════════════════════════════════════════
   function instalarWrapperFirmarYGenerar() {
     if (typeof window.firmarYGenerarConsulta !== "function") return false;
@@ -27420,13 +27453,9 @@ ${panelUrl}
     const _original = window.firmarYGenerarConsulta;
 
     const _conFlujoClinico = async function() {
-      if (!FC.medicoActualPerfil) {
-        await cargarPerfilMedicoActual();
-      }
-
+      if (!FC.medicoActualPerfil) await cargarPerfilMedicoActual();
       const result = await _original.apply(this, arguments);
 
-      // Corregir medico_id en la consulta firmada
       try {
         const s = window._consultaState;
         if (s?.consultaId && FC.medicoActual && FC.medicoActualPerfil) {
@@ -27445,12 +27474,10 @@ ${panelUrl}
                 medico_csspm: FC.medicoActualPerfil.csspm || "N/E"
               })
               .eq("consulta_id", s.consultaId);
-            console.log("[FlujoClínico] ✓ medico_id corregido en consulta firmada");
+            console.log("[FlujoClínico] ✓ medico_id corregido");
           }
         }
-      } catch (e) {
-        console.warn("[FlujoClínico] No se pudo corregir medico_id:", e);
-      }
+      } catch (e) {}
 
       return result;
     };
@@ -27458,13 +27485,12 @@ ${panelUrl}
     _conFlujoClinico._flujoClinicoFix = true;
     _conFlujoClinico._original = _original;
     window.firmarYGenerarConsulta = _conFlujoClinico;
-
-    console.log("[FlujoClínico] ✓ firmarYGenerarConsulta envuelto (médico)");
+    console.log("[FlujoClínico] ✓ firmarYGenerarConsulta envuelto");
     return true;
   }
 
   // ═══════════════════════════════════════════════════════════
-  // INICIALIZACIÓN
+  // INICIALIZAR
   // ═══════════════════════════════════════════════════════════
   async function inicializar() {
     FC.intentos++;
@@ -27480,40 +27506,35 @@ ${panelUrl}
       return;
     }
 
+    // PASO 1: Asegurar SELLOS_BASE_URL
+    asegurarSellosURL();
+
+    // PASO 2: Cargar todos los médicos
     if (!FC.medicosCargados) await cargarMedicosEnMemoria();
 
-    // Si es médico o admin, cargar perfil
+    // PASO 3: Cargar perfil actual (si es médico o admin)
     if (rol === "medico" || rol === "admin") {
       await cargarPerfilMedicoActual();
     }
 
-    // Instalar wrappers según rol
-    let todoOk = true;
-
-    // Operador o admin: wrapper de enviarConsultaAFirma
-    if (rol === "operador" || rol === "admin") {
-      todoOk = instalarWrapperEnviarFirma() && todoOk;
-    }
-
-    // Médico o admin: wrappers de firma
+    // PASO 4: Instalar wrappers
+    let ok = true;
+    if (rol === "operador" || rol === "admin") ok = instalarWrapperEnviarFirma() && ok;
     if (rol === "medico" || rol === "admin") {
-      todoOk = instalarWrapperRenderBloqueFirma() && todoOk;
-      todoOk = instalarWrapperFirmarYGenerar() && todoOk;
+      ok = instalarWrapperRenderBloqueFirma() && ok;
+      ok = instalarWrapperFirmarYGenerar() && ok;
     }
 
-    if (todoOk) {
+    if (ok) {
       FC.inicializado = true;
-      console.log("[FlujoClínico] ✓ Wrapper inicializado para rol:", rol);
-      console.log("[FlujoClínico] Médicos disponibles:", Object.keys(window.MEDICOS_DATOS || {}).length);
-      if (FC.medicoActualPerfil) {
-        console.log("[FlujoClínico] Médico actual:", FC.medicoActualPerfil.nombre);
-      }
+      console.log("[FlujoClínico] ✓ Inicializado para rol:", rol);
+      console.log("[FlujoClínico] Perfiles cargados:", Object.keys(window.MEDICOS_DATOS || {}).length);
+      console.log("[FlujoClínico] Sello Base URL:", window.SELLOS_BASE_URL);
     } else if (FC.intentos < FC.MAX_INTENTOS) {
       setTimeout(inicializar, 250);
     }
   }
 
-  // Arrancar
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => setTimeout(inicializar, 800));
   } else {
@@ -27527,8 +27548,8 @@ ${panelUrl}
     setTimeout(inicializar, 500);
   });
 
-  console.log("[FlujoClínico v1.0] Wrapper cargado. Diagnóstico: __FC.estado()");
+  console.log("[FlujoClínico v1.1] Wrapper cargado. Diagnóstico: __FC.estado()");
 })();
-</script> 
+</script>
 </body>
 </html>
