@@ -28951,45 +28951,39 @@ REGLAS:
           </div>
         ` : ""}
 
-         <div class="ad-firma" style="
-          margin-top: 60px;
-          padding: 30px 20px;
-          background: #f8fbff;
-          border: 2px solid #1a3a5c;
-          border-radius: 8px;
-          border-top: 4px solid #0071e3;
-          text-align: center;
-          page-break-inside: avoid;
-          break-inside: avoid;
+        <div class="ad-firma" style="
+          position: relative !important;
+          z-index: 1 !important;
+          clear: both !important;
+          display: block !important;
+          overflow: hidden !important;
+          margin-top: 80px !important; 
+          padding: 40px 20px !important;
+          background: #f8fbff !important;
+          border: 2px solid #1a3a5c !important;
+          border-radius: 8px !important;
+          border-top: 4px solid #0071e3 !important;
+          text-align: center !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
         ">
-          <div style="font-size: 11px; font-weight: 700; color: #1a3a5c; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 16px;">
-            ✍️ Firma del Médico Validador
-          </div>
+          ${selloUrl ? `<img src="${selloUrl}" crossorigin="anonymous" style="
+            display: block !important;
+            position: relative !important;
+            float: none !important;
+            max-width: 280px;
+            max-height: 140px;
+            margin: 0 auto 16px auto !important;
+          ">` : ""}
           
-          ${selloUrl ? `
-            <div style="margin-bottom: 16px;">
-              <img src="${selloUrl}" 
-                   crossorigin="anonymous" 
-                   style="max-width: 280px; max-height: 140px; display: block; margin: 0 auto;">
-            </div>
-          ` : ""}
+          <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:0 auto 12px auto"></div>
           
-          <div style="border-top: 1.5px solid #1a3a5c; width: 70%; margin: 0 auto 12px auto;"></div>
+          <div style="font-size:14px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(acta.medico_nombre || "Médico")}</div>
+          <div style="font-size:11px;color:#333;margin-bottom:2px">CSSPM: ${esc(acta.medico_csspm || "N/E")}</div>
+          <div style="font-size:11px;color:#666;margin-bottom:8px">${esc(acta.medico_especialidad || "Médico General")}</div>
+          <div style="font-size:10px;color:#86868b">Fecha: ${esc(fecha)}</div>
           
-          <div style="font-size: 14px; font-weight: 700; color: #1a3a5c; margin-bottom: 3px;">
-            ${esc(acta.medico_nombre || "Médico")}
-          </div>
-          <div style="font-size: 11px; color: #333; margin-bottom: 2px;">
-            CSSPM: ${esc(acta.medico_csspm || "N/E")}
-          </div>
-          <div style="font-size: 11px; color: #666; margin-bottom: 8px;">
-            ${esc(acta.medico_especialidad || "Médico General")}
-          </div>
-          <div style="font-size: 10px; color: #86868b;">
-            Fecha: ${esc(fecha)}
-          </div>
-          
-          <div style="font-size: 8px; color: #999; margin-top: 16px; padding-top: 10px; border-top: 1px solid #d0d8e0; font-family: monospace; word-break: break-all;">
+          <div style="font-size:8px;color:#999;margin-top:16px;padding-top:10px;border-top:1px solid #d0d8e0;font-family:monospace;word-break:break-all">
             SHA-256: ${esc((acta.firma_hash || "").substring(0, 64))}
           </div>
         </div>
