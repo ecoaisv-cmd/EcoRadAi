@@ -27855,16 +27855,42 @@ IMPORTANTE:
   }
 
   window.actaDefuncionCambiarTab = function(subtab) {
-    document.querySelectorAll("#sec-acta-defuncion [data-ad-tab]").forEach(t => {
-      t.classList.toggle("active", t.dataset.adTab === subtab);
-    });
-    const sN = $id("ad-nueva-seccion");
-    const sH = $id("ad-historial-seccion");
-    if (sN) sN.style.display = subtab === "nueva" ? "" : "none";
-    if (sH) sH.style.display = subtab === "historial" ? "" : "none";
-    if (subtab === "nueva") renderFormularioActa();
-    if (subtab === "historial") cargarHistorial();
-  };
+  console.log("[ActaDefunción] Cambiando a subtab:", subtab);
+
+  // ─── 1. Activar tabs visuales internas ───
+  document.querySelectorAll("#sec-acta-defuncion [data-ad-tab]").forEach(t => {
+    t.classList.toggle("active", t.dataset.adTab === subtab);
+  });
+
+  // ─── 2. Activar/ocultar subsecciones internas ───
+  const sN = document.getElementById("ad-nueva-seccion");
+  const sH = document.getElementById("ad-historial-seccion");
+  if (sN) sN.style.display = subtab === "nueva" ? "" : "none";
+  if (sH) sH.style.display = subtab === "historial" ? "" : "none";
+
+  // ─── 3. CRÍTICO: Activar la sección externa ───
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  const sec = document.getElementById("sec-acta-defuncion");
+  if (sec) {
+    sec.classList.add("active");
+    sec.style.display = "block";
+  }
+
+  // ─── 4. Actualizar tabs principales ───
+  document.querySelectorAll("#tabs-principales .tab").forEach(t => {
+    t.classList.toggle("active", t.dataset.tab === "acta-defuncion");
+  });
+
+  // ─── 5. Renderizar contenido ───
+  if (subtab === "nueva") {
+    renderFormularioActa();
+  } else if (subtab === "historial") {
+    cargarHistorial();
+  }
+
+  // ─── 6. Scroll al tope ───
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
   // ═══════════════════════════════════════════════════════════
   // 2. FORMULARIO COMPLETO
@@ -29042,7 +29068,45 @@ IMPORTANTE:
     AD.intentos = 0;
     setTimeout(inicializar, 500);
   });
+  // ═══════════════════════════════════════════════════════════
+  // Renderizar formulario cuando la sección se activa
+  // ═══════════════════════════════════════════════════════════
+  setTimeout(() => {
+    const sec = document.getElementById("sec-acta-defuncion");
+    if (sec && sec.classList.contains("active")) {
+      renderFormularioActa();
+    }
+  }, 500);
+    // ═══════════════════════════════════════════════════════════
+  // GUARDIÁN: Evitar que ajustarUIPorRol oculte la sección
+  // ═══════════════════════════════════════════════════════════
+  function protegerSeccionActa() {
+    const sec = document.getElementById("sec-acta-defuncion");
+    if (!sec) return;
 
+    // Si el tab activo es "acta-defuncion", forzar que esté visible
+    const tabActiva = document.querySelector("#tabs-principales .tab.active");
+    if (tabActiva && tabActiva.dataset.tab === "acta-defuncion") {
+      if (!sec.classList.contains("active")) {
+        document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+        sec.classList.add("active");
+        sec.style.display = "block";
+        console.log("[ActaDefunción] 🛡️ Guardián: sección re-activada");
+      }
+    }
+  }
+
+  // Instalar guardián cada 500ms (silencioso)
+  setInterval(protegerSeccionActa, 500);
+
+  // Instalar guardián ante clicks en la tab (inmediato)
+  document.addEventListener("click", function(e) {
+    if (e.target?.dataset?.tab === "acta-defuncion") {
+      setTimeout(protegerSeccionActa, 10);
+      setTimeout(protegerSeccionActa, 100);
+      setTimeout(protegerSeccionActa, 300);
+    }
+  });
   console.log("[ActaDefunción v2.0] Wrapper con IA cargado. __AD.estado()");
 
 })();
