@@ -27551,5 +27551,1501 @@ ${panelUrl}
   console.log("[FlujoClínico v1.1] Wrapper cargado. Diagnóstico: __FC.estado()");
 })();
 </script>
+<!-- ═══════════════════════════════════════════════════════════════════
+     WRAPPER ACTA DE DEFUNCIÓN CON IA — v2.0
+     Genera informe narrativo con Kimi + PDF firmado
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+(function() {
+  console.log("[ActaDefunción v2.0] Iniciando wrapper con IA...");
+
+  // ═══════════════════════════════════════════════════════════
+  // CONFIGURACIÓN
+  // ═══════════════════════════════════════════════════════════
+  const AD = {
+    inicializado: false,
+    intentos: 0,
+    MAX_INTENTOS: 40,
+    pacienteSeleccionado: null,
+    actaActual: null,
+    medicoPerfil: null,
+    iaRespuesta: null,
+    iaJSON: null,
+    secciones: {},
+    iaGenerada: false
+  };
+
+  window.ACTA_DEFUNCION = AD;
+  window.__AD = {
+    estado: () => ({
+      inicializado: AD.inicializado,
+      rol: window.usuarioActual?.rol,
+      paciente: AD.pacienteSeleccionado?.subject_id,
+      iaGenerada: AD.iaGenerada,
+      acta: AD.actaActual?.acta_id
+    }),
+    abrirNueva: () => window.actaDefuncionCambiarTab("nueva"),
+    verHistorial: () => window.actaDefuncionCambiarTab("historial"),
+    recargar: () => { AD.intentos = 0; AD.inicializado = false; inicializar(); },
+    regenerarIA: () => { if (AD.pacienteSeleccionado) ejecutarAnalisisIA(); }
+  };
+
+  const esc = window.escapeHtml || function(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  };
+
+  const toast = window.showStatus || function(msg, tipo) {
+    console.log("[ActaDefunción]", tipo || "info", msg);
+  };
+
+  function $id(id) { return document.getElementById(id); }
+
+  function debounce(fn, ms) {
+    let t;
+    return function() {
+      clearTimeout(t);
+      const ctx = this, args = arguments;
+      t = setTimeout(() => fn.apply(ctx, args), ms);
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // PROMPT MAESTRO DE LA IA
+  // ═══════════════════════════════════════════════════════════
+  const PROMPT_ACTA_DEFUNCION = `Actúa como médico forense y clínico con 15 años de experiencia en certificación de defunciones y análisis retrospectivo de casos clínicos.
+
+CONTEXTO:
+Estás generando un INFORME DE DEFUNCIÓN NARRATIVO para el ecosistema clínico EcoRadAi.
+Este informe es INTERNO del ecosistema (no reemplaza el certificado oficial).
+
+DATOS DEL FALLECIDO:
+- Nombre: {NOMBRE}
+- ID: {SUBJECT_ID}
+- Edad: {EDAD} años
+- Sexo: {SEXO}
+- DUI: {DUI}
+- Departamento: {DEPARTAMENTO}
+- Municipio: {MUNICIPIO}
+
+DATOS DEL FALLECIMIENTO:
+- Fecha: {FECHA_DEFUNCION}
+- Hora: {HORA_DEFUNCION}
+- Lugar: {LUGAR_DEFUNCION}
+- Intrahospitalaria: {INTRAHOSPITALARIA}
+- Establecimiento: {ESTABLECIMIENTO}
+
+CAUSAS CIE-10:
+- Causa directa (a): {CAUSA_A} [{CODIGO_A}]
+- Causa antecedente (b): {CAUSA_B} [{CODIGO_B}]
+- Causa antecedente (c): {CAUSA_C} [{CODIGO_C}]
+- Causa básica: {CAUSA_BASICA} [{CODIGO_BASICA}]
+- Otros estados: {OTROS_ESTADOS}
+
+CIRCUNSTANCIAS:
+- Manera de muerte: {MANERA_MUERTE}
+- Autopsia: {AUTOPSIA}
+- Notificado a Fiscalía: {NOTIFICADO_FISCALIA}
+
+CONTEXTO CLÍNICO PREVIO (si existe):
+- Antecedentes patológicos: {ANTECEDENTES}
+- Medicamentos actuales: {MEDICAMENTOS}
+- Alergias: {ALERGIA}
+- Hábitos: {HABITOS}
+- Resumen clínico previo: {RESUMEN_CLINICO}
+
+INFORMANTE:
+- Nombre: {INFORMANTE_NOMBRE}
+- Parentesco: {INFORMANTE_PARENTESCO}
+- DUI: {INFORMANTE_DUI}
+
+OBSERVACIONES ADICIONALES DEL MÉDICO:
+{OBSERVACIONES}
+
+INSTRUCCIONES DE FORMATO:
+
+Genera el informe en DOS BLOQUES separados:
+
+═══════════════════════════════════════════════════════════════
+BLOQUE 1: NARRATIVA CLÍNICA (10 secciones)
+═══════════════════════════════════════════════════════════════
+
+1. RESUMEN EJECUTIVO
+   - Síntesis en 3-5 párrafos del caso y las causas de muerte
+   - Contexto clínico y circunstancial
+   - Hallazgos principales
+
+2. DATOS DEL FALLECIDO
+   - Datos demográficos completos
+   - Contexto social y familiar si aplica
+
+3. ANÁLISIS DE LA CAUSA DIRECTA
+   - Explicación fisiopatológica de la causa (a)
+   - Mecanismo de muerte
+   - Correlación con hallazgos clínicos previos
+
+4. CADENA CAUSAL (a → b → c → básica)
+   - Explicación de cómo se encadenaron las causas
+   - Relación causal entre cada nivel
+   - Justificación de la causa básica seleccionada
+
+5. CONTEXTO CLÍNICO Y ANTECEDENTES
+   - Análisis de las patologías previas
+   - Rol de las comorbilidades en el desenlace
+   - Medicamentos y su posible influencia
+
+6. ANÁLISIS DE LA MANERA DE MUERTE
+   - Justificación de la clasificación (natural/accidente/etc.)
+   - Coherencia con las causas CIE-10
+   - Si es violenta: recomendaciones sobre notificación legal
+
+7. HALLAZGOS RELEVANTES Y FACTORES CONTRIBUYENTES
+   - Factores de riesgo identificados
+   - Posibles omisiones o áreas de mejora en la atención
+   - Recomendaciones preventivas
+
+8. IMPACTO Y CONTEXTO EPIDEMIOLÓGICO
+   - Relevancia de esta causa en el contexto salvadoreño
+   - Grupo etario y sexo afectado
+   - Comparación con causas frecuentes similares
+
+9. OBSERVACIONES Y LIMITACIONES
+   - Vacíos de información
+   - Limitaciones del análisis retrospectivo
+   - Necesidad de autopsia si aplica
+
+10. CONCLUSIONES Y RECOMENDACIONES
+    - Resumen de la causa básica
+    - Recomendaciones para la familia
+    - Recomendaciones para el sistema de salud
+    - Recomendaciones para investigaciones futuras
+
+═══════════════════════════════════════════════════════════════
+BLOQUE 2: JSON ESTRUCTURADO (obligatorio)
+═══════════════════════════════════════════════════════════════
+
+Después de la narrativa, incluye SIEMPRE este bloque:
+
+===JSON_ESTRUCTURADO===
+{
+  "resumen_ejecutivo": "Síntesis breve del caso",
+  "causa_directa_explicada": "Análisis de la causa (a)",
+  "mecanismo_muerte": "Descripción del mecanismo fisiopatológico",
+  "cadena_causal": {
+    "a": "Causa directa explicada",
+    "b": "Causa antecedente b explicada",
+    "c": "Causa antecedente c explicada",
+    "basica": "Causa básica con razonamiento",
+    "justificacion": "Por qué esta es la causa básica"
+  },
+  "contexto_clinico": "Análisis de antecedentes y comorbilidades",
+  "manera_justificada": "Justificación de la manera seleccionada",
+  "factores_contribuyentes": [
+    "Factor 1",
+    "Factor 2"
+  ],
+  "areas_mejora": [
+    "Área de mejora 1",
+    "Área de mejora 2"
+  ],
+  "impacto_epidemiologico": {
+    "grupo_etario": "Adulto mayor",
+    "sexo_predominante": "Masculino",
+    "frecuencia_relativa": "Alta",
+    "observaciones": "Causa frecuente en El Salvador"
+  },
+  "limitaciones_analisis": [
+    "Limitación 1",
+    "Limitación 2"
+  ],
+  "recomendaciones_familia": [
+    "Recomendación 1"
+  ],
+  "recomendaciones_sistema": [
+    "Recomendación 1"
+  ],
+  "referencias_bibliograficas": [
+    "CIE-10 OMS 2024",
+    "MINSAL El Salvador 2024"
+  ],
+  "nivel_certeza_diagnostica": "alto",
+  "requiere_autopsia_segun_ia": false,
+  "alertas_legales": []
+}
+===FIN_JSON===
+
+REGLAS ANTI-MARKDOWN:
+- NO uses asteriscos, ni dobles asteriscos, ni guiones bajos
+- Para enumerar usa "1.", "2.", "3."
+- Para listar usa guion simple
+- Títulos en MAYÚSCULAS sin símbolos
+- No uses bloques de código con acentos graves
+
+REGLAS ORTOGRÁFICAS OBLIGATORIAS:
+- TODAS las palabras en español deben llevar tilde y eñe correctos
+- NUNCA reemplaces ñ por n: riñón, tamaño, año, niño, señal, muñeca, pequeño, dueño, España, compañía, montaña, campaña, sueño
+- Tildes en -ción, -sión: hipertensión, diagnóstico, evaluación, presión, función, medicación, duración, validación, derivación, nutrición, cardiología, hepatología, nefrología, endocrinología
+
+IMPORTANTE:
+- Sé RESPETUOSO con el fallecido y su familia
+- Sé OBJETIVO y CLÍNICO
+- Si hay vacíos de información, dilo explícitamente
+- Si la manera de muerte es violenta, señala la obligación legal de notificar
+- NO inventes datos que no se te dieron`;
+
+  // ═══════════════════════════════════════════════════════════
+  // 1. INYECTAR TAB + SECCIÓN
+  // ═══════════════════════════════════════════════════════════
+  function inyectarTabYSeccion() {
+    const rol = window.usuarioActual?.rol;
+    if (rol !== "medico" && rol !== "admin") return true;
+
+    const tabs = $id("tabs-principales");
+    if (!tabs) return false;
+
+    if (!document.querySelector('[data-tab="acta-defuncion"]')) {
+      const tab = document.createElement("div");
+      tab.className = "tab";
+      tab.dataset.tab = "acta-defuncion";
+      tab.dataset.acceso = "medico";
+      tab.innerHTML = "📜 Acta Defunción";
+      tab.onclick = () => window.actaDefuncionCambiarTab("nueva");
+      tabs.appendChild(tab);
+    }
+
+    if (!$id("sec-acta-defuncion")) {
+      const container = document.querySelector(".container") || document.body;
+      const sec = document.createElement("div");
+      sec.className = "section";
+      sec.id = "sec-acta-defuncion";
+      sec.innerHTML = `
+        <div class="tabs" style="margin-bottom:14px">
+          <div class="tab active" data-ad-tab="nueva" onclick="actaDefuncionCambiarTab('nueva')">📝 Nueva acta</div>
+          <div class="tab" data-ad-tab="historial" onclick="actaDefuncionCambiarTab('historial')">📚 Historial</div>
+        </div>
+        <div id="ad-nueva-seccion">
+          <div class="card">
+            <div class="card-title">
+              <span class="num">📜</span>
+              <span>Acta de Defunción</span>
+              <span class="card-desc">Con análisis IA</span>
+            </div>
+            <div id="ad-nueva-contenido"></div>
+          </div>
+        </div>
+        <div id="ad-historial-seccion" style="display:none">
+          <div class="card">
+            <div class="card-title">
+              <span class="num">📚</span>
+              <span>Actas emitidas</span>
+            </div>
+            <div id="ad-historial-contenido">
+              <div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>
+            </div>
+          </div>
+        </div>
+      `;
+      container.appendChild(sec);
+    }
+
+    return true;
+  }
+
+  window.actaDefuncionCambiarTab = function(subtab) {
+    document.querySelectorAll("#sec-acta-defuncion [data-ad-tab]").forEach(t => {
+      t.classList.toggle("active", t.dataset.adTab === subtab);
+    });
+    const sN = $id("ad-nueva-seccion");
+    const sH = $id("ad-historial-seccion");
+    if (sN) sN.style.display = subtab === "nueva" ? "" : "none";
+    if (sH) sH.style.display = subtab === "historial" ? "" : "none";
+    if (subtab === "nueva") renderFormularioActa();
+    if (subtab === "historial") cargarHistorial();
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // 2. FORMULARIO COMPLETO
+  // ═══════════════════════════════════════════════════════════
+  function renderFormularioActa() {
+    const cont = $id("ad-nueva-contenido");
+    if (!cont) return;
+
+    cont.innerHTML = `
+      <div class="config-box" style="background:#fff9e6;border-color:#ff9500;margin-bottom:14px">
+        <p style="font-size:11px;color:#8a6a00;line-height:1.5">
+          <strong>⚠️ Documento clínico interno EcoRadAi.</strong>
+          Completa los datos duros, luego la IA generará el informe narrativo completo.
+        </p>
+      </div>
+
+      <!-- Búsqueda de paciente -->
+      <div class="form-group">
+        <label>Buscar paciente fallecido *</label>
+        <input type="text" id="ad-buscar-paciente" placeholder="🔍 Nombre, DUI o ID..."
+               oninput="actaDefuncionBuscarPaciente(this.value)" autocomplete="off">
+        <div id="ad-resultados-paciente" style="display:none;margin-top:8px"></div>
+      </div>
+
+      <div id="ad-paciente-info" style="display:none;margin-bottom:14px"></div>
+
+      <div id="ad-formulario-completo" style="display:none">
+
+        <!-- I. DATOS DEL FALLECIMIENTO -->
+        <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">
+          I. Datos del fallecimiento
+        </h4>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Fecha de defunción *</label>
+            <input type="date" id="ad-fecha-defuncion" value="${new Date().toISOString().slice(0,10)}">
+          </div>
+          <div class="form-group">
+            <label>Hora de defunción *</label>
+            <input type="time" id="ad-hora-defuncion" value="${new Date().toTimeString().slice(0,5)}">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Departamento *</label>
+            <select id="ad-departamento" onchange="adActualizarMunicipios()"></select>
+          </div>
+          <div class="form-group">
+            <label>Municipio *</label>
+            <select id="ad-municipio"></select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Lugar exacto de defunción *</label>
+          <input type="text" id="ad-lugar" placeholder="Ej: Hospital Nacional, cama 12, o domicilio">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Defunción intrahospitalaria</label>
+            <select id="ad-intrahospitalaria">
+              <option value="false">No</option>
+              <option value="true">Sí</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Establecimiento de salud</label>
+            <input type="text" id="ad-establecimiento" placeholder="Si aplica">
+          </div>
+        </div>
+
+        <!-- II. CAUSA DE DEFUNCIÓN -->
+        <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">
+          II. Causa de defunción (CIE-10)
+        </h4>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Causa directa (a) *</label>
+            <input type="text" id="ad-causa-a" placeholder="Ej: Neumonía bacteriana">
+          </div>
+          <div class="form-group">
+            <label>Código (a)</label>
+            <input type="text" id="ad-codigo-a" placeholder="J15.9">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Causa antecedente (b)</label>
+            <input type="text" id="ad-causa-b">
+          </div>
+          <div class="form-group">
+            <label>Código (b)</label>
+            <input type="text" id="ad-codigo-b">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Causa antecedente (c)</label>
+            <input type="text" id="ad-causa-c">
+          </div>
+          <div class="form-group">
+            <label>Código (c)</label>
+            <input type="text" id="ad-codigo-c">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Causa básica *</label>
+            <input type="text" id="ad-causa-basica">
+          </div>
+          <div class="form-group">
+            <label>Código básica *</label>
+            <input type="text" id="ad-codigo-basica">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Otros estados patológicos contribuyentes</label>
+          <textarea id="ad-otros-estados" style="min-height:50px"></textarea>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Manera de muerte *</label>
+            <select id="ad-manera" onchange="adVerificarMuerteViolenta()">
+              <option value="">—</option>
+              <option value="natural">Natural</option>
+              <option value="accidente">Accidente</option>
+              <option value="suicidio">Suicidio</option>
+              <option value="homicidio">Homicidio</option>
+              <option value="indeterminada">Indeterminada</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>¿Se practicó autopsia?</label>
+            <select id="ad-autopsia">
+              <option value="false">No</option>
+              <option value="true">Sí</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="ad-alerta-violenta" style="display:none;background:#fff3f3;border-left:4px solid var(--danger);padding:10px 12px;border-radius:0 6px 6px 0;margin-bottom:12px;font-size:11px;color:#7a1a1a">
+          <strong>🚨 Muerte violenta o sospechosa</strong><br>
+          Notifica a la Fiscalía General de la República y PNC. El médico forense debe intervenir.
+          <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:600">
+            <input type="checkbox" id="ad-notificado-fiscalia" style="width:auto">
+            Confirmo que notifiqué a las autoridades
+          </label>
+        </div>
+
+        <!-- III. CONTEXTO CLÍNICO PREVIO (para la IA) -->
+        <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">
+          III. Contexto clínico previo (opcional, mejora el análisis IA)
+        </h4>
+
+        <div class="form-group">
+          <label>Antecedentes patológicos</label>
+          <textarea id="ad-antecedentes" placeholder="HTA, DM2, cardiopatías, cirugías previas..." style="min-height:50px"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Medicamentos actuales</label>
+          <textarea id="ad-medicamentos" placeholder="Fármacos con dosis, si se conocen..." style="min-height:50px"></textarea>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Alergias conocidas</label>
+            <input type="text" id="ad-alergias" placeholder="Medicamentos, alimentos...">
+          </div>
+          <div class="form-group">
+            <label>Hábitos</label>
+            <input type="text" id="ad-habitos" placeholder="Tabaco, alcohol, ejercicio...">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Resumen clínico previo</label>
+          <textarea id="ad-resumen-previo" placeholder="Última consulta, hospitalizaciones, evolución..." style="min-height:60px"></textarea>
+        </div>
+
+        <!-- IV. INFORMANTE -->
+        <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">
+          IV. Datos del informante
+        </h4>
+
+        <div class="form-group">
+          <label>Nombre completo *</label>
+          <input type="text" id="ad-informante-nombre" placeholder="Como aparece en su documento">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Parentesco</label>
+            <select id="ad-informante-parentesco">
+              <option value="">—</option>
+              <option value="conyuge">Cónyuge</option>
+              <option value="hijo">Hijo/a</option>
+              <option value="padre">Padre</option>
+              <option value="madre">Madre</option>
+              <option value="hermano">Hermano/a</option>
+              <option value="otro_familiar">Otro familiar</option>
+              <option value="amigo">Amigo/a</option>
+              <option value="autoridad">Autoridad</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>DUI</label>
+            <input type="text" id="ad-informante-dui" placeholder="00000000-0">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Teléfono</label>
+            <input type="tel" id="ad-informante-telefono">
+          </div>
+          <div class="form-group">
+            <label>Dirección</label>
+            <input type="text" id="ad-informante-direccion">
+          </div>
+        </div>
+
+        <!-- V. OBSERVACIONES -->
+        <h4 style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">
+          V. Observaciones
+        </h4>
+
+        <div class="form-group">
+          <label>Observaciones clínicas</label>
+          <textarea id="ad-observaciones" placeholder="Notas adicionales sobre el fallecimiento..." style="min-height:60px"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Notas internas (no aparecen en el PDF)</label>
+          <textarea id="ad-notas-internas" placeholder="Uso interno del ecosistema..." style="min-height:50px"></textarea>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             PASO 4: BOTÓN DE ANÁLISIS CON IA
+             ═══════════════════════════════════════════════════════════ -->
+        <div style="background:linear-gradient(135deg,#f0f7ff,#e8f4fd);border:2px solid var(--accent);border-radius:12px;padding:16px;margin:16px 0">
+          <div style="font-size:12px;font-weight:700;color:var(--accent-dark);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
+            🤖 Análisis con IA
+          </div>
+          <p style="font-size:11px;color:var(--accent-dark);line-height:1.5;margin-bottom:12px">
+            Kimi analizará el caso y generará un informe narrativo con 10 secciones:
+            resumen ejecutivo, análisis de causas, cadena causal, contexto clínico, impacto epidemiológico y recomendaciones.
+          </p>
+          <button class="btn btn-primary" id="btn-ad-analizar-ia" onclick="ejecutarAnalisisIA()" style="width:100%;font-size:12px">
+            🤖 Analizar con IA
+          </button>
+          <div id="ad-ia-error" style="display:none;margin-top:10px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             PASO 6: PREVIEW DEL INFORME GENERADO
+             ═══════════════════════════════════════════════════════════ -->
+        <div id="ad-ia-resultado" style="display:none;margin-top:16px">
+          <div style="background:#f0fff4;border:2px solid var(--positive);border-radius:12px;padding:16px;margin-bottom:14px">
+            <div style="font-size:12px;font-weight:700;color:#1a4a2a;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
+              ✅ Informe generado por IA
+            </div>
+            <p style="font-size:11px;color:#1a4a2a;line-height:1.5">
+              Revisa el informe antes de firmar. Puedes regenerarlo o proceder a la firma.
+            </p>
+          </div>
+          <div id="ad-ia-narrativa" style="background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:16px;font-size:12px;line-height:1.6;max-height:500px;overflow-y:auto"></div>
+          <div class="btn-row" style="margin-top:12px">
+            <button class="btn btn-secondary" onclick="ejecutarAnalisisIA()" style="font-size:12px">
+              🔄 Regenerar informe
+            </button>
+          </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             PASO 7: FIRMA
+             ═══════════════════════════════════════════════════════════ -->
+        <div class="form-group" style="margin-top:16px;padding:12px;background:#fff9e6;border-radius:8px;border:1.5px solid #ff9500">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;color:#8a6a00">
+            <input type="checkbox" id="ad-firma-check" style="width:auto">
+            <span>Confirmo que he revisado el informe generado por IA y valido la información registrada</span>
+          </label>
+        </div>
+
+        <div class="btn-row" style="margin-top:14px">
+          <button class="btn btn-secondary" onclick="actaDefuncionLimpiar()">Cancelar</button>
+          <button class="btn btn-success" id="btn-ad-firmar" onclick="firmarActaDefuncion()">
+            ✍️ Firmar y generar PDF
+          </button>
+        </div>
+
+        <div id="ad-error" style="display:none;margin-top:10px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
+      </div>
+    `;
+
+    // Poblar departamentos
+    const selD = $id("ad-departamento");
+    if (selD && typeof window.obtenerDepartamentosSV === "function") {
+      selD.innerHTML = '<option value="">— Seleccionar —</option>' +
+        window.obtenerDepartamentosSV().map(d => `<option value="${d}">${d}</option>`).join("");
+    }
+
+    const selM = $id("ad-municipio");
+    if (selM) selM.innerHTML = '<option value="">—</option>';
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 3. BÚSQUEDA DE PACIENTE
+  // ═══════════════════════════════════════════════════════════
+  window.actaDefuncionBuscarPaciente = debounce(async function(query) {
+    const cont = $id("ad-resultados-paciente");
+    if (!cont) return;
+    if (!query || query.trim().length < 2) { cont.style.display = "none"; return; }
+    if (!window.supabaseClient) return;
+
+    try {
+      const { data, error } = await window.supabaseClient.rpc("buscar_pacientes", { query: query.trim() });
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        cont.innerHTML = `<div style="padding:12px;background:var(--bg-secondary);border-radius:8px;font-size:11px;text-align:center;color:var(--text-secondary)">Sin resultados.</div>`;
+      } else {
+        cont.innerHTML = data.map(p => `
+          <div class="consulta-paciente-card-result" onclick="seleccionarPacienteParaActa('${esc(p.subject_id)}')">
+            <div style="font-size:13px;font-weight:700;color:var(--corp)">${esc(p.nombre)}</div>
+            <div style="font-size:10px;color:var(--text-secondary);font-family:var(--font-mono)">${esc(p.subject_id)}</div>
+            <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">
+              ${p.edad || "—"} años · ${esc(p.sexo || "—")}${p.dui ? " · DUI " + esc(p.dui) : ""}
+            </div>
+          </div>
+        `).join("");
+      }
+      cont.style.display = "block";
+    } catch (e) {
+      cont.innerHTML = `<div style="padding:10px;background:#fff3f3;border-radius:8px;font-size:11px;color:#7a1a1a">Error: ${esc(e.message)}</div>`;
+      cont.style.display = "block";
+    }
+  }, 350);
+
+  window.seleccionarPacienteParaActa = async function(subjectId) {
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from("patients").select("*").eq("subject_id", subjectId).single();
+      if (error || !data) { toast("Paciente no encontrado", "error"); return; }
+
+      try {
+        const { data: yaTiene } = await window.supabaseClient
+          .rpc("paciente_tiene_acta_defuncion", { p_subject_id: subjectId });
+        if (yaTiene && !confirm("⚠️ Este paciente ya tiene un acta firmada.\n\n¿Continuar de todas formas?")) return;
+      } catch (e) {}
+
+      AD.pacienteSeleccionado = data;
+
+      const infoCont = $id("ad-paciente-info");
+      infoCont.innerHTML = `
+        <div style="background:var(--accent-light);border-left:4px solid var(--accent);border-radius:0 8px 8px 0;padding:12px 14px">
+          <div style="font-size:14px;font-weight:700;color:var(--corp)">${esc(data.nombre)}</div>
+          <div style="font-size:11px;color:var(--text-secondary);font-family:var(--font-mono)">${esc(data.subject_id)} · DUI: ${esc(data.dui || "—")}</div>
+          <div style="font-size:11px;color:var(--text-secondary)">${data.edad || "—"} años · ${esc(data.sexo || "—")} · ${esc(data.departamento || "—")}</div>
+        </div>
+      `;
+      infoCont.style.display = "block";
+      $id("ad-formulario-completo").style.display = "block";
+      $id("ad-resultados-paciente").style.display = "none";
+    } catch (e) { console.error(e); toast("Error al cargar paciente", "error"); }
+  };
+
+  window.adVerificarMuerteViolenta = function() {
+    const m = $id("ad-manera")?.value;
+    const alerta = $id("ad-alerta-violenta");
+    const violenta = ["accidente","suicidio","homicidio","indeterminada"].includes(m);
+    if (alerta) alerta.style.display = violenta ? "block" : "none";
+  };
+
+  window.adActualizarMunicipios = function() {
+    const depto = $id("ad-departamento")?.value;
+    const sel = $id("ad-municipio");
+    if (!sel || typeof window.obtenerMunicipiosDe !== "function") return;
+    sel.innerHTML = '<option value="">—</option>' +
+      (depto ? window.obtenerMunicipiosDe(depto).map(m => `<option value="${m}">${m}</option>`).join("") : "");
+  };
+
+  window.actaDefuncionLimpiar = function() {
+    AD.pacienteSeleccionado = null;
+    AD.iaRespuesta = null;
+    AD.iaJSON = null;
+    AD.secciones = {};
+    AD.iaGenerada = false;
+    renderFormularioActa();
+    $id("ad-paciente-info").style.display = "none";
+    $id("ad-formulario-completo").style.display = "none";
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // 4. CONSTRUIR PROMPT
+  // ═══════════════════════════════════════════════════════════
+  function construirPrompt() {
+    if (!AD.pacienteSeleccionado) return null;
+
+    const v = (id) => $id(id)?.value?.trim() || "";
+
+    const p = AD.pacienteSeleccionado;
+    const depto = v("ad-departamento");
+    const municipio = v("ad-municipio");
+
+    let prompt = PROMPT_ACTA_DEFUNCION;
+
+    // Reemplazar todas las variables
+    const reemplazos = {
+      "{NOMBRE}": p.nombre || "—",
+      "{SUBJECT_ID}": p.subject_id || "—",
+      "{EDAD}": p.edad || "—",
+      "{SEXO}": p.sexo || "—",
+      "{DUI}": p.dui || "No registrado",
+      "{DEPARTAMENTO}": p.departamento || "—",
+      "{MUNICIPIO}": p.municipio || "—",
+      "{FECHA_DEFUNCION}": v("ad-fecha-defuncion") || "—",
+      "{HORA_DEFUNCION}": v("ad-hora-defuncion") || "—",
+      "{LUGAR_DEFUNCION}": v("ad-lugar") || "—",
+      "{INTRAHOSPITALARIA}": v("ad-intrahospitalaria") === "true" ? "Sí" : "No",
+      "{ESTABLECIMIENTO}": v("ad-establecimiento") || "No especificado",
+      "{CAUSA_A}": v("ad-causa-a") || "—",
+      "{CODIGO_A}": v("ad-codigo-a") || "—",
+      "{CAUSA_B}": v("ad-causa-b") || "No especificada",
+      "{CODIGO_B}": v("ad-codigo-b") || "—",
+      "{CAUSA_C}": v("ad-causa-c") || "No especificada",
+      "{CODIGO_C}": v("ad-codigo-c") || "—",
+      "{CAUSA_BASICA}": v("ad-causa-basica") || "—",
+      "{CODIGO_BASICA}": v("ad-codigo-basica") || "—",
+      "{OTROS_ESTADOS}": v("ad-otros-estados") || "Ninguno",
+      "{MANERA_MUERTE}": v("ad-manera") || "—",
+      "{AUTOPSIA}": v("ad-autopsia") === "true" ? "Sí" : "No",
+      "{NOTIFICADO_FISCALIA}": v("ad-notificado-fiscalia") ? "Sí" : "No",
+      "{ANTECEDENTES}": v("ad-antecedentes") || "No especificados",
+      "{MEDICAMENTOS}": v("ad-medicamentos") || "No especificados",
+      "{ALERGIA}": v("ad-alergias") || "Ninguna conocida",
+      "{HABITOS}": v("ad-habitos") || "No especificados",
+      "{RESUMEN_CLINICO}": v("ad-resumen-previo") || "No disponible",
+      "{INFORMANTE_NOMBRE}": v("ad-informante-nombre") || "—",
+      "{INFORMANTE_PARENTESCO}": v("ad-informante-parentesco") || "—",
+      "{INFORMANTE_DUI}": v("ad-informante-dui") || "—",
+      "{OBSERVACIONES}": v("ad-observaciones") || "Ninguna"
+    };
+
+    Object.entries(reemplazos).forEach(([k, val]) => {
+      prompt = prompt.split(k).join(val);
+    });
+
+    return prompt;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 5. EJECUTAR ANÁLISIS CON IA
+  // ═══════════════════════════════════════════════════════════
+  window.ejecutarAnalisisIA = async function() {
+    const errEl = $id("ad-ia-error");
+    const setErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; } };
+    if (errEl) errEl.style.display = "none";
+
+    if (!AD.pacienteSeleccionado) { setErr("Selecciona un paciente primero"); return; }
+
+    const v = (id) => $id(id)?.value?.trim() || "";
+    if (!v("ad-fecha-defuncion")) { setErr("La fecha de defunción es obligatoria"); return; }
+    if (!v("ad-causa-a")) { setErr("La causa directa (a) es obligatoria"); return; }
+    if (!v("ad-causa-basica")) { setErr("La causa básica es obligatoria"); return; }
+    if (!v("ad-manera")) { setErr("La manera de muerte es obligatoria"); return; }
+    if (!v("ad-informante-nombre")) { setErr("El nombre del informante es obligatorio"); return; }
+
+    const btn = $id("btn-ad-analizar-ia");
+    const original = btn ? btn.textContent : "Analizar";
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Analizando con IA...'; }
+
+    try {
+      const prompt = construirPrompt();
+      if (!prompt) throw new Error("No se pudo construir el prompt");
+
+      console.log("[ActaDefunción] Enviando prompt a Kimi...");
+      toast("Enviando análisis a Kimi...", "info");
+
+      const respuesta = await llamarKimi(prompt);
+
+      console.log("[ActaDefunción] Respuesta recibida:", respuesta.length, "caracteres");
+
+      AD.iaRespuesta = respuesta;
+      AD.iaGenerada = true;
+
+      // Separar narrativa y JSON
+      const narrativa = separarNarrativa(respuesta);
+      const json = extraerJSON(respuesta);
+      AD.iaJSON = json;
+
+      // Parsear secciones
+      AD.secciones = parsearSecciones(narrativa);
+
+      // Mostrar
+      renderizarInformeIA(narrativa);
+
+      toast("✓ Informe generado por IA", "success");
+
+    } catch (e) {
+      console.error("[ejecutarAnalisisIA]", e);
+      setErr("Error: " + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = original; }
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // 6. LLAMADA A KIMI (SSE stream)
+  // ═══════════════════════════════════════════════════════════
+  async function llamarKimi(prompt) {
+    if (typeof window.WORKER_URL === "undefined") {
+      throw new Error("WORKER_URL no definido");
+    }
+
+    const proxyUrl = `${window.WORKER_URL}/proxy-kimi`;
+    const model = $id("kimi-model")?.value || "kimi-k2-5";
+
+    const ctrl = new AbortController();
+    let inactivityTimer = setTimeout(() => ctrl.abort(), 90000);
+    const resetInactivity = () => {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => ctrl.abort(), 90000);
+    };
+
+    let resp;
+    try {
+      resp = await fetch(proxyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "system",
+              content: "Eres médico forense y clínico experto. Devuelves análisis en español con ortografía correcta (tildes y eñes). Sin markdown."
+            },
+            { role: "user", content: prompt }
+          ],
+          max_tokens: 12000,
+          reasoning_effort: "low"
+        }),
+        signal: ctrl.signal
+      });
+    } catch (err) {
+      clearTimeout(inactivityTimer);
+      if (err.name === "AbortError") throw new Error("Timeout: 90s sin respuesta de Kimi");
+      throw new Error("Error de red: " + err.message);
+    }
+
+    if (!resp.ok) {
+      clearTimeout(inactivityTimer);
+      const txt = await resp.text();
+      if (resp.status === 402) throw new Error("Sin saldo en Moonshot");
+      if (resp.status === 429) throw new Error("Rate limit. Espera 1 minuto.");
+      if (resp.status === 401) throw new Error("API key inválida");
+      throw new Error("Error " + resp.status + ": " + txt.substring(0, 200));
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let content = "";
+    let buffer = "";
+    let chunkCount = 0;
+
+    while (true) {
+      let chunk;
+      try {
+        chunk = await reader.read();
+      } catch (e) {
+        clearTimeout(inactivityTimer);
+        throw new Error("Error leyendo stream: " + e.message);
+      }
+      if (chunk.done) break;
+      resetInactivity();
+      buffer += decoder.decode(chunk.value, { stream: true });
+
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith("data:")) continue;
+        const payload = t.slice(5).trim();
+        if (payload === "[DONE]" || !payload) continue;
+
+        try {
+          const json = JSON.parse(payload);
+          if (json.error) throw new Error("Kimi: " + (json.error.message || JSON.stringify(json.error)));
+          const delta = json.choices?.[0]?.delta?.content;
+          if (delta) {
+            content += delta;
+            chunkCount++;
+            if (chunkCount % 100 === 0) {
+              toast(`Generando… ${content.length} caracteres`, "info");
+            }
+          }
+        } catch (e) {
+          if (e.message?.startsWith("Kimi:")) throw e;
+        }
+      }
+    }
+    clearTimeout(inactivityTimer);
+
+    if (!content || content.trim().length < 50) {
+      throw new Error("Respuesta vacía o muy corta (" + content.length + " caracteres)");
+    }
+
+    return content;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 7. PARSERS
+  // ═══════════════════════════════════════════════════════════
+  function separarNarrativa(text) {
+    if (!text) return "";
+    const i = text.indexOf("===JSON_ESTRUCTURADO===");
+    return i >= 0 ? text.substring(0, i).trim() : text.trim();
+  }
+
+  function extraerJSON(text) {
+    if (!text) return null;
+    const m = text.match(/===JSON_ESTRUCTURADO===([\s\S]*?)===FIN_JSON===/);
+    if (!m) return null;
+    try {
+      return JSON.parse(m[1].trim());
+    } catch (e) {
+      const m2 = m[1].match(/\{[\s\S]*\}/);
+      if (m2) { try { return JSON.parse(m2[0]); } catch (e2) { return null; } }
+      return null;
+    }
+  }
+
+  function parsearSecciones(narrativa) {
+    const secciones = {};
+    if (!narrativa) return secciones;
+
+    const patrones = [
+      { id: "resumen", titulo: "1. RESUMEN EJECUTIVO", regex: /(?:^|\n)\s*(?:#+\s*)?(?:1[\.\)]?\s*)?RESUMEN\s+EJECUTIVO/i },
+      { id: "datos", titulo: "2. DATOS DEL FALLECIDO", regex: /(?:^|\n)\s*(?:#+\s*)?(?:2[\.\)]?\s*)?DATOS\s+DEL\s+FALLECIDO/i },
+      { id: "causa_directa", titulo: "3. ANÁLISIS DE LA CAUSA DIRECTA", regex: /(?:^|\n)\s*(?:#+\s*)?(?:3[\.\)]?\s*)?AN[ÁA]LISIS\s+DE\s+LA\s+CAUSA\s+DIRECTA/i },
+      { id: "cadena", titulo: "4. CADENA CAUSAL", regex: /(?:^|\n)\s*(?:#+\s*)?(?:4[\.\)]?\s*)?CADENA\s+CAUSAL/i },
+      { id: "contexto", titulo: "5. CONTEXTO CLÍNICO Y ANTECEDENTES", regex: /(?:^|\n)\s*(?:#+\s*)?(?:5[\.\)]?\s*)?CONTEXTO\s+CL[ÍI]NICO/i },
+      { id: "manera", titulo: "6. ANÁLISIS DE LA MANERA DE MUERTE", regex: /(?:^|\n)\s*(?:#+\s*)?(?:6[\.\)]?\s*)?AN[ÁA]LISIS\s+DE\s+LA\s+MANERA/i },
+      { id: "hallazgos", titulo: "7. HALLAZGOS RELEVANTES", regex: /(?:^|\n)\s*(?:#+\s*)?(?:7[\.\)]?\s*)?HALLAZGOS\s+RELEVANTES/i },
+      { id: "epidemiologia", titulo: "8. IMPACTO Y CONTEXTO EPIDEMIOLÓGICO", regex: /(?:^|\n)\s*(?:#+\s*)?(?:8[\.\)]?\s*)?IMPACTO\s+Y\s+CONTEXTO/i },
+      { id: "limitaciones", titulo: "9. OBSERVACIONES Y LIMITACIONES", regex: /(?:^|\n)\s*(?:#+\s*)?(?:9[\.\)]?\s*)?OBSERVACIONES\s+Y\s+LIMITACIONES/i },
+      { id: "conclusiones", titulo: "10. CONCLUSIONES Y RECOMENDACIONES", regex: /(?:^|\n)\s*(?:#+\s*)?(?:10[\.\)]?\s*)?CONCLUSIONES\s+Y\s+RECOMENDACIONES/i }
+    ];
+
+    const posiciones = [];
+    patrones.forEach(p => {
+      const m = narrativa.match(p.regex);
+      if (m) posiciones.push({ id: p.id, titulo: p.titulo, index: m.index, end: m.index + m[0].length });
+    });
+    posiciones.sort((a, b) => a.index - b.index);
+
+    posiciones.forEach((pos, i) => {
+      const start = pos.end;
+      const end = i < posiciones.length - 1 ? posiciones[i + 1].index : narrativa.length;
+      secciones[pos.id] = { titulo: pos.titulo, contenido: narrativa.substring(start, end).trim() };
+    });
+
+    return secciones;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 8. RENDERIZAR INFORME IA EN PANTALLA
+  // ═══════════════════════════════════════════════════════════
+  function renderizarInformeIA(narrativa) {
+    const cont = $id("ad-ia-narrativa");
+    const wrap = $id("ad-ia-resultado");
+    if (!cont || !wrap) return;
+
+    const secciones = AD.secciones;
+    const ordenSecciones = ["resumen","datos","causa_directa","cadena","contexto","manera","hallazgos","epidemiologia","limitaciones","conclusiones"];
+
+    let html = "";
+    ordenSecciones.forEach(key => {
+      const sec = secciones[key];
+      if (!sec || !sec.contenido) return;
+      html += `
+        <div style="margin-bottom:18px;page-break-inside:avoid">
+          <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">
+            ${esc(sec.titulo)}
+          </h4>
+          <div style="font-size:12px;line-height:1.6;color:#333">
+            ${renderTextoLibre(sec.contenido)}
+          </div>
+        </div>
+      `;
+    });
+
+    if (!html) {
+      html = `<div style="white-space:pre-wrap;font-size:12px;line-height:1.6">${esc(narrativa)}</div>`;
+    }
+
+    cont.innerHTML = html;
+    wrap.style.display = "block";
+    wrap.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // Reutiliza renderTextoLibre del core si existe
+  function renderTextoLibre(texto) {
+    if (typeof window.renderTextoLibre === "function") {
+      return window.renderTextoLibre(texto);
+    }
+    // Fallback simple
+    return esc(texto).replace(/\n/g, "<br>");
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 9. FIRMAR Y GENERAR PDF
+  // ═══════════════════════════════════════════════════════════
+  window.firmarActaDefuncion = async function() {
+    const errEl = $id("ad-error");
+    const setErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; } };
+    if (errEl) errEl.style.display = "none";
+
+    if (!AD.pacienteSeleccionado) { setErr("Selecciona un paciente"); return; }
+    if (!AD.iaGenerada) { setErr("Primero genera el informe con IA"); return; }
+    if (!$id("ad-firma-check")?.checked) { setErr("Marca la casilla de confirmación"); return; }
+
+    const v = (id) => $id(id)?.value?.trim() || "";
+    const p = AD.pacienteSeleccionado;
+
+    const acta = {
+      subject_id: p.subject_id,
+      paciente_nombre: p.nombre,
+      paciente_edad: p.edad,
+      paciente_sexo: p.sexo,
+      paciente_dui: p.dui || null,
+      paciente_fecha_nacimiento: p.fecha_nacimiento || null,
+      paciente_departamento: p.departamento || null,
+      paciente_municipio: p.municipio || null,
+
+      fecha_defuncion: v("ad-fecha-defuncion"),
+      hora_defuncion: v("ad-hora-defuncion") || null,
+      departamento_defuncion: v("ad-departamento"),
+      municipio_defuncion: v("ad-municipio"),
+      lugar_defuncion: v("ad-lugar"),
+      intrahospitalaria: v("ad-intrahospitalaria") === "true",
+      establecimiento_salud: v("ad-establecimiento") || null,
+
+      causa_a: v("ad-causa-a"),
+      codigo_a: v("ad-codigo-a") || null,
+      causa_b: v("ad-causa-b") || null,
+      codigo_b: v("ad-codigo-b") || null,
+      causa_c: v("ad-causa-c") || null,
+      codigo_c: v("ad-codigo-c") || null,
+      causa_basica: v("ad-causa-basica"),
+      codigo_basica: v("ad-codigo-basica"),
+      otros_estados: v("ad-otros-estados") || null,
+
+      manera_muerte: v("ad-manera"),
+      autopsia: v("ad-autopsia") === "true",
+      notificado_fiscalia: $id("ad-notificado-fiscalia")?.checked || false,
+
+      antecedentes_patologicos: v("ad-antecedentes") || null,
+      medicamentos_actuales: v("ad-medicamentos") || null,
+      alergias: v("ad-alergias") || null,
+      habitos: v("ad-habitos") || null,
+      resumen_clinico_previo: v("ad-resumen-previo") || null,
+
+      informante_nombre: v("ad-informante-nombre"),
+      informante_parentesco: v("ad-informante-parentesco") || null,
+      informante_dui: v("ad-informante-dui") || null,
+      informante_telefono: v("ad-informante-telefono") || null,
+      informante_direccion: v("ad-informante-direccion") || null,
+
+      observaciones: v("ad-observaciones") || null,
+      notas_internas: v("ad-notas-internas") || null,
+
+      narrativa_completa: AD.iaRespuesta,
+      secciones_informe: AD.secciones,
+      json_estructurado: AD.iaJSON || {},
+      ia_modelo: $id("kimi-model")?.value || "kimi-k2-5",
+      ia_generada_at: new Date().toISOString(),
+
+      medico_id: window.usuarioActual?.id,
+      medico_nombre: window.usuarioActual?.nombre,
+      medico_csspm: AD.medicoPerfil?.csspm || window.MEDICOS_DATOS?.[window.usuarioActual?.id]?.csspm || "N/E",
+      medico_especialidad: AD.medicoPerfil?.especialidad || "Médico General",
+
+      estado: "firmada",
+      created_by: window.usuarioActual?.id
+    };
+
+    // Validaciones finales
+    if (!acta.fecha_defuncion) { setErr("Fecha obligatoria"); return; }
+    if (!acta.causa_a || !acta.causa_basica) { setErr("Causas obligatorias"); return; }
+    if (!acta.manera_muerte) { setErr("Manera obligatoria"); return; }
+    if (!acta.informante_nombre) { setErr("Informante obligatorio"); return; }
+
+    const btn = $id("btn-ad-firmar");
+    const original = btn ? btn.textContent : "Firmar";
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Firmando...'; }
+
+    try {
+      // Hash
+      const hashInput = (acta.medico_csspm || "") + acta.subject_id + acta.fecha_defuncion + Date.now();
+      const hashBuf = new TextEncoder().encode(hashInput);
+      const hashArr = await crypto.subtle.digest("SHA-256", hashBuf);
+      acta.firma_hash = Array.from(new Uint8Array(hashArr)).map(b => b.toString(16).padStart(2, "0")).join("");
+      acta.firmada_at = new Date().toISOString();
+
+      // INSERT
+      const { data, error } = await window.supabaseClient
+        .from("actas_defuncion")
+        .insert(acta)
+        .select()
+        .single();
+
+      if (error) throw error;
+      AD.actaActual = data;
+
+      // Notificar al admin
+      try {
+        await window.supabaseClient.from("notificaciones_medicas").insert({
+          tipo: "acta_defuncion_emitida",
+          prioridad: "alta",
+          mensaje: `Acta de defunción emitida: ${acta.paciente_nombre} (${acta.causa_basica})`,
+          payload: { acta_id: data.acta_id, subject_id: acta.subject_id }
+        });
+      } catch (e) { console.warn("Notif:", e); }
+
+      toast("✓ Acta firmada", "success");
+
+      // Generar PDF
+      const pdfBlob = await generarPDFActa(acta, data);
+
+      // Descargar
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ActaDefuncion_${acta.paciente_nombre.replace(/\s+/g, "_")}_${acta.fecha_defuncion}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast("✓ PDF generado y descargado", "success");
+
+      setTimeout(() => window.actaDefuncionCambiarTab("historial"), 800);
+
+    } catch (e) {
+      console.error("[firmarActaDefuncion]", e);
+      setErr("Error: " + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = original; }
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // 10. GENERAR PDF CON NARRATIVA
+  // ═══════════════════════════════════════════════════════════
+  async function generarPDFActa(acta, registro) {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+    const mg = 15;
+    const cw = pw - mg * 2;
+    let y = mg;
+
+    const addPage = () => {
+      pdf.addPage();
+      y = mg;
+    };
+
+    const checkY = (needed = 10) => {
+      if (y + needed > ph - mg - 10) addPage();
+    };
+
+    // ═══ ENCABEZADO ═══
+    pdf.setFillColor(26, 58, 92);
+    pdf.rect(0, 0, pw, 28, "F");
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(9);
+    pdf.text("ECOSISTEMA DE SALUD ECORADAI", pw / 2, 10, { align: "center" });
+    pdf.setFontSize(16);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("ACTA DE DEFUNCIÓN", pw / 2, 18, { align: "center" });
+    pdf.setFontSize(8);
+    pdf.setFont("helvetica", "normal");
+    pdf.text("Informe clínico interno", pw / 2, 24, { align: "center" });
+
+    y = 36;
+    pdf.setTextColor(29, 29, 31);
+
+    const campo = (etiqueta, valor) => {
+      checkY(6);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(9);
+      pdf.text(etiqueta + ":", mg, y);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(String(valor || "—"), mg + 45, y);
+      y += 5.5;
+    };
+
+    const seccion = (titulo) => {
+      y += 3;
+      checkY(10);
+      pdf.setFillColor(240, 247, 255);
+      pdf.rect(mg, y - 4, cw, 6, "F");
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(10);
+      pdf.setTextColor(0, 113, 227);
+      pdf.text(titulo.toUpperCase(), mg + 2, y);
+      pdf.setTextColor(29, 29, 31);
+      y += 6;
+    };
+
+    const parrafo = (texto, fontSize = 9) => {
+      if (!texto) return;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(fontSize);
+      const lineas = pdf.splitTextToSize(String(texto), cw);
+      lineas.forEach(linea => {
+        checkY(5);
+        pdf.text(linea, mg, y);
+        y += 4.5;
+      });
+      y += 1;
+    };
+
+    // ═══ I. DATOS DEL FALLECIDO ═══
+    seccion("I. Datos del fallecido(a)");
+    campo("Nombre", acta.paciente_nombre);
+    campo("ID", acta.subject_id);
+    campo("Edad / Sexo", `${acta.paciente_edad || "—"} años · ${acta.paciente_sexo || "—"}`);
+    campo("DUI", acta.paciente_dui || "No registrado");
+    campo("Fecha de defunción", acta.fecha_defuncion);
+    campo("Hora", acta.hora_defuncion || "—");
+    campo("Lugar", `${acta.lugar_defuncion || "—"}, ${acta.municipio_defuncion || "—"}, ${acta.departamento_defuncion || "—"}`);
+    campo("Intrahospitalaria", acta.intrahospitalaria ? "Sí" : "No");
+    if (acta.establecimiento_salud) campo("Establecimiento", acta.establecimiento_salud);
+
+    // ═══ II. CAUSA DE DEFUNCIÓN ═══
+    seccion("II. Causa de defunción (CIE-10)");
+    campo("Causa directa (a)", `${acta.causa_a} [${acta.codigo_a || "—"}]`);
+    if (acta.causa_b) campo("Causa antecedente (b)", `${acta.causa_b} [${acta.codigo_b || "—"}]`);
+    if (acta.causa_c) campo("Causa antecedente (c)", `${acta.causa_c} [${acta.codigo_c || "—"}]`);
+    campo("Causa básica", `${acta.causa_basica} [${acta.codigo_basica}]`);
+    if (acta.otros_estados) campo("Otros estados", acta.otros_estados);
+    campo("Manera de muerte", acta.manera_muerte);
+    campo("Autopsia", acta.autopsia ? "Sí" : "No");
+    if (acta.notificado_fiscalia) campo("Notificado Fiscalía", "Sí");
+
+    // ═══ III. INFORME GENERADO POR IA ═══
+    if (acta.narrativa_completa) {
+      addPage();
+      seccion("III. Informe clínico completo (generado con IA)");
+
+      const secciones = acta.secciones_informe || {};
+      const orden = ["resumen","datos","causa_directa","cadena","contexto","manera","hallazgos","epidemiologia","limitaciones","conclusiones"];
+
+      orden.forEach(key => {
+        const sec = secciones[key];
+        if (!sec || !sec.contenido) return;
+        y += 2;
+        checkY(10);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(9);
+        pdf.setTextColor(0, 113, 227);
+        pdf.text(sec.titulo.toUpperCase(), mg, y);
+        pdf.setTextColor(29, 29, 31);
+        y += 5;
+        parrafo(sec.contenido, 9);
+      });
+    }
+
+    // ═══ IV. INFORMANTE ═══
+    addPage();
+    seccion("IV. Datos del informante");
+    campo("Nombre", acta.informante_nombre);
+    if (acta.informante_parentesco) campo("Parentesco", acta.informante_parentesco);
+    if (acta.informante_dui) campo("DUI", acta.informante_dui);
+    if (acta.informante_telefono) campo("Teléfono", acta.informante_telefono);
+    if (acta.informante_direccion) campo("Dirección", acta.informante_direccion);
+
+    // ═══ V. OBSERVACIONES ═══
+    if (acta.observaciones) {
+      seccion("V. Observaciones clínicas");
+      parrafo(acta.observaciones, 9);
+    }
+
+    // ═══ FIRMA ═══
+    y += 15;
+    checkY(50);
+    pdf.setDrawColor(26, 58, 92);
+    pdf.setLineWidth(0.5);
+
+    // Línea de firma
+    pdf.line(mg + 10, y, mg + 90, y);
+    y += 5;
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(11);
+    pdf.text(acta.medico_nombre || "Médico", mg + 10, y);
+    y += 5;
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    pdf.text("CSSPM: " + (acta.medico_csspm || "N/E"), mg + 10, y);
+    y += 4;
+    pdf.text(acta.medico_especialidad || "Médico General", mg + 10, y);
+    y += 4;
+    pdf.text("Fecha: " + new Date(acta.firmada_at).toLocaleString("es-ES"), mg + 10, y);
+
+    // ═══ SELLO ═══
+    const medicoData = window.MEDICOS_DATOS?.[window.usuarioActual?.id];
+    if (medicoData?.urlSello && window.SELLOS_BASE_URL) {
+      try {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        await new Promise((res, rej) => {
+          img.onload = res;
+          img.onerror = rej;
+          img.src = medicoData.urlSello;
+        });
+        pdf.addImage(img, "PNG", pw - mg - 55, y - 35, 50, 25);
+      } catch (e) { console.warn("[PDF] Sello no cargado:", e); }
+    }
+
+    // ═══ PIE DE PÁGINA ═══
+    const totalPags = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPags; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(7);
+      pdf.setTextColor(150);
+      pdf.text("EcoRadAi · Acta de Defunción · " + new Date().toLocaleDateString("es-ES"), mg, ph - 8);
+      pdf.text("Página " + i + " de " + totalPags, pw - mg, ph - 8, { align: "right" });
+      pdf.text("SHA-256: " + (acta.firma_hash || "").substring(0, 32) + "...", mg, ph - 4);
+      pdf.text("Acta: " + (registro?.acta_id || "—"), pw - mg, ph - 4, { align: "right" });
+    }
+
+    return pdf.output("blob");
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 11. HISTORIAL
+  // ═══════════════════════════════════════════════════════════
+  async function cargarHistorial() {
+    const cont = $id("ad-historial-contenido");
+    if (!cont || !window.supabaseClient) return;
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+
+    try {
+      const { data, error } = await window.supabaseClient.rpc("listar_actas_defuncion", { p_limit: 100 });
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Sin actas emitidas</p></div>';
+        return;
+      }
+
+      cont.innerHTML = `
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">
+          <strong>${data.length}</strong> acta(s) emitida(s)
+        </div>
+        ${data.map(a => `
+          <div class="card" style="border-left:4px solid var(--corp);padding:12px;margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+              <div style="flex:1;min-width:200px">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                  <div style="font-size:13px;font-weight:700;color:var(--corp)">📜 ${esc(a.paciente_nombre)}</div>
+                  ${a.tiene_ia ? '<span style="background:#f0fff4;color:#1a4a2a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">🤖 IA</span>' : ""}
+                  ${a.estado === "anulada" ? '<span style="background:#fff3f3;color:#7a1a1a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">ANULADA</span>' : ""}
+                </div>
+                <div style="font-size:10px;color:var(--text-secondary);font-family:var(--font-mono)">${esc(a.subject_id)}</div>
+                <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">
+                  <strong>Fecha:</strong> ${esc(a.fecha_defuncion)} · 
+                  <strong>CIE-10:</strong> <code>${esc(a.codigo_basica)}</code>
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary)">${esc(a.causa_basica)} (${esc(a.manera_muerte)})</div>
+                <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
+                  Emitida por ${esc(a.medico_nombre || "—")} ${a.medico_csspm ? "· CSSPM: " + esc(a.medico_csspm) : ""}
+                  ${a.firmada_at ? "· " + new Date(a.firmada_at).toLocaleString("es-ES") : ""}
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <button class="btn btn-primary btn-xs" onclick="verActaDefuncion('${a.acta_id}')" style="font-size:10px">👁️ Ver PDF</button>
+                <button class="btn btn-secondary btn-xs" onclick="descargarActaDefuncion('${a.acta_id}')" style="font-size:10px">📥 Descargar</button>
+              </div>
+            </div>
+          </div>
+        `).join("")}
+      `;
+    } catch (e) {
+      console.error("[cargarHistorial]", e);
+      cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
+    }
+  }
+
+  window.verActaDefuncion = async function(actaId) {
+    if (!window.supabaseClient) return;
+    try {
+      const { data } = await window.supabaseClient.from("actas_defuncion").select("*").eq("acta_id", actaId).single();
+      if (!data) return;
+      const blob = await generarPDFActa(data, data);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  window.descargarActaDefuncion = async function(actaId) {
+    if (!window.supabaseClient) return;
+    try {
+      const { data } = await window.supabaseClient.from("actas_defuncion").select("*").eq("acta_id", actaId).single();
+      if (!data) return;
+      const blob = await generarPDFActa(data, data);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ActaDefuncion_${data.paciente_nombre.replace(/\s+/g, "_")}_${data.fecha_defuncion}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { toast("Error: " + e.message, "error"); }
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // 12. INICIALIZACIÓN
+  // ═══════════════════════════════════════════════════════════
+  async function cargarPerfilMedico() {
+    if (!window.supabaseClient || !window.usuarioActual) return;
+    try {
+      const { data } = await window.supabaseClient
+        .from("profiles")
+        .select("nombre, email, especialidad, csspm")
+        .eq("id", window.usuarioActual.id)
+        .single();
+      if (data) AD.medicoPerfil = data;
+    } catch (e) { console.warn("[ActaDefunción] Perfil médico:", e); }
+  }
+
+  function inicializar() {
+    AD.intentos++;
+    if (!window.supabaseClient || !window.usuarioActual) {
+      if (AD.intentos < AD.MAX_INTENTOS) setTimeout(inicializar, 250);
+      return;
+    }
+
+    const rol = window.usuarioActual.rol;
+    if (rol !== "medico" && rol !== "admin") return;
+
+    if (!inyectarTabYSeccion()) {
+      if (AD.intentos < AD.MAX_INTENTOS) setTimeout(inicializar, 250);
+      return;
+    }
+
+    cargarPerfilMedico().then(() => {
+      AD.inicializado = true;
+      console.log("[ActaDefunción v2.0] ✓ Inicializado para rol:", rol);
+      console.log("[ActaDefunción v2.0] Diagnóstico: __AD.estado()");
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(inicializar, 800));
+  } else {
+    setTimeout(inicializar, 800);
+  }
+
+  window.addEventListener("ecoradai:login", () => {
+    AD.intentos = 0;
+    setTimeout(inicializar, 500);
+  });
+
+  console.log("[ActaDefunción v2.0] Wrapper con IA cargado. __AD.estado()");
+
+})();
+</script>
 </body>
 </html>
