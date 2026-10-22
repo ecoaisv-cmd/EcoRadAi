@@ -852,7 +852,7 @@ Si no puedes llenar algún campo, usa null. NUNCA omitas el bloque completo.
                 id: id,
                 activo: true,
                 meta: {
-                    nombre: "US " + (NOMBRES_US[id] || protocolo.titulo),
+                    nombre: "ULTRASONIDO " + (NOMBRES_US[id] || protocolo.titulo),
                     nombre_corto: NOMBRES_US[id] || protocolo.titulo,
                     icono: ICONOS_US[id] || "📡",
                     descripcion: protocolo.titulo,
