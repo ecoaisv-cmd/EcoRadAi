@@ -27559,99 +27559,11 @@ ${panelUrl}
   console.log("[FlujoClínico v1.1] Wrapper cargado. Diagnóstico: __FC.estado()");
 })();
 </script>
-<!-- ═══════════════════════════════════════════════════════════════════
-     ACTA DE DEFUNCIÓN v5.0 — Doble PDF (Médico + Alcaldía)
-     Incluye:
-       · Datalists CIE-10 (directas + básicas)
-       · Autocompletado de códigos
-       · Validaciones de causa básica
-       · Análisis IA con Kimi (10 secciones)
-       · Preview EDITABLE antes de firmar
-       · PDF 1: Informe médico interno (con IA)
-       · PDF 2: Acta para alcaldía (formato oficial simplificado)
-       · Sello grande (80x40mm)
-       · Seccionado atómico (sin cortes raros)
-       · Sin caracteres basura (html2canvas)
-     ═══════════════════════════════════════════════════════════════════ -->
-
-<!-- ═══ DATALIST CAUSAS DIRECTAS ═══ -->
-<datalist id="lista-cie10-directas">
-  <option value="A09 - Diarrea y gastroenteritis de presunto origen infeccioso"></option>
-  <option value="A15-A19 - Tuberculosis"></option>
-  <option value="A40-A41 - Septicemia"></option>
-  <option value="B20-B24 - Enfermedad por VIH/SIDA"></option>
-  <option value="U07.1 - COVID-19, virus identificado"></option>
-  <option value="C16 - Tumor maligno del estómago"></option>
-  <option value="C18-C21 - Tumor maligno del colon, recto y ano"></option>
-  <option value="C33-C34 - Tumor maligno de la tráquea, bronquios y pulmón"></option>
-  <option value="C50 - Tumor maligno de la mama"></option>
-  <option value="C53 - Tumor maligno del cuello del útero"></option>
-  <option value="C61 - Tumor maligno de la próstata"></option>
-  <option value="E10-E14 - Diabetes mellitus"></option>
-  <option value="E40-E46 - Desnutrición proteicocalórica"></option>
-  <option value="E86 - Depleción de volumen (deshidratación)"></option>
-  <option value="G30 - Enfermedad de Alzheimer"></option>
-  <option value="G00, G03 - Meningitis (no bacteriana / meningocócica)"></option>
-  <option value="G40-G41 - Epilepsia y estado epiléptico"></option>
-  <option value="I10-I15 - Enfermedades hipertensivas"></option>
-  <option value="I20-I25 - Enfermedades isquémicas del corazón (incluye IAM)"></option>
-  <option value="I26 - Tromboembolia pulmonar"></option>
-  <option value="I50 - Insuficiencia cardíaca"></option>
-  <option value="I60-I69 - Enfermedades cerebrovasculares (ACV)"></option>
-  <option value="J09-J18 - Neumonía e influenza"></option>
-  <option value="J40-J47 - EPOC / Enfermedades respiratorias crónicas"></option>
-  <option value="J96 - Insuficiencia respiratoria, no clasificada en otra parte"></option>
-  <option value="K35-K38 - Apendicitis"></option>
-  <option value="K40-K46 - Hernia abdominal"></option>
-  <option value="K70, K73-K74 - Cirrosis / Enfermedad hepática crónica"></option>
-  <option value="K92.2 - Hemorragia gastrointestinal, sin especificar"></option>
-  <option value="N00-N07, N17-N19 - Nefritis y nefrosis (incluye insuficiencia renal)"></option>
-  <option value="N39.0 - Infección de vías urinarias, sitio no especificado"></option>
-  <option value="O00-O99 - Complicaciones del embarazo, parto y puerperio"></option>
-  <option value="P00-P96 - Afecciones originadas en el período perinatal"></option>
-  <option value="V01-V99 - Accidentes de transporte"></option>
-  <option value="W00-X59 - Otras causas externas de accidentes (caídas, ahogamiento, etc.)"></option>
-  <option value="X60-X84 - Lesiones autoinfligidas intencionalmente (suicidio)"></option>
-  <option value="X85-Y09 - Agresión (homicidio)"></option>
-  <option value="R96-R99 - Causa desconocida u otra causa mal definida (incluye paro cardíaco)"></option>
-</datalist>
-
-<!-- ═══ DATALIST CAUSAS BÁSICAS ═══ -->
-<datalist id="lista-cie10-basicas">
-  <option value="I20-I25 - Enfermedades isquémicas del corazón (IAM)"></option>
-  <option value="I60-I69 - Enfermedades cerebrovasculares (ACV)"></option>
-  <option value="I10-I15 - Enfermedades hipertensivas"></option>
-  <option value="I50 - Insuficiencia cardíaca"></option>
-  <option value="I26 - Tromboembolia pulmonar"></option>
-  <option value="N17-N19 - Insuficiencia renal"></option>
-  <option value="E10-E14 - Diabetes mellitus"></option>
-  <option value="J12-J18 - Neumonía"></option>
-  <option value="J40-J47 - EPOC / Enfermedades respiratorias crónicas"></option>
-  <option value="A40-A41 - Septicemia"></option>
-  <option value="A15-A19 - Tuberculosis"></option>
-  <option value="B20-B24 - VIH/SIDA"></option>
-  <option value="K70, K73-K74 - Cirrosis / Enfermedad hepática crónica"></option>
-  <option value="X85-Y09 - Agresión (homicidio)"></option>
-  <option value="V01-V99 - Accidente de transporte"></option>
-  <option value="W00-X59 - Otras causas externas de accidentes"></option>
-  <option value="X60-X84 - Suicidio"></option>
-  <option value="P00-P96 - Afecciones perinatales"></option>
-  <option value="C16 - Tumor maligno del estómago"></option>
-  <option value="C18-C21 - Tumor maligno del colon, recto y ano"></option>
-  <option value="C33-C34 - Tumor maligno de pulmón"></option>
-  <option value="C50 - Tumor maligno de mama"></option>
-  <option value="C53 - Tumor maligno de cuello uterino"></option>
-  <option value="C61 - Tumor maligno de próstata"></option>
-  <option value="C81-C96 - Tumores malignos del tejido linfático y hematopoyético"></option>
-  <option value="O00-O99 - Complicaciones del embarazo, parto y puerperio"></option>
-  <option value="R96-R99 - Causa desconocida u otra causa mal definida"></option>
-</datalist>
-
-<script>
+</script>
 "use strict";
 
 (function() {
-  console.log("[ActaDefunción v5.0] Iniciando (doble PDF)...");
+  console.log("[ActaDefunción v6.0] Iniciando con rectificación incluida...");
 
   const AD = {
     inicializado: false,
@@ -27665,7 +27577,10 @@ ${panelUrl}
     secciones: {},
     iaGenerada: false,
     informeEditado: null,
-    modoPreview: false
+    informeAlcaldiaEditado: null,
+    modoPreview: false,
+    modoRectificacion: false,   // ← NUEVO
+    actaOriginal: null          // ← NUEVO: acta que se está rectificando
   };
 
   window.ACTA_DEFUNCION = AD;
@@ -27677,12 +27592,12 @@ ${panelUrl}
       paciente: AD.pacienteSeleccionado?.subject_id,
       iaGenerada: AD.iaGenerada,
       informeEditado: !!AD.informeEditado,
-      modoPreview: AD.modoPreview,
-      datalistDirectas: document.getElementById("lista-cie10-directas")?.options.length || 0,
-      datalistBasicas: document.getElementById("lista-cie10-basicas")?.options.length || 0
+      modoRectificacion: AD.modoRectificacion,
+      actaOriginal: AD.actaOriginal?.acta_id
     }),
     abrirNueva: () => window.actaDefuncionCambiarTab("nueva"),
     verHistorial: () => window.actaDefuncionCambiarTab("historial"),
+    abrirRectificacion: (actaId) => window.abrirRectificacionActa(actaId),
     forzarRender: () => {
       const sec = document.getElementById("sec-acta-defuncion");
       if (!sec) return "Sección no existe";
@@ -27806,7 +27721,7 @@ REGLAS:
 - Sé respetuoso y objetivo`;
 
   // ═══════════════════════════════════════════════════════════
-  // INYECTAR
+  // INYECTAR TAB Y SECCIÓN
   // ═══════════════════════════════════════════════════════════
   function inyectarTabYSeccion() {
     const rol = window.usuarioActual?.rol;
@@ -27839,7 +27754,7 @@ REGLAS:
           <div class="card">
             <div class="card-title">
               <span class="num">📜</span>
-              <span>Acta de Defunción</span>
+              <span id="ad-titulo-formulario">Acta de Defunción</span>
               <span class="card-desc">Con IA + doble PDF</span>
             </div>
             <div id="ad-nueva-contenido"></div>
@@ -27850,6 +27765,7 @@ REGLAS:
             <div class="card-title">
               <span class="num">📚</span>
               <span>Actas emitidas</span>
+              <button class="btn btn-secondary btn-xs" style="margin-left:auto" onclick="cargarHistorial()">🔄</button>
             </div>
             <div id="ad-historial-contenido">
               <div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>
@@ -27935,7 +27851,7 @@ REGLAS:
   };
 
   // ═══════════════════════════════════════════════════════════
-  // FORMULARIO
+  // FORMULARIO (con textarea de alcaldía editable)
   // ═══════════════════════════════════════════════════════════
   function renderFormularioActa() {
     const cont = $id("ad-nueva-contenido");
@@ -27946,18 +27862,29 @@ REGLAS:
       return;
     }
 
+    // Actualizar título si estamos en modo rectificación
+    const titulo = $id("ad-titulo-formulario");
+    if (titulo) {
+      titulo.textContent = AD.modoRectificacion 
+        ? "Rectificar Acta de Defunción" 
+        : "Acta de Defunción";
+    }
+
     cont.innerHTML = `
-      <div class="config-box" style="background:#fff9e6;border-color:#ff9500;margin-bottom:14px">
-        <p style="font-size:11px;color:#8a6a00;line-height:1.5">
-          <strong>⚠️ Documento clínico interno EcoRadAi.</strong>
-          Al firmar se generarán <strong>2 PDFs</strong>: Informe Médico + Acta para Alcaldía.
+      <div class="config-box" style="background:${AD.modoRectificacion ? '#fff3f3' : '#fff9e6'};border-color:${AD.modoRectificacion ? '#ff3b30' : '#ff9500'};margin-bottom:14px">
+        <p style="font-size:11px;color:${AD.modoRectificacion ? '#7a1a1a' : '#8a6a00'};line-height:1.5">
+          ${AD.modoRectificacion 
+            ? '<strong>⚠️ MODO RECTIFICACIÓN:</strong> Estás corrigiendo un acta ya emitida. Al firmar, se generará una nueva versión con el estado <code>rectificada</code> y se conservará la original como historial.'
+            : '<strong>⚠️ Documento clínico interno EcoRadAi.</strong> Al firmar se generarán <strong>2 PDFs</strong>: Informe Médico + Acta para Alcaldía.'
+          }
         </p>
       </div>
 
       <div class="form-group">
         <label>Buscar paciente fallecido *</label>
         <input type="text" id="ad-buscar-paciente" placeholder="🔍 Nombre, DUI o ID..."
-               oninput="actaDefuncionBuscarPaciente(this.value)" autocomplete="off">
+               oninput="actaDefuncionBuscarPaciente(this.value)" autocomplete="off"
+               ${AD.modoRectificacion ? 'disabled' : ''}>
         <div id="ad-resultados-paciente" style="display:none;margin-top:8px"></div>
       </div>
 
@@ -28209,6 +28136,36 @@ REGLAS:
           <div id="ad-ia-narrativa" style="background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:16px;font-size:12px;line-height:1.6;max-height:600px;overflow-y:auto"></div>
         </div>
 
+        <!-- ═══ FIX 5: Textarea editable del acta de alcaldía ═══ -->
+        <div id="ad-alcaldia-resultado" style="display:none;margin-top:20px">
+          <div style="background:#f0f7ff;border:2px solid #0071e3;border-radius:12px;padding:16px;margin-bottom:14px">
+            <div style="font-size:12px;font-weight:700;color:#0051a3;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
+              🏛️ Paso 3: Acta de Alcaldía — Editable
+            </div>
+            <p style="font-size:11px;color:#0051a3;line-height:1.5">
+              Revisa y edita el acta que se enviará a la alcaldía. Los cambios se guardarán al firmar.
+            </p>
+          </div>
+          <div class="form-group">
+            <label style="font-size:11px;font-weight:600">Contenido del acta (editable)</label>
+            <textarea id="ad-alcaldia-edit" 
+                      placeholder="Aquí aparecerá el acta de alcaldía una vez generado el informe con IA..."
+                      style="
+                        width:100%;
+                        min-height:400px;
+                        font-size:11px;
+                        line-height:1.5;
+                        padding:12px;
+                        border:2px solid #0071e3;
+                        border-radius:8px;
+                        font-family:var(--font-mono);
+                        background:#ffffff !important;
+                        color:#1d1d1f !important;
+                        resize:vertical;
+                      "></textarea>
+          </div>
+        </div>
+
         <div class="form-group" style="margin-top:16px;padding:12px;background:#fff9e6;border-radius:8px;border:1.5px solid #ff9500">
           <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;color:#8a6a00">
             <input type="checkbox" id="ad-firma-check" style="width:auto">
@@ -28218,7 +28175,9 @@ REGLAS:
 
         <div class="btn-row" style="margin-top:14px">
           <button class="btn btn-secondary" onclick="actaDefuncionLimpiar()">Cancelar</button>
-          <button class="btn btn-success" id="btn-ad-firmar" onclick="firmarActaDefuncion()">✍️ Firmar y generar PDFs</button>
+          <button class="btn btn-success" id="btn-ad-firmar" onclick="firmarActaDefuncion()">
+            ${AD.modoRectificacion ? "✍️ Firmar rectificación" : "✍️ Firmar y generar PDFs"}
+          </button>
         </div>
 
         <div id="ad-error" style="display:none;margin-top:10px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
@@ -28232,8 +28191,192 @@ REGLAS:
     }
     const selM = $id("ad-municipio");
     if (selM) selM.innerHTML = '<option value="">—</option>';
+
+    // Si estamos en modo rectificación, precargar el paciente original
+    if (AD.modoRectificacion && AD.actaOriginal) {
+      precargarActaParaRectificacion(AD.actaOriginal);
+    }
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // PRECARGAR ACTA PARA RECTIFICACIÓN
+  // ═══════════════════════════════════════════════════════════
+  async function precargarActaParaRectificacion(acta) {
+    try {
+      // Buscar paciente
+      const { data: pac, error } = await window.supabaseClient
+        .from("patients")
+        .select("*")
+        .eq("subject_id", acta.subject_id)
+        .single();
+
+      if (error || !pac) {
+        toast("Paciente no encontrado para rectificación", "error");
+        return;
+      }
+
+      AD.pacienteSeleccionado = pac;
+
+      // Mostrar info del paciente
+      const infoCont = $id("ad-paciente-info");
+      if (infoCont) {
+        infoCont.innerHTML = `
+          <div style="background:#fff3f3;border-left:4px solid #ff3b30;border-radius:0 8px 8px 0;padding:12px 14px">
+            <div style="font-size:11px;font-weight:700;color:#7a1a1a;text-transform:uppercase;margin-bottom:6px">
+              🔄 Rectificando acta ${acta.acta_id?.substring(0,8) || ""}
+            </div>
+            <div style="font-size:14px;font-weight:700;color:var(--corp)">${esc(pac.nombre)}</div>
+            <div style="font-size:11px;color:var(--text-secondary);font-family:var(--font-mono)">${esc(pac.subject_id)} · DUI: ${esc(pac.dui || "—")}</div>
+            <div style="font-size:11px;color:var(--text-secondary)">${pac.edad || "—"} años · ${esc(pac.sexo || "—")}</div>
+          </div>
+        `;
+        infoCont.style.display = "block";
+      }
+
+      $id("ad-formulario-completo").style.display = "block";
+
+      // Precargar campos del formulario
+      const set = (id, v) => { const el = $id(id); if (el) el.value = v ?? ""; };
+      set("ad-fecha-defuncion", acta.fecha_defuncion);
+      set("ad-hora-defuncion", acta.hora_defuncion);
+      set("ad-lugar", acta.lugar_defuncion);
+      set("ad-intrahospitalaria", String(acta.intrahospitalaria));
+      set("ad-establecimiento", acta.establecimiento_salud);
+      set("ad-causa-a", acta.causa_a);
+      set("ad-codigo-a", acta.codigo_a);
+      set("ad-causa-b", acta.causa_b);
+      set("ad-codigo-b", acta.codigo_b);
+      set("ad-causa-c", acta.causa_c);
+      set("ad-codigo-c", acta.codigo_c);
+      set("ad-causa-basica", acta.causa_basica);
+      set("ad-codigo-basica", acta.codigo_basica);
+      set("ad-otros-estados", acta.otros_estados);
+      set("ad-manera", acta.manera_muerte);
+      set("ad-autopsia", String(acta.autopsia));
+      set("ad-antecedentes", acta.antecedentes_patologicos);
+      set("ad-medicamentos", acta.medicamentos_actuales);
+      set("ad-alergias", acta.alergias);
+      set("ad-habitos", acta.habitos);
+      set("ad-resumen-previo", acta.resumen_clinico_previo);
+      set("ad-informante-nombre", acta.informante_nombre);
+      set("ad-informante-parentesco", acta.informante_parentesco);
+      set("ad-informante-dui", acta.informante_dui);
+      set("ad-informante-telefono", acta.informante_telefono);
+      set("ad-informante-direccion", acta.informante_direccion);
+      set("ad-observaciones", acta.observaciones);
+      set("ad-notas-internas", acta.notas_internas);
+
+      // Departamento/municipio
+      const selD = $id("ad-departamento");
+      if (selD && acta.departamento_defuncion) {
+        selD.value = acta.departamento_defuncion;
+        window.adActualizarMunicipios();
+        setTimeout(() => {
+          const selM = $id("ad-municipio");
+          if (selM && acta.municipio_defuncion) selM.value = acta.municipio_defuncion;
+        }, 100);
+      }
+
+      // Precargar informe médico (narrativa)
+      if (acta.narrativa_completa) {
+        AD.iaRespuesta = acta.narrativa_completa;
+        AD.iaGenerada = true;
+        AD.informeEditado = acta.narrativa_completa;
+        AD.secciones = acta.secciones_informe || {};
+        AD.iaJSON = acta.json_estructurado || {};
+
+        // Renderizar informe
+        const narrCont = $id("ad-ia-narrativa");
+        const resultWrap = $id("ad-ia-resultado");
+        if (narrCont && resultWrap) {
+          let html = "";
+          const orden = ["resumen","datos","causa_directa","cadena","contexto","manera","hallazgos","epidemiologia","limitaciones","conclusiones"];
+          orden.forEach(key => {
+            const sec = AD.secciones[key];
+            if (!sec || !sec.contenido) return;
+            html += `
+              <div style="margin-bottom:18px">
+                <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">${esc(sec.titulo)}</h4>
+                <div style="font-size:12px;line-height:1.6;color:#333;white-space:pre-wrap">${esc(sec.contenido)}</div>
+              </div>
+            `;
+          });
+          narrCont.innerHTML = html || `<div style="white-space:pre-wrap;font-size:12px;line-height:1.6">${esc(acta.narrativa_completa)}</div>`;
+          resultWrap.style.display = "block";
+        }
+      }
+
+      // Precargar HTML de alcaldía
+      if (acta.informe_alcaldia_editado) {
+        AD.informeAlcaldiaEditado = acta.informe_alcaldia_editado;
+        const taAlc = $id("ad-alcaldia-edit");
+        const wrapAlc = $id("ad-alcaldia-resultado");
+        if (taAlc && wrapAlc) {
+          taAlc.value = acta.informe_alcaldia_editado;
+          wrapAlc.style.display = "block";
+        }
+      } else {
+        // Regenerar si no hay editado
+        poblarTextareaAlcaldia();
+      }
+
+      toast("✓ Acta precargada para rectificación", "success");
+
+    } catch (e) {
+      console.error("[precargarActaParaRectificacion]", e);
+      toast("Error al precargar: " + e.message, "error");
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // ABRIR RECTIFICACIÓN DESDE HISTORIAL
+  // ═══════════════════════════════════════════════════════════
+  window.abrirRectificacionActa = async function(actaId) {
+    if (!window.supabaseClient) return;
+
+    try {
+      toast("Cargando acta para rectificar...", "info");
+      const { data, error } = await window.supabaseClient
+        .from("actas_defuncion")
+        .select("*")
+        .eq("acta_id", actaId)
+        .single();
+
+      if (error || !data) {
+        toast("Acta no encontrada", "error");
+        return;
+      }
+
+      // Configurar modo rectificación
+      AD.modoRectificacion = true;
+      AD.actaOriginal = data;
+      AD.pacienteSeleccionado = null;
+      AD.iaRespuesta = null;
+      AD.iaJSON = null;
+      AD.secciones = {};
+      AD.iaGenerada = false;
+      AD.informeEditado = null;
+      AD.informeAlcaldiaEditado = null;
+
+      // Limpiar y renderizar formulario
+      const cont = $id("ad-nueva-contenido");
+      if (cont) cont.innerHTML = "";
+      renderFormularioActa();
+
+      // Cambiar a pestaña nueva
+      window.actaDefuncionCambiarTab("nueva");
+
+      toast("✓ Acta cargada para rectificación. Modifica lo necesario y firma.", "success");
+
+    } catch (e) {
+      console.error("[abrirRectificacionActa]", e);
+      toast("Error: " + e.message, "error");
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // TOGGLE EDICIÓN INFORME
+  // ═══════════════════════════════════════════════════════════
   window.adToggleEdicion = function() {
     const cont = $id("ad-ia-narrativa");
     const btn = $id("btn-ad-toggle-edicion");
@@ -28304,10 +28447,31 @@ REGLAS:
       const { data, error } = await window.supabaseClient.from("patients").select("*").eq("subject_id", subjectId).single();
       if (error || !data) { toast("Paciente no encontrado", "error"); return; }
 
-      try {
-        const { data: yaTiene } = await window.supabaseClient.rpc("paciente_tiene_acta_defuncion", { p_subject_id: subjectId });
-        if (yaTiene && !confirm("⚠️ Este paciente ya tiene un acta firmada.\n\n¿Continuar?")) return;
-      } catch (e) {}
+      // Verificar si ya tiene acta (solo si NO estamos en rectificación)
+      if (!AD.modoRectificacion) {
+        try {
+          const { data: yaTiene } = await window.supabaseClient.rpc("paciente_tiene_acta_defuncion", { p_subject_id: subjectId });
+          if (yaTiene) {
+            const confirmar = confirm("⚠️ Este paciente ya tiene un acta firmada.\n\n¿Deseas RECTIFICARLA en lugar de crear una nueva?");
+            if (confirmar) {
+              // Buscar el acta existente
+              const { data: actaExistente } = await window.supabaseClient
+                .from("actas_defuncion")
+                .select("acta_id")
+                .eq("subject_id", subjectId)
+                .eq("estado", "firmada")
+                .order("firmada_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              
+              if (actaExistente?.acta_id) {
+                return window.abrirRectificacionActa(actaExistente.acta_id);
+              }
+            }
+            return;
+          }
+        } catch (e) {}
+      }
 
       AD.pacienteSeleccionado = data;
 
@@ -28346,7 +28510,10 @@ REGLAS:
     AD.secciones = {};
     AD.iaGenerada = false;
     AD.informeEditado = null;
+    AD.informeAlcaldiaEditado = null;
     AD.modoPreview = false;
+    AD.modoRectificacion = false;
+    AD.actaOriginal = null;
     const cont = $id("ad-nueva-contenido");
     if (cont) cont.innerHTML = "";
     renderFormularioActa();
@@ -28421,6 +28588,7 @@ REGLAS:
       AD.iaRespuesta = respuesta;
       AD.iaGenerada = true;
       AD.informeEditado = null;
+      AD.informeAlcaldiaEditado = null;
       AD.modoPreview = false;
 
       const narrativa = separarNarrativa(respuesta);
@@ -28429,6 +28597,7 @@ REGLAS:
       AD.secciones = parsearSecciones(narrativa);
 
       renderizarInformeIA(narrativa);
+      poblarTextareaAlcaldia();
       toast("✓ Informe generado. Puedes editarlo antes de firmar.", "success");
     } catch (e) {
       console.error("[ejecutarAnalisisIA]", e);
@@ -28591,8 +28760,66 @@ REGLAS:
     wrap.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function poblarTextareaAlcaldia() {
+    const ta = $id("ad-alcaldia-edit");
+    const wrap = $id("ad-alcaldia-resultado");
+    if (!ta || !wrap) return;
+
+    const v = (id) => $id(id)?.value?.trim() || "";
+    const p = AD.pacienteSeleccionado;
+    if (!p) return;
+
+    const actaTemp = {
+      subject_id: p.subject_id,
+      paciente_nombre: p.nombre,
+      paciente_edad: p.edad,
+      paciente_sexo: p.sexo,
+      paciente_dui: p.dui || null,
+      paciente_fecha_nacimiento: p.fecha_nacimiento || null,
+      paciente_departamento: p.departamento || null,
+      paciente_municipio: p.municipio || null,
+      fecha_defuncion: v("ad-fecha-defuncion"),
+      hora_defuncion: v("ad-hora-defuncion") || null,
+      departamento_defuncion: v("ad-departamento"),
+      municipio_defuncion: v("ad-municipio"),
+      lugar_defuncion: v("ad-lugar"),
+      intrahospitalaria: v("ad-intrahospitalaria") === "true",
+      establecimiento_salud: v("ad-establecimiento") || null,
+      causa_a: v("ad-causa-a"),
+      codigo_a: v("ad-codigo-a") || null,
+      causa_b: v("ad-causa-b") || null,
+      codigo_b: v("ad-codigo-b") || null,
+      causa_c: v("ad-causa-c") || null,
+      codigo_c: v("ad-codigo-c") || null,
+      causa_basica: v("ad-causa-basica"),
+      codigo_basica: v("ad-codigo-basica"),
+      otros_estados: v("ad-otros-estados") || null,
+      manera_muerte: v("ad-manera"),
+      autopsia: v("ad-autopsia") === "true",
+      notificado_fiscalia: $id("ad-notificado-fiscalia")?.checked || false,
+      informante_nombre: v("ad-informante-nombre"),
+      informante_parentesco: v("ad-informante-parentesco") || null,
+      informante_dui: v("ad-informante-dui") || null,
+      informante_telefono: v("ad-informante-telefono") || null,
+      informante_direccion: v("ad-informante-direccion") || null,
+      observaciones: v("ad-observaciones") || null,
+      medico_nombre: window.usuarioActual?.nombre || "Médico",
+      medico_csspm: AD.medicoPerfil?.csspm || "N/E",
+      medico_especialidad: AD.medicoPerfil?.especialidad || "Médico General",
+      firma_hash: "pendiente-de-firma",
+      firmada_at: new Date().toISOString()
+    };
+
+    const htmlAlcaldia = construirHTMLActaAlcaldia(actaTemp, { acta_id: "BORRADOR" });
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlAlcaldia, "text/html");
+    ta.value = doc.body.innerHTML;
+    wrap.style.display = "block";
+    console.log("[ActaDefunción] ✓ Textarea de alcaldía poblado");
+  }
+
   // ═══════════════════════════════════════════════════════════
-  // FIRMAR Y GENERAR DOBLE PDF
+  // FIRMAR (con soporte de rectificación)
   // ═══════════════════════════════════════════════════════════
   window.firmarActaDefuncion = async function() {
     const errEl = $id("ad-error");
@@ -28603,9 +28830,18 @@ REGLAS:
     if (!AD.iaGenerada) { setErr("Genera el informe con IA primero"); return; }
     if (!$id("ad-firma-check")?.checked) { setErr("Marca la casilla de confirmación"); return; }
 
-    if (AD.modoPreview) {
-      const ta = $id("ad-ia-narrativa-edit");
-      if (ta) AD.informeEditado = ta.value;
+    // ═══ FIX 1.A: Capturar SIEMPRE el texto del textarea ═══
+    const taEdicion = $id("ad-ia-narrativa-edit");
+    if (taEdicion && taEdicion.value && taEdicion.value.trim().length > 0) {
+      AD.informeEditado = taEdicion.value;
+      console.log("[Firma] ✓ Texto editado capturado:", AD.informeEditado.length, "caracteres");
+    }
+
+    // ═══ FIX 5.A: Capturar acta de alcaldía editada ═══
+    const taAlcaldia = $id("ad-alcaldia-edit");
+    if (taAlcaldia && taAlcaldia.value && taAlcaldia.value.trim().length > 0) {
+      AD.informeAlcaldiaEditado = taAlcaldia.value;
+      console.log("[Firma] ✓ Acta alcaldía editada capturada:", AD.informeAlcaldiaEditado.length, "caracteres");
     }
 
     const validacion = window.adValidarCausaBasica();
@@ -28621,8 +28857,15 @@ REGLAS:
     const v = (id) => $id(id)?.value?.trim() || "";
     const p = AD.pacienteSeleccionado;
 
+    // ═══ FIX 1.B: Usar el texto editado con prioridad ═══
     const informeFinal = AD.informeEditado || AD.iaRespuesta;
     const narrativaLimpia = limpiarTexto(separarNarrativa(informeFinal));
+
+    // ═══ FIX 1.C: Reconstruir secciones desde el texto editado ═══
+    if (AD.informeEditado && AD.informeEditado.trim().length > 0) {
+      AD.secciones = parsearSecciones(AD.informeEditado);
+      console.log("[Firma] ✓ Secciones reconstruidas desde texto editado");
+    }
 
     const acta = {
       subject_id: p.subject_id,
@@ -28686,8 +28929,14 @@ REGLAS:
       medico_csspm: AD.medicoPerfil?.csspm || "N/E",
       medico_especialidad: AD.medicoPerfil?.especialidad || "Médico General",
 
-      estado: "firmada",
-      created_by: window.usuarioActual?.id
+      estado: AD.modoRectificacion ? "rectificada" : "firmada",
+      created_by: window.usuarioActual?.id,
+
+      // ═══ FIX 5.B: Guardar el HTML editado del acta de alcaldía ═══
+      informe_alcaldia_editado: AD.informeAlcaldiaEditado || null,
+
+      // ═══ RECTIFICACIÓN: Referencia al acta original ═══
+      acta_original_id: AD.modoRectificacion ? AD.actaOriginal?.acta_id : null
     };
 
     const btn = $id("btn-ad-firmar");
@@ -28705,18 +28954,30 @@ REGLAS:
       if (error) throw error;
       AD.actaActual = data;
 
+      // Si es rectificación, marcar el acta original como "rectificada"
+      if (AD.modoRectificacion && AD.actaOriginal?.acta_id) {
+        try {
+          await window.supabaseClient
+            .from("actas_defuncion")
+            .update({ estado: "rectificada" })
+            .eq("acta_id", AD.actaOriginal.acta_id);
+          console.log("[Rectificación] ✓ Acta original marcada como rectificada");
+        } catch (e) {
+          console.warn("[Rectificación] Error marcando original:", e);
+        }
+      }
+
       try {
         await window.supabaseClient.from("notificaciones_medicas").insert({
-          tipo: "acta_defuncion_emitida",
+          tipo: AD.modoRectificacion ? "acta_defuncion_rectificada" : "acta_defuncion_emitida",
           prioridad: "alta",
-          mensaje: `Acta emitida: ${acta.paciente_nombre} (${acta.causa_basica})`,
-          payload: { acta_id: data.acta_id, subject_id: acta.subject_id }
+          mensaje: `${AD.modoRectificacion ? 'Acta rectificada' : 'Acta emitida'}: ${acta.paciente_nombre} (${acta.causa_basica})`,
+          payload: { acta_id: data.acta_id, subject_id: acta.subject_id, acta_original_id: acta.acta_original_id }
         });
       } catch (e) {}
 
-      toast("✓ Acta firmada. Generando PDF médico...", "success");
+      toast(`✓ ${AD.modoRectificacion ? 'Rectificación firmada' : 'Acta firmada'}. Generando PDF médico...`, "success");
 
-      // ═══ PDF 1: INFORME MÉDICO ═══
       try {
         const pdfMedico = await generarPDFActaAtomico(acta, data);
         const urlMedico = URL.createObjectURL(pdfMedico);
@@ -28731,7 +28992,6 @@ REGLAS:
         toast("Error en PDF médico: " + e.message, "error");
       }
 
-      // ═══ PDF 2: ACTA ALCALDÍA ═══
       await new Promise(r => setTimeout(r, 1500));
       toast("Generando acta para alcaldía...", "info");
       try {
@@ -28748,7 +29008,11 @@ REGLAS:
         toast("Error en acta para alcaldía: " + e.message, "error");
       }
 
-      setTimeout(() => window.actaDefuncionCambiarTab("historial"), 2000);
+      setTimeout(() => {
+        AD.modoRectificacion = false;
+        AD.actaOriginal = null;
+        window.actaDefuncionCambiarTab("historial");
+      }, 2000);
 
     } catch (e) {
       console.error("[firmarActaDefuncion]", e);
@@ -28759,22 +29023,191 @@ REGLAS:
   };
 
   // ═══════════════════════════════════════════════════════════
-  // PDF 1: INFORME MÉDICO (narrativa completa)
+  // CONSTRUIR HTML DEL INFORME MÉDICO
+  // ═══════════════════════════════════════════════════════════
+  function construirHTMLActa(acta, registro) {
+    const fecha = new Date(acta.firmada_at).toLocaleString("es-ES");
+    const medicoData = window.MEDICOS_DATOS?.[window.usuarioActual?.id] 
+                    || window.MEDICOS_DATOS?.["EDUARDO_MAZZINI"];
+    
+    let selloUrl = medicoData?.urlSello || "";
+    if (!selloUrl && window.SUPABASE_URL) {
+      const carpeta = medicoData?.carpeta || "edumazzini";
+      selloUrl = `${window.SUPABASE_URL}/storage/v1/object/public/firmas-medicos/${carpeta}/sello-firma.png`;
+    }
+
+    const secciones = acta.secciones_informe || {};
+    const orden = ["resumen","datos","causa_directa","cadena","contexto","manera","hallazgos","epidemiologia","limitaciones","conclusiones"];
+
+    const limpiarTxt = (txt) => {
+      if (!txt) return "";
+      return String(txt)
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+        .replace(/[\u0080-\u009F]/g, "")
+        .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, "")
+        .replace(/\uFFFD/g, "")
+        .replace(/\b(\w+)(\s*,\s*\1){2,}/gi, "$1")
+        .trim();
+    };
+
+    let seccionesHTML = "";
+    orden.forEach(key => {
+      const sec = secciones[key];
+      if (!sec || !sec.contenido) return;
+      const contenidoLimpio = limpiarTxt(sec.contenido);
+      if (!contenidoLimpio) return;
+      seccionesHTML += `
+        <div class="ad-seccion" style="margin-bottom:16px;page-break-inside:avoid;break-inside:avoid">
+          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">${esc(sec.titulo)}</h3>
+          <div style="font-size:11.5px;line-height:1.65;color:#333;white-space:pre-wrap">${esc(contenidoLimpio)}</div>
+        </div>
+      `;
+    });
+
+    if (acta.narrativa_completa && Object.keys(secciones).length === 0) {
+      seccionesHTML = `
+        <div class="ad-seccion" style="margin-bottom:16px">
+          <div style="font-size:11.5px;line-height:1.65;color:#333;white-space:pre-wrap">${esc(limpiarTxt(acta.narrativa_completa))}</div>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="font-family:Helvetica,Arial,sans-serif;color:#1d1d1f;background:#fff;width:800px">
+        <div class="ad-header" style="background:linear-gradient(135deg,#1a3a5c 0%,#0071e3 100%);color:#fff;padding:24px;text-align:center;margin-bottom:16px">
+          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:2px;opacity:0.85">Ecosistema de Salud EcoRadAi</div>
+          <h1 style="font-size:22px;font-weight:700;margin:8px 0;letter-spacing:-0.3px">ACTA DE DEFUNCIÓN</h1>
+          <div style="font-size:10px;opacity:0.85">Informe clínico interno${acta.estado === 'rectificada' ? ' · RECTIFICADA' : ''}</div>
+        </div>
+
+        <div class="ad-seccion" style="margin-bottom:16px">
+          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">I. DATOS DEL FALLECIDO(A)</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <tr><td style="padding:5px 0;font-weight:600;width:35%">Nombre:</td><td style="padding:5px 0">${esc(acta.paciente_nombre)}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">ID:</td><td style="padding:5px 0">${esc(acta.subject_id)}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Edad / Sexo:</td><td style="padding:5px 0">${acta.paciente_edad || "—"} años · ${esc(acta.paciente_sexo || "—")}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">DUI:</td><td style="padding:5px 0">${esc(acta.paciente_dui || "No registrado")}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Fecha de defunción:</td><td style="padding:5px 0">${esc(acta.fecha_defuncion)}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Hora:</td><td style="padding:5px 0">${esc(acta.hora_defuncion || "—")}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Lugar:</td><td style="padding:5px 0">${esc(acta.lugar_defuncion)}, ${esc(acta.municipio_defuncion)}, ${esc(acta.departamento_defuncion)}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Intrahospitalaria:</td><td style="padding:5px 0">${acta.intrahospitalaria ? "Sí" : "No"}</td></tr>
+          </table>
+        </div>
+
+        <div class="ad-seccion" style="margin-bottom:16px">
+          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">II. CAUSA DE DEFUNCIÓN (CIE-10)</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <tr><td style="padding:5px 0;font-weight:600;width:35%">Causa directa (a):</td><td style="padding:5px 0">${esc(acta.causa_a_completa || acta.causa_a)}</td></tr>
+            ${acta.causa_b_completa ? `<tr><td style="padding:5px 0;font-weight:600">Causa antecedente (b):</td><td style="padding:5px 0">${esc(acta.causa_b_completa)}</td></tr>` : ""}
+            ${acta.causa_c_completa ? `<tr><td style="padding:5px 0;font-weight:600">Causa antecedente (c):</td><td style="padding:5px 0">${esc(acta.causa_c_completa)}</td></tr>` : ""}
+            <tr><td style="padding:5px 0;font-weight:600">Causa básica:</td><td style="padding:5px 0"><strong>${esc(acta.causa_basica_completa || acta.causa_basica)}</strong></td></tr>
+            ${acta.otros_estados ? `<tr><td style="padding:5px 0;font-weight:600">Otros estados:</td><td style="padding:5px 0">${esc(acta.otros_estados)}</td></tr>` : ""}
+            <tr><td style="padding:5px 0;font-weight:600">Manera de muerte:</td><td style="padding:5px 0">${esc(acta.manera_muerte)}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Autopsia:</td><td style="padding:5px 0">${acta.autopsia ? "Sí" : "No"}</td></tr>
+          </table>
+        </div>
+
+        ${seccionesHTML ? `
+          <div style="margin-top:20px;margin-bottom:16px">
+            <h3 style="font-size:12px;color:#0071e3;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:2px solid #0071e3;padding-bottom:6px;margin-bottom:12px">III. INFORME CLÍNICO COMPLETO</h3>
+          </div>
+          ${seccionesHTML}
+        ` : ""}
+
+        <div class="ad-seccion" style="margin-bottom:16px">
+          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">IV. DATOS DEL INFORMANTE</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <tr><td style="padding:5px 0;font-weight:600;width:35%">Nombre:</td><td style="padding:5px 0">${esc(acta.informante_nombre)}</td></tr>
+            ${acta.informante_parentesco ? `<tr><td style="padding:5px 0;font-weight:600">Parentesco:</td><td style="padding:5px 0">${esc(acta.informante_parentesco)}</td></tr>` : ""}
+            ${acta.informante_dui ? `<tr><td style="padding:5px 0;font-weight:600">DUI:</td><td style="padding:5px 0">${esc(acta.informante_dui)}</td></tr>` : ""}
+            ${acta.informante_telefono ? `<tr><td style="padding:5px 0;font-weight:600">Teléfono:</td><td style="padding:5px 0">${esc(acta.informante_telefono)}</td></tr>` : ""}
+            ${acta.informante_direccion ? `<tr><td style="padding:5px 0;font-weight:600">Dirección:</td><td style="padding:5px 0">${esc(acta.informante_direccion)}</td></tr>` : ""}
+          </table>
+        </div>
+
+        ${acta.observaciones ? `
+          <div class="ad-seccion" style="margin-bottom:16px">
+            <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">V. OBSERVACIONES CLÍNICAS</h3>
+            <div style="font-size:11.5px;line-height:1.65;color:#333;white-space:pre-wrap">${esc(limpiarTxt(acta.observaciones))}</div>
+          </div>
+        ` : ""}
+
+        <div class="ad-firma" style="
+          position: relative !important;
+          z-index: 1 !important;
+          clear: both !important;
+          display: block !important;
+          overflow: hidden !important;
+          margin-top: 80px !important;
+          padding: 40px 20px !important;
+          background: #f8fbff !important;
+          border: 2px solid #1a3a5c !important;
+          border-radius: 8px !important;
+          border-top: 4px solid #0071e3 !important;
+          text-align: center !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        ">
+          ${selloUrl ? `<img src="${selloUrl}" crossorigin="anonymous" style="
+            display: block !important;
+            position: relative !important;
+            float: none !important;
+            max-width: 280px;
+            max-height: 140px;
+            margin: 0 auto 16px auto !important;
+          ">` : ""}
+          
+          <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:0 auto 12px auto"></div>
+          
+          <div style="font-size:14px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(acta.medico_nombre || "Médico")}</div>
+          <div style="font-size:11px;color:#333;margin-bottom:2px">CSSPM: ${esc(acta.medico_csspm || "N/E")}</div>
+          <div style="font-size:11px;color:#666;margin-bottom:8px">${esc(acta.medico_especialidad || "Médico General")}</div>
+          <div style="font-size:10px;color:#86868b">Fecha: ${esc(fecha)}</div>
+          
+          <div style="font-size:8px;color:#999;margin-top:16px;padding-top:10px;border-top:1px solid #d0d8e0;font-family:monospace;word-break:break-all">
+            SHA-256: ${esc((acta.firma_hash || "").substring(0, 64))}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // GENERAR PDF MÉDICO
   // ═══════════════════════════════════════════════════════════
   async function generarPDFActaAtomico(acta, registro) {
     if (typeof html2canvas === "undefined") throw new Error("html2canvas no cargado");
 
     toast("Generando informe médico...", "info");
 
+    let htmlActa = construirHTMLActa(acta, registro);
+    
+    htmlActa = htmlActa
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+      .replace(/[\u0080-\u009F]/g, "")
+      .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, "")
+      .replace(/\uFFFD/g, "")
+      .replace(/\s{3,}/g, "  ");
+    
     const contenedor = document.createElement("div");
     contenedor.style.cssText = "position:fixed;left:-99999px;top:0;width:800px;background:#fff;padding:0;font-family:Helvetica,Arial,sans-serif";
-    contenedor.innerHTML = construirHTMLActa(acta, registro);
+    contenedor.innerHTML = htmlActa;
     document.body.appendChild(contenedor);
+
+    contenedor.querySelectorAll("*").forEach(el => {
+      if (el.children.length === 0 && el.textContent) {
+        el.textContent = el.textContent
+          .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+          .replace(/[\u0080-\u009F]/g, "")
+          .replace(/\uFFFD/g, "")
+          .replace(/\b(\w+)(\s*,\s*\1){2,}/gi, "$1");
+      }
+    });
 
     const imgs = contenedor.querySelectorAll("img");
     await Promise.all(Array.from(imgs).map(img => {
       if (img.complete) return Promise.resolve();
-      return new Promise(r => { img.onload = r; img.onerror = r; setTimeout(r, 3000); });
+      return new Promise(r => { img.onload = r; img.onerror = r; setTimeout(r, 5000); });
     }));
 
     await new Promise(r => setTimeout(r, 300));
@@ -28828,7 +29261,6 @@ REGLAS:
           const altoPaginaPx = chMax * pxPorMm;
           let offsetY = 0;
           let primerCorte = true;
-
           while (offsetY < canvas.height) {
             const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
             const temp = document.createElement("canvas");
@@ -28838,7 +29270,6 @@ REGLAS:
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(0, 0, temp.width, temp.height);
             ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
-
             if (!primerCorte) pdf.addPage();
             pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoCorte / pxPorMm);
             offsetY += altoCorte;
@@ -28865,248 +29296,25 @@ REGLAS:
     }
   }
 
-  function construirHTMLActa(acta, registro) {
-    const fecha = new Date(acta.firmada_at).toLocaleString("es-ES");
-    const medicoData = window.MEDICOS_DATOS?.[window.usuarioActual?.id];
-    const selloUrl = medicoData?.urlSello || "";
-
-    const secciones = acta.secciones_informe || {};
-    const orden = ["resumen","datos","causa_directa","cadena","contexto","manera","hallazgos","epidemiologia","limitaciones","conclusiones"];
-
-    let seccionesHTML = "";
-    orden.forEach(key => {
-      const sec = secciones[key];
-      if (!sec || !sec.contenido) return;
-      seccionesHTML += `
-        <div class="ad-seccion" style="margin-bottom:16px;page-break-inside:avoid;break-inside:avoid">
-          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">${esc(sec.titulo)}</h3>
-          <div style="font-size:11.5px;line-height:1.65;color:#333;white-space:pre-wrap">${esc(limpiarTexto(sec.contenido))}</div>
-        </div>
-      `;
-    });
-
-    if (acta.narrativa_completa && Object.keys(secciones).length === 0) {
-      seccionesHTML = `
-        <div class="ad-seccion" style="margin-bottom:16px">
-          <div style="font-size:11.5px;line-height:1.65;color:#333;white-space:pre-wrap">${esc(limpiarTexto(acta.narrativa_completa))}</div>
-        </div>
-      `;
-    } else if (acta.narrativa_completa && AD.informeEditado) {
-      seccionesHTML = `
-        <div class="ad-seccion" style="margin-bottom:16px">
-          <div style="font-size:11.5px;line-height:1.65;color:#333;white-space:pre-wrap">${esc(limpiarTexto(acta.narrativa_completa))}</div>
-        </div>
-      `;
-    }
-
-    return `
-      <div style="font-family:Helvetica,Arial,sans-serif;color:#1d1d1f;background:#fff;width:800px">
-        <div class="ad-header" style="background:linear-gradient(135deg,#1a3a5c 0%,#0071e3 100%);color:#fff;padding:24px;text-align:center;margin-bottom:16px">
-          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:2px;opacity:0.85">Ecosistema de Salud EcoRadAi</div>
-          <h1 style="font-size:22px;font-weight:700;margin:8px 0;letter-spacing:-0.3px">ACTA DE DEFUNCIÓN</h1>
-          <div style="font-size:10px;opacity:0.85">Informe clínico interno</div>
-        </div>
-
-        <div class="ad-seccion" style="margin-bottom:16px">
-          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">I. DATOS DEL FALLECIDO(A)</h3>
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <tr><td style="padding:5px 0;font-weight:600;width:35%">Nombre:</td><td style="padding:5px 0">${esc(acta.paciente_nombre)}</td></tr>
-            <tr><td style="padding:5px 0;font-weight:600">ID:</td><td style="padding:5px 0">${esc(acta.subject_id)}</td></tr>
-            <tr><td style="padding:5px 0;font-weight:600">Edad / Sexo:</td><td style="padding:5px 0">${acta.paciente_edad || "—"} años · ${esc(acta.paciente_sexo || "—")}</td></tr>
-            <tr><td style="padding:5px 0;font-weight:600">DUI:</td><td style="padding:5px 0">${esc(acta.paciente_dui || "No registrado")}</td></tr>
-            <tr><td style="padding:5px 0;font-weight:600">Fecha de defunción:</td><td style="padding:5px 0">${esc(acta.fecha_defuncion)}</td></tr>
-            <tr><td style="padding:5px 0;font-weight:600">Hora:</td><td style="padding:5px 0">${esc(acta.hora_defuncion || "—")}</td></tr>
-            <tr><td style="padding:5px 0;font-weight:600">Lugar:</td><td style="padding:5px 0">${esc(acta.lugar_defuncion)}, ${esc(acta.municipio_defuncion)}, ${esc(acta.departamento_defuncion)}</td></tr>
-            <tr><td style="padding:5px 0;font-weight:600">Intrahospitalaria:</td><td style="padding:5px 0">${acta.intrahospitalaria ? "Sí" : "No"}</td></tr>
-          </table>
-        </div>
-
-        <div class="ad-seccion" style="margin-bottom:16px">
-          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">II. CAUSA DE DEFUNCIÓN (CIE-10)</h3>
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <tr><td style="padding:5px 0;font-weight:600;width:35%">Causa directa (a):</td><td style="padding:5px 0">${esc(acta.causa_a_completa || acta.causa_a)}</td></tr>
-            ${acta.causa_b_completa ? `<tr><td style="padding:5px 0;font-weight:600">Causa antecedente (b):</td><td style="padding:5px 0">${esc(acta.causa_b_completa)}</td></tr>` : ""}
-            ${acta.causa_c_completa ? `<tr><td style="padding:5px 0;font-weight:600">Causa antecedente (c):</td><td style="padding:5px 0">${esc(acta.causa_c_completa)}</td></tr>` : ""}
-            <tr><td style="padding:5px 0;font-weight:600">Causa básica:</td><td style="padding:5px 0"><strong>${esc(acta.causa_basica_completa || acta.causa_basica)}</strong></td></tr>
-            ${acta.otros_estados ? `<tr><td style="padding:5px 0;font-weight:600">Otros estados:</td><td style="padding:5px 0">${esc(acta.otros_estados)}</td></tr>` : ""}
-            <tr><td style="padding:5px 0;font-weight:600">Manera de muerte:</td><td style="padding:5px 0">${esc(acta.manera_muerte)}</td></tr>
-            <tr><td style="padding:5px 0;font-weight:600">Autopsia:</td><td style="padding:5px 0">${acta.autopsia ? "Sí" : "No"}</td></tr>
-          </table>
-        </div>
-
-        ${seccionesHTML ? `
-          <div style="margin-top:20px;margin-bottom:16px">
-            <h3 style="font-size:12px;color:#0071e3;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:2px solid #0071e3;padding-bottom:6px;margin-bottom:12px">III. INFORME CLÍNICO COMPLETO</h3>
-          </div>
-          ${seccionesHTML}
-        ` : ""}
-
-        <div class="ad-seccion" style="margin-bottom:16px">
-          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">IV. DATOS DEL INFORMANTE</h3>
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <tr><td style="padding:5px 0;font-weight:600;width:35%">Nombre:</td><td style="padding:5px 0">${esc(acta.informante_nombre)}</td></tr>
-            ${acta.informante_parentesco ? `<tr><td style="padding:5px 0;font-weight:600">Parentesco:</td><td style="padding:5px 0">${esc(acta.informante_parentesco)}</td></tr>` : ""}
-            ${acta.informante_dui ? `<tr><td style="padding:5px 0;font-weight:600">DUI:</td><td style="padding:5px 0">${esc(acta.informante_dui)}</td></tr>` : ""}
-            ${acta.informante_telefono ? `<tr><td style="padding:5px 0;font-weight:600">Teléfono:</td><td style="padding:5px 0">${esc(acta.informante_telefono)}</td></tr>` : ""}
-            ${acta.informante_direccion ? `<tr><td style="padding:5px 0;font-weight:600">Dirección:</td><td style="padding:5px 0">${esc(acta.informante_direccion)}</td></tr>` : ""}
-          </table>
-        </div>
-
-        ${acta.observaciones ? `
-          <div class="ad-seccion" style="margin-bottom:16px">
-            <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">V. OBSERVACIONES CLÍNICAS</h3>
-            <div style="font-size:11.5px;line-height:1.65;color:#333;white-space:pre-wrap">${esc(acta.observaciones)}</div>
-          </div>
-        ` : ""}
-
-        <div class="ad-firma" style="
-          position: relative !important;
-          z-index: 1 !important;
-          clear: both !important;
-          display: block !important;
-          overflow: hidden !important;
-          margin-top: 80px !important; 
-          padding: 40px 20px !important;
-          background: #f8fbff !important;
-          border: 2px solid #1a3a5c !important;
-          border-radius: 8px !important;
-          border-top: 4px solid #0071e3 !important;
-          text-align: center !important;
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-        ">
-          ${selloUrl ? `<img src="${selloUrl}" crossorigin="anonymous" style="
-            display: block !important;
-            position: relative !important;
-            float: none !important;
-            max-width: 280px;
-            max-height: 140px;
-            margin: 0 auto 16px auto !important;
-          ">` : ""}
-          
-          <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:0 auto 12px auto"></div>
-          
-          <div style="font-size:14px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(acta.medico_nombre || "Médico")}</div>
-          <div style="font-size:11px;color:#333;margin-bottom:2px">CSSPM: ${esc(acta.medico_csspm || "N/E")}</div>
-          <div style="font-size:11px;color:#666;margin-bottom:8px">${esc(acta.medico_especialidad || "Médico General")}</div>
-          <div style="font-size:10px;color:#86868b">Fecha: ${esc(fecha)}</div>
-          
-          <div style="font-size:8px;color:#999;margin-top:16px;padding-top:10px;border-top:1px solid #d0d8e0;font-family:monospace;word-break:break-all">
-            SHA-256: ${esc((acta.firma_hash || "").substring(0, 64))}
-          </div>
-        </div>
-    `;
-  }
-
   // ═══════════════════════════════════════════════════════════
-  // PDF 2: ACTA PARA ALCALDÍA (formato oficial)
+  // CONSTRUIR HTML DEL ACTA DE ALCALDÍA
   // ═══════════════════════════════════════════════════════════
-  async function generarPDFActaAlcaldia(acta, registro) {
-    if (typeof html2canvas === "undefined") throw new Error("html2canvas no cargado");
-
-    const contenedor = document.createElement("div");
-    contenedor.style.cssText = "position:fixed;left:-99999px;top:0;width:800px;background:#fff;padding:0;font-family:Helvetica,Arial,sans-serif";
-    contenedor.innerHTML = construirHTMLActaAlcaldia(acta, registro);
-    document.body.appendChild(contenedor);
-
-    const imgs = contenedor.querySelectorAll("img");
-    await Promise.all(Array.from(imgs).map(img => {
-      if (img.complete) return Promise.resolve();
-      return new Promise(r => { img.onload = r; img.onerror = r; setTimeout(r, 3000); });
-    }));
-
-    await new Promise(r => setTimeout(r, 300));
-
-    try {
-      const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pw = pdf.internal.pageSize.getWidth();
-      const ph = pdf.internal.pageSize.getHeight();
-      const mg = 10;
-      const cw = pw - 2 * mg;
-      const chMax = ph - 2 * mg;
-      let y = mg;
-
-      const bloques = [];
-      const header = contenedor.querySelector(".alc-header");
-      if (header) bloques.push(header);
-      contenedor.querySelectorAll(".alc-seccion").forEach(s => bloques.push(s));
-      const firma = contenedor.querySelector(".alc-firma");
-      if (firma) bloques.push(firma);
-
-      for (const bloque of bloques) {
-        const rect = bloque.getBoundingClientRect();
-        if (rect.height < 2 || rect.width < 2) continue;
-
-        let canvas;
-        try {
-          canvas = await html2canvas(bloque, {
-            scale: 2, useCORS: true, backgroundColor: "#ffffff",
-            logging: false, windowWidth: 800
-          });
-        } catch (err) { continue; }
-
-        if (!canvas || canvas.width === 0) continue;
-
-        const imgW = cw;
-        const imgH = (canvas.height * imgW) / canvas.width;
-        const imgData = canvas.toDataURL("image/png");
-
-        if (y + imgH <= ph - mg - 5) {
-          pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
-          y += imgH + 3;
-        } else if (imgH <= chMax) {
-          pdf.addPage();
-          y = mg;
-          pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
-          y += imgH + 3;
-        } else {
-          if (y > mg + 1) { pdf.addPage(); y = mg; }
-          const pxPorMm = canvas.width / imgW;
-          const altoPaginaPx = chMax * pxPorMm;
-          let offsetY = 0;
-          let primerCorte = true;
-
-          while (offsetY < canvas.height) {
-            const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
-            const temp = document.createElement("canvas");
-            temp.width = canvas.width;
-            temp.height = altoCorte;
-            const ctx = temp.getContext("2d");
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(0, 0, temp.width, temp.height);
-            ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
-
-            if (!primerCorte) pdf.addPage();
-            pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoCorte / pxPorMm);
-            offsetY += altoCorte;
-            primerCorte = false;
-          }
-          y = mg;
-        }
-      }
-
-      const totalPags = pdf.internal.getNumberOfPages();
-      for (let i = 1; i <= totalPags; i++) {
-        pdf.setPage(i);
-        pdf.setFontSize(7);
-        pdf.setTextColor(150);
-        pdf.text("EcoRadAi · Acta para Alcaldía · " + new Date().toLocaleDateString("es-ES"), mg, ph - 6);
-        pdf.text("Página " + i + " de " + totalPags, pw - mg, ph - 6, { align: "right" });
-        pdf.text("Acta: " + (registro?.acta_id || "—"), pw - mg, ph - 3, { align: "right" });
-      }
-
-      return pdf.output("blob");
-    } finally {
-      document.body.removeChild(contenedor);
-    }
-  }
-
   function construirHTMLActaAlcaldia(acta, registro) {
     const e = esc;
     const fechaEmision = new Date(acta.firmada_at).toLocaleDateString("es-ES", {
       year: "numeric", month: "long", day: "numeric"
     });
+
+    const limpiarTxt = (txt) => {
+      if (!txt) return "";
+      return String(txt)
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+        .replace(/[\u0080-\u009F]/g, "")
+        .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, "")
+        .replace(/\uFFFD/g, "")
+        .replace(/\b(\w+)(\s*,\s*\1){2,}/gi, "$1")
+        .trim();
+    };
 
     const partesNombre = (acta.paciente_nombre || "").trim().split(/\s+/);
     const primerNombre = partesNombre[0] || "—";
@@ -29116,7 +29324,6 @@ REGLAS:
 
     const fechaNac = acta.paciente_fecha_nacimiento || "";
     let fechaNacFmt = "—";
-    let edadAnios = acta.paciente_edad || "—";
     if (fechaNac) {
       const d = new Date(fechaNac + "T12:00:00");
       fechaNacFmt = d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -29128,19 +29335,38 @@ REGLAS:
       fechaDefFmt = d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
     }
 
-    const check = (cond) => cond ? "☑" : "☐";
+    // ═══ FIX 4: Casillas grandes y visibles ═══
+    const checkbox = (marcado) => `
+      <span style="
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 1.5px solid #333;
+        background: ${marcado ? "#1a3a5c" : "#fff"};
+        color: ${marcado ? "#fff" : "transparent"};
+        font-size: 11px;
+        font-weight: bold;
+        text-align: center;
+        line-height: 14px;
+        vertical-align: middle;
+        margin-right: 4px;
+      ">${marcado ? "✓" : ""}</span>
+    `;
+
     const sexoM = acta.paciente_sexo === "Masculino";
     const sexoF = acta.paciente_sexo === "Femenino";
 
     const maneras = {
-      natural: check(acta.manera_muerte === "natural"),
-      accidente: check(acta.manera_muerte === "accidente"),
-      suicidio: check(acta.manera_muerte === "suicidio"),
-      homicidio: check(acta.manera_muerte === "homicidio"),
-      indeterminada: check(acta.manera_muerte === "indeterminada")
+      natural: checkbox(acta.manera_muerte === "natural"),
+      accidente: checkbox(acta.manera_muerte === "accidente"),
+      suicidio: checkbox(acta.manera_muerte === "suicidio"),
+      homicidio: checkbox(acta.manera_muerte === "homicidio"),
+      indeterminada: checkbox(acta.manera_muerte === "indeterminada")
     };
 
-    const selloUrl = window.MEDICOS_DATOS?.[window.usuarioActual?.id]?.urlSello || "";
+    const selloUrl = window.MEDICOS_DATOS?.[window.usuarioActual?.id]?.urlSello 
+                  || window.MEDICOS_DATOS?.["EDUARDO_MAZZINI"]?.urlSello 
+                  || (window.SUPABASE_URL ? `${window.SUPABASE_URL}/storage/v1/object/public/firmas-medicos/edumazzini/sello-firma.png` : "");
 
     return `
       <div style="font-family:Helvetica,Arial,sans-serif;color:#000;background:#fff;width:800px;font-size:11px;line-height:1.5">
@@ -29160,7 +29386,7 @@ REGLAS:
           <table style="width:100%;border-collapse:collapse;font-size:10px">
             <tr>
               <td style="padding:3px 0;width:18%"><strong>Primer nombre:</strong></td>
-              <td style="padding:3px 0;width:32%;border-bottom:1px solid #999">${e(primerNombre)}</td>
+              <td style="padding:3px 0;width:32%;border-bottom:1px solid #999">${e(limpiarTxt(primerNombre))}</td>
               <td style="padding:3px 0;width:18%"><strong>Segundo nombre:</strong></td>
               <td style="padding:3px 0;width:32%;border-bottom:1px solid #999">${e(segundoNombre) || "—"}</td>
             </tr>
@@ -29172,13 +29398,13 @@ REGLAS:
             </tr>
             <tr>
               <td style="padding:3px 0"><strong>Sexo:</strong></td>
-              <td style="padding:3px 0;border-bottom:1px solid #999">${check(sexoM)} Masculino &nbsp; ${check(sexoF)} Femenino</td>
+              <td style="padding:3px 0;border-bottom:1px solid #999">${sexoM ? "☑ Masculino" : "☐ Masculino"} &nbsp; ${sexoF ? "☑ Femenino" : "☐ Femenino"}</td>
               <td style="padding:3px 0"><strong>Fecha nacimiento:</strong></td>
               <td style="padding:3px 0;border-bottom:1px solid #999">${e(fechaNacFmt)}</td>
             </tr>
             <tr>
               <td style="padding:3px 0"><strong>Edad:</strong></td>
-              <td style="padding:3px 0;border-bottom:1px solid #999">${e(String(edadAnios))} años</td>
+              <td style="padding:3px 0;border-bottom:1px solid #999">${e(String(acta.paciente_edad || "—"))} años</td>
               <td style="padding:3px 0"><strong>DUI:</strong></td>
               <td style="padding:3px 0;border-bottom:1px solid #999">${e(acta.paciente_dui || "—")}</td>
             </tr>
@@ -29214,7 +29440,7 @@ REGLAS:
               <td style="padding:3px 0;width:50%"><strong>Hora:</strong> <span style="border-bottom:1px solid #999;display:inline-block;width:50%">${e(acta.hora_defuncion || "—")}</span></td>
             </tr>
             <tr>
-              <td style="padding:3px 0" colspan="2"><strong>Lugar de defunción:</strong> <span style="border-bottom:1px solid #999;display:inline-block;width:70%">${e(acta.lugar_defuncion || "—")}</span></td>
+              <td style="padding:3px 0" colspan="2"><strong>Lugar de defunción:</strong> <span style="border-bottom:1px solid #999;display:inline-block;width:70%">${e(limpiarTxt(acta.lugar_defuncion || "—"))}</span></td>
             </tr>
             <tr>
               <td style="padding:3px 0;width:50%"><strong>Departamento:</strong> <span style="border-bottom:1px solid #999;display:inline-block;width:50%">${e(acta.departamento_defuncion || "—")}</span></td>
@@ -29224,7 +29450,7 @@ REGLAS:
               <td style="padding:3px 0" colspan="2"><strong>Establecimiento de salud:</strong> <span style="border-bottom:1px solid #999;display:inline-block;width:65%">${e(acta.establecimiento_salud || "No aplica")}</span></td>
             </tr>
             <tr>
-              <td style="padding:3px 0" colspan="2"><strong>Defunción intrahospitalaria:</strong> ${check(acta.intrahospitalaria)} Sí &nbsp; ${check(!acta.intrahospitalaria)} No</td>
+              <td style="padding:3px 0" colspan="2"><strong>Defunción intrahospitalaria:</strong> ${checkbox(acta.intrahospitalaria)} Sí &nbsp; ${checkbox(!acta.intrahospitalaria)} No</td>
             </tr>
           </table>
 
@@ -29233,26 +29459,26 @@ REGLAS:
             <table style="width:100%;border-collapse:collapse;font-size:10px">
               <tr>
                 <td style="padding:2px 0;width:30%"><strong>Causa directa (a):</strong></td>
-                <td style="padding:2px 0;border-bottom:1px solid #999;width:50%">${e(acta.causa_a || "—")}</td>
+                <td style="padding:2px 0;border-bottom:1px solid #999;width:50%">${e(limpiarTxt(acta.causa_a || "—"))}</td>
                 <td style="padding:2px 0;width:20%;text-align:right"><strong>Código:</strong> ${e(acta.codigo_a || "—")}</td>
               </tr>
               ${acta.causa_b ? `<tr>
                 <td style="padding:2px 0"><strong>Causa antecedente (b):</strong></td>
-                <td style="padding:2px 0;border-bottom:1px solid #999">${e(acta.causa_b)}</td>
+                <td style="padding:2px 0;border-bottom:1px solid #999">${e(limpiarTxt(acta.causa_b))}</td>
                 <td style="padding:2px 0;text-align:right"><strong>Código:</strong> ${e(acta.codigo_b || "—")}</td>
               </tr>` : ""}
               ${acta.causa_c ? `<tr>
                 <td style="padding:2px 0"><strong>Causa antecedente (c):</strong></td>
-                <td style="padding:2px 0;border-bottom:1px solid #999">${e(acta.causa_c)}</td>
+                <td style="padding:2px 0;border-bottom:1px solid #999">${e(limpiarTxt(acta.causa_c))}</td>
                 <td style="padding:2px 0;text-align:right"><strong>Código:</strong> ${e(acta.codigo_c || "—")}</td>
               </tr>` : ""}
               <tr>
                 <td style="padding:2px 0"><strong>Causa básica:</strong></td>
-                <td style="padding:2px 0;border-bottom:1px solid #999"><strong>${e(acta.causa_basica || "—")}</strong></td>
+                <td style="padding:2px 0;border-bottom:1px solid #999"><strong>${e(limpiarTxt(acta.causa_basica || "—"))}</strong></td>
                 <td style="padding:2px 0;text-align:right"><strong>Código:</strong> ${e(acta.codigo_basica || "—")}</td>
               </tr>
               ${acta.otros_estados ? `<tr>
-                <td style="padding:2px 0" colspan="3"><strong>Otros estados patológicos:</strong> ${e(acta.otros_estados)}</td>
+                <td style="padding:2px 0" colspan="3"><strong>Otros estados patológicos:</strong> ${e(limpiarTxt(acta.otros_estados))}</td>
               </tr>` : ""}
             </table>
           </div>
@@ -29271,10 +29497,10 @@ REGLAS:
               </td>
             </tr>
             <tr>
-              <td style="padding:3px 0"><strong>¿Se practicó autopsia?:</strong> ${check(acta.autopsia)} Sí &nbsp; ${check(!acta.autopsia)} No</td>
+              <td style="padding:3px 0"><strong>¿Se practicó autopsia?:</strong> ${checkbox(acta.autopsia)} Sí &nbsp; ${checkbox(!acta.autopsia)} No</td>
             </tr>
             <tr>
-              <td style="padding:3px 0"><strong>¿Muerte violenta o sospechosa?:</strong> ${check(acta.notificado_fiscalia)} Sí &nbsp; ${check(!acta.notificado_fiscalia)} No</td>
+              <td style="padding:3px 0"><strong>¿Muerte violenta o sospechosa?:</strong> ${checkbox(acta.notificado_fiscalia)} Sí &nbsp; ${checkbox(!acta.notificado_fiscalia)} No</td>
             </tr>
           </table>
         </div>
@@ -29309,7 +29535,7 @@ REGLAS:
             </tr>
             <tr>
               <td style="padding:3px 0"><strong>Teléfono:</strong> <span style="border-bottom:1px solid #999;display:inline-block;width:55%">${e(acta.informante_telefono || "—")}</span></td>
-              <td style="padding:3px 0"><strong>Dirección:</strong> <span style="border-bottom:1px solid #999;display:inline-block;width:55%">${e(acta.informante_direccion || "—")}</span></td>
+              <td style="padding:3px 0"><strong>Dirección:</strong> <span style="border-bottom:1px solid #999;display:inline-block;width:55%">${e(limpiarTxt(acta.informante_direccion || "—"))}</span></td>
             </tr>
           </table>
         </div>
@@ -29317,7 +29543,7 @@ REGLAS:
         <div class="alc-seccion" style="margin-bottom:14px">
           <div style="background:#e8e8e8;padding:5px 8px;font-weight:700;font-size:11px;letter-spacing:0.5px;margin-bottom:8px">V. OBSERVACIONES</div>
           <div style="border:1px solid #999;min-height:60px;padding:8px;font-size:10px;line-height:1.5;background:#fff">
-            ${e(acta.observaciones || "(Sin observaciones adicionales)")}
+            ${e(limpiarTxt(acta.observaciones || "(Sin observaciones adicionales)"))}
           </div>
         </div>
 
@@ -29351,7 +29577,146 @@ REGLAS:
   }
 
   // ═══════════════════════════════════════════════════════════
-  // HISTORIAL
+  // GENERAR PDF ALCALDÍA
+  // ═══════════════════════════════════════════════════════════
+  async function generarPDFActaAlcaldia(acta, registro) {
+    if (typeof html2canvas === "undefined") throw new Error("html2canvas no cargado");
+
+    let htmlAlcaldia;
+    if (acta.informe_alcaldia_editado && acta.informe_alcaldia_editado.trim().length > 50) {
+      htmlAlcaldia = `
+        <div style="font-family:Helvetica,Arial,sans-serif;color:#000;background:#fff;width:800px;font-size:11px;line-height:1.5">
+          ${acta.informe_alcaldia_editado}
+        </div>
+      `;
+      console.log("[PDF Alcaldía] ✓ Usando HTML editado por el médico");
+    } else {
+      htmlAlcaldia = construirHTMLActaAlcaldia(acta, registro);
+      console.log("[PDF Alcaldía] ℹ️ Usando HTML generado automáticamente");
+    }
+    
+    htmlAlcaldia = htmlAlcaldia
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+      .replace(/[\u0080-\u009F]/g, "")
+      .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, "")
+      .replace(/\uFFFD/g, "")
+      .replace(/\s{3,}/g, "  ");
+
+    const contenedor = document.createElement("div");
+    contenedor.style.cssText = "position:fixed;left:-99999px;top:0;width:800px;background:#fff;padding:0;font-family:Helvetica,Arial,sans-serif";
+    contenedor.innerHTML = htmlAlcaldia;
+    document.body.appendChild(contenedor);
+
+    contenedor.querySelectorAll("*").forEach(el => {
+      if (el.children.length === 0 && el.textContent) {
+        el.textContent = el.textContent
+          .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+          .replace(/[\u0080-\u009F]/g, "")
+          .replace(/\uFFFD/g, "")
+          .replace(/\b(\w+)(\s*,\s*\1){2,}/gi, "$1");
+      }
+    });
+
+    const imgs = contenedor.querySelectorAll("img");
+    await Promise.all(Array.from(imgs).map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise(r => { img.onload = r; img.onerror = r; setTimeout(r, 5000); });
+    }));
+
+    await new Promise(r => setTimeout(r, 300));
+
+    try {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pw = pdf.internal.pageSize.getWidth();
+      const ph = pdf.internal.pageSize.getHeight();
+      const mg = 10;
+      const cw = pw - 2 * mg;
+      const chMax = ph - 2 * mg;
+      let y = mg;
+
+      const bloques = [];
+      const header = contenedor.querySelector(".alc-header");
+      if (header) bloques.push(header);
+      
+      const secciones = contenedor.querySelectorAll(".alc-seccion");
+      if (secciones.length > 0) {
+        secciones.forEach(s => bloques.push(s));
+      } else {
+        bloques.push(contenedor.firstElementChild || contenedor);
+      }
+      
+      const firma = contenedor.querySelector(".alc-firma");
+      if (firma && !bloques.includes(firma)) bloques.push(firma);
+
+      for (const bloque of bloques) {
+        const rect = bloque.getBoundingClientRect();
+        if (rect.height < 2 || rect.width < 2) continue;
+
+        let canvas;
+        try {
+          canvas = await html2canvas(bloque, {
+            scale: 2, useCORS: true, backgroundColor: "#ffffff",
+            logging: false, windowWidth: 800
+          });
+        } catch (err) { continue; }
+
+        if (!canvas || canvas.width === 0) continue;
+
+        const imgW = cw;
+        const imgH = (canvas.height * imgW) / canvas.width;
+        const imgData = canvas.toDataURL("image/png");
+
+        if (y + imgH <= ph - mg - 5) {
+          pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
+          y += imgH + 3;
+        } else if (imgH <= chMax) {
+          pdf.addPage();
+          y = mg;
+          pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
+          y += imgH + 3;
+        } else {
+          if (y > mg + 1) { pdf.addPage(); y = mg; }
+          const pxPorMm = canvas.width / imgW;
+          const altoPaginaPx = chMax * pxPorMm;
+          let offsetY = 0;
+          let primerCorte = true;
+          while (offsetY < canvas.height) {
+            const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
+            const temp = document.createElement("canvas");
+            temp.width = canvas.width;
+            temp.height = altoCorte;
+            const ctx = temp.getContext("2d");
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, temp.width, temp.height);
+            ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
+            if (!primerCorte) pdf.addPage();
+            pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoCorte / pxPorMm);
+            offsetY += altoCorte;
+            primerCorte = false;
+          }
+          y = mg;
+        }
+      }
+
+      const totalPags = pdf.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPags; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(7);
+        pdf.setTextColor(150);
+        pdf.text("EcoRadAi · Acta para Alcaldía · " + new Date().toLocaleDateString("es-ES"), mg, ph - 6);
+        pdf.text("Página " + i + " de " + totalPags, pw - mg, ph - 6, { align: "right" });
+        pdf.text("Acta: " + (registro?.acta_id || "—"), pw - mg, ph - 3, { align: "right" });
+      }
+
+      return pdf.output("blob");
+    } finally {
+      document.body.removeChild(contenedor);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // HISTORIAL (con botón de rectificar)
   // ═══════════════════════════════════════════════════════════
   async function cargarHistorial() {
     const cont = $id("ad-historial-contenido");
@@ -29369,43 +29734,111 @@ REGLAS:
 
       cont.innerHTML = `
         <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px"><strong>${data.length}</strong> acta(s)</div>
-        ${data.map(a => `
-          <div class="card" style="border-left:4px solid var(--corp);padding:12px;margin-bottom:10px">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-              <div style="flex:1;min-width:200px">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-                  <div style="font-size:13px;font-weight:700;color:var(--corp)">📜 ${esc(a.paciente_nombre)}</div>
-                  ${a.tiene_ia ? '<span style="background:#f0fff4;color:#1a4a2a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">🤖 IA</span>' : ""}
-                  ${a.estado === "anulada" ? '<span style="background:#fff3f3;color:#7a1a1a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">ANULADA</span>' : ""}
+        ${data.map(a => {
+          const esRectificada = a.estado === "rectificada";
+          const puedeRectificar = a.estado === "firmada";
+          const color = esRectificada ? "#86868b" : puedeRectificar ? "#34c759" : "#ff9500";
+          return `
+            <div class="card" style="border-left:4px solid ${color};padding:12px;margin-bottom:10px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+                <div style="flex:1;min-width:200px">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                    <div style="font-size:13px;font-weight:700;color:var(--corp)">📜 ${esc(a.paciente_nombre)}</div>
+                    ${a.tiene_ia ? '<span style="background:#f0fff4;color:#1a4a2a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">🤖 IA</span>' : ""}
+                    ${esRectificada ? '<span style="background:#f5f5f7;color:#666;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">RECTIFICADA</span>' : ""}
+                    ${puedeRectificar ? '<span style="background:#f0fff4;color:#1a4a2a;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">VIGENTE</span>' : ""}
+                  </div>
+                  <div style="font-size:10px;color:var(--text-secondary);font-family:var(--font-mono)">${esc(a.subject_id)}</div>
+                  <div style="font-size:11px;color:var(--text-secondary);margin-top:4px"><strong>Fecha:</strong> ${esc(a.fecha_defuncion)} · <strong>CIE-10:</strong> <code>${esc(a.codigo_basica)}</code></div>
+                  <div style="font-size:11px;color:var(--text-secondary)">${esc(a.causa_basica)} (${esc(a.manera_muerte)})</div>
+                  <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">Emitida por ${esc(a.medico_nombre || "—")}</div>
+                  ${a.acta_original_id ? `<div style="font-size:9px;color:var(--text-tertiary);margin-top:2px;font-family:var(--font-mono)">↳ Rectifica: ${esc(a.acta_original_id.substring(0, 8))}</div>` : ""}
                 </div>
-                <div style="font-size:10px;color:var(--text-secondary);font-family:var(--font-mono)">${esc(a.subject_id)}</div>
-                <div style="font-size:11px;color:var(--text-secondary);margin-top:4px"><strong>Fecha:</strong> ${esc(a.fecha_defuncion)} · <strong>CIE-10:</strong> <code>${esc(a.codigo_basica)}</code></div>
-                <div style="font-size:11px;color:var(--text-secondary)">${esc(a.causa_basica)} (${esc(a.manera_muerte)})</div>
-                <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">Emitida por ${esc(a.medico_nombre || "—")}</div>
-              </div>
-              <div style="display:flex;flex-direction:column;gap:4px">
-                <button class="btn btn-primary btn-xs" onclick="verActaDefuncion('${a.acta_id}')" style="font-size:10px">👁️ Ver médico</button>
-                <button class="btn btn-secondary btn-xs" onclick="descargarActaDefuncion('${a.acta_id}')" style="font-size:10px">📥 PDF médico</button>
-                <button class="btn btn-warning btn-xs" onclick="verActaAlcaldia('${a.acta_id}')" style="font-size:10px">🏛️ Ver alcaldía</button>
-                <button class="btn btn-success btn-xs" onclick="descargarActaAlcaldia('${a.acta_id}')" style="font-size:10px">📥 PDF alcaldía</button>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <button class="btn btn-primary btn-xs" onclick="verActaDefuncion('${a.acta_id}')" style="font-size:10px">👁️ Ver médico</button>
+                  <button class="btn btn-secondary btn-xs" onclick="descargarActaDefuncion('${a.acta_id}')" style="font-size:10px">📥 PDF médico</button>
+                  <button class="btn btn-warning btn-xs" onclick="verActaAlcaldia('${a.acta_id}')" style="font-size:10px">🏛️ Ver alcaldía</button>
+                  <button class="btn btn-success btn-xs" onclick="descargarActaAlcaldia('${a.acta_id}')" style="font-size:10px">📥 PDF alcaldía</button>
+                  ${puedeRectificar ? `<button class="btn btn-danger btn-xs" onclick="abrirRectificacionActa('${a.acta_id}')" style="font-size:10px">🔄 Rectificar</button>` : ""}
+                </div>
               </div>
             </div>
-          </div>
-        `).join("")}
+          `;
+        }).join("")}
       `;
     } catch (e) {
       cont.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
     }
   }
 
+  // Exponer cargarHistorial globalmente
+  window.cargarHistorial = cargarHistorial;
+
+  // ═══════════════════════════════════════════════════════════
+  // VER ACTA (modal interno)
+  // ═══════════════════════════════════════════════════════════
   window.verActaDefuncion = async function(actaId) {
     if (!window.supabaseClient) return;
     try {
+      toast("Generando vista previa...", "info");
       const { data } = await window.supabaseClient.from("actas_defuncion").select("*").eq("acta_id", actaId).single();
-      if (!data) return;
+      if (!data) { toast("Acta no encontrada", "error"); return; }
+      
       const blob = await generarPDFActaAtomico(data, data);
-      window.open(URL.createObjectURL(blob), "_blank");
-    } catch (e) { toast("Error: " + e.message, "error"); }
+      const url = URL.createObjectURL(blob);
+      
+      document.getElementById("modal-pdf-visor")?.remove();
+      const overlay = document.createElement("div");
+      overlay.id = "modal-pdf-visor";
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;flex-direction:column;padding:16px";
+      
+      overlay.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;background:#1a3a5c;padding:12px 16px;border-radius:8px 8px 0 0">
+          <div style="color:#fff;font-size:14px;font-weight:700">📜 Informe Médico — ${esc(data.paciente_nombre || "Acta")}</div>
+          <div style="display:flex;gap:8px">
+            <button onclick="descargarActaDefuncion('${actaId}')" style="background:#34c759;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">📥 Descargar</button>
+            <button onclick="document.getElementById('modal-pdf-visor').remove();URL.revokeObjectURL('${url}')" style="background:#ff3b30;color:#fff;border:none;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer">×</button>
+          </div>
+        </div>
+        <iframe src="${url}" style="flex:1;width:100%;border:none;border-radius:0 0 8px 8px;background:#fff"></iframe>
+      `;
+      document.body.appendChild(overlay);
+    } catch (e) {
+      console.error("[verActaDefuncion]", e);
+      toast("Error: " + e.message, "error");
+    }
+  };
+
+  window.verActaAlcaldia = async function(actaId) {
+    if (!window.supabaseClient) return;
+    try {
+      toast("Generando vista previa...", "info");
+      const { data } = await window.supabaseClient.from("actas_defuncion").select("*").eq("acta_id", actaId).single();
+      if (!data) { toast("Acta no encontrada", "error"); return; }
+      
+      const blob = await generarPDFActaAlcaldia(data, data);
+      const url = URL.createObjectURL(blob);
+      
+      document.getElementById("modal-pdf-visor")?.remove();
+      const overlay = document.createElement("div");
+      overlay.id = "modal-pdf-visor";
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;flex-direction:column;padding:16px";
+      
+      overlay.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;background:#1a3a5c;padding:12px 16px;border-radius:8px 8px 0 0">
+          <div style="color:#fff;font-size:14px;font-weight:700">🏛️ Acta Alcaldía — ${esc(data.paciente_nombre || "Acta")}</div>
+          <div style="display:flex;gap:8px">
+            <button onclick="descargarActaAlcaldia('${actaId}')" style="background:#34c759;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">📥 Descargar</button>
+            <button onclick="document.getElementById('modal-pdf-visor').remove();URL.revokeObjectURL('${url}')" style="background:#ff3b30;color:#fff;border:none;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer">×</button>
+          </div>
+        </div>
+        <iframe src="${url}" style="flex:1;width:100%;border:none;border-radius:0 0 8px 8px;background:#fff"></iframe>
+      `;
+      document.body.appendChild(overlay);
+    } catch (e) {
+      console.error("[verActaAlcaldia]", e);
+      toast("Error: " + e.message, "error");
+    }
   };
 
   window.descargarActaDefuncion = async function(actaId) {
@@ -29419,17 +29852,7 @@ REGLAS:
       a.href = url;
       a.download = `Informe_Medico_${data.paciente_nombre.replace(/\s+/g, "_")}_${data.fecha_defuncion}.pdf`;
       a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) { toast("Error: " + e.message, "error"); }
-  };
-
-  window.verActaAlcaldia = async function(actaId) {
-    if (!window.supabaseClient) return;
-    try {
-      const { data } = await window.supabaseClient.from("actas_defuncion").select("*").eq("acta_id", actaId).single();
-      if (!data) return;
-      const blob = await generarPDFActaAlcaldia(data, data);
-      window.open(URL.createObjectURL(blob), "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
     } catch (e) { toast("Error: " + e.message, "error"); }
   };
 
@@ -29444,12 +29867,12 @@ REGLAS:
       a.href = url;
       a.download = `Acta_Alcaldia_${data.paciente_nombre.replace(/\s+/g, "_")}_${data.fecha_defuncion}.pdf`;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
     } catch (e) { toast("Error: " + e.message, "error"); }
   };
 
   // ═══════════════════════════════════════════════════════════
-  // GUARDIÁN
+  // GUARDIÁN DE SECCIÓN
   // ═══════════════════════════════════════════════════════════
   function protegerSeccionActa() {
     const sec = document.getElementById("sec-acta-defuncion");
@@ -29474,7 +29897,7 @@ REGLAS:
     try {
       const { data } = await window.supabaseClient
         .from("profiles")
-        .select("nombre, email, especialidad, csspm")
+        .select("nombre, email, especialidad, csspm, telefono")
         .eq("id", window.usuarioActual.id)
         .single();
       if (data) AD.medicoPerfil = data;
@@ -29497,7 +29920,7 @@ REGLAS:
 
     cargarPerfilMedico().then(() => {
       AD.inicializado = true;
-      console.log("[ActaDefunción v5.0] ✓ Inicializado con doble PDF (Médico + Alcaldía)");
+      console.log("[ActaDefunción v6.0] ✓ Inicializado con rectificación");
     });
   }
 
@@ -29512,10 +29935,12 @@ REGLAS:
     setTimeout(inicializar, 500);
   });
 
-  console.log("[ActaDefunción v5.0] ✓ Wrapper completo. __AD.estado()");
+  console.log("[ActaDefunción v6.0] ✓ Wrapper completo con rectificación. __AD.estado()");
 
 })();
+
 </script>
+
 <script src="wrapper-ultrasonido.js"></script>
 </body>
 </html>
