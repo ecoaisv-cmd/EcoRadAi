@@ -2,23 +2,25 @@
 
 /**
  * ═══════════════════════════════════════════════════════════════════
- * WRAPPER DE ULTRASONIDO para EcoRadAi23.4d — v2.0
+ * WRAPPER DE ULTRASONIDO para EcoRadAi23.4d
  * ═══════════════════════════════════════════════════════════════════
- *
- * Envuelve los métodos de TAMIZAJES_REGISTRY, añade prompts a
- * PROMPTS_ESTUDIO, añade precios a PRECIOS_TAMIZAJES, y REGISTRA
- * SECCIONES DE PARSEO en SECCIONES_POR_TAMIZAJE.
- *
- * Resultado: los 16 estudios de ultrasonido se generan, guardan,
- * descargan y comparten EXACTAMENTE IGUAL que los estudios nativos.
- *
+ * 
+ * Este script "envuelve" los métodos de TAMIZAJES_REGISTRY y añade
+ * los nuevos prompts al objeto PROMPTS_ESTUDIO, SIN modificar el
+ * código original del ecosistema.
+ * 
+ * Añade 16 estudios de ultrasonido:
+ *   - Abdominal, Obstétrica (4 variantes), Cardíaca, Renal, Tiroidea,
+ *     Musculoesquelética, Vascular, Pélvica, Mamaria, Prostática,
+ *     Testicular, Pediátrica, Partes blandas
+ * 
  * Debe ejecutarse DESPUÉS del script principal del HTML.
  * ═══════════════════════════════════════════════════════════════════
  */
 (function() {
     "use strict";
 
-    console.log("🚀 [Wrapper US] Iniciando wrapper de estudios de ultrasonido v2.0...");
+    console.log("🚀 [Wrapper US] Iniciando wrapper de estudios de ultrasonido...");
 
     /* ═══════════════════════════════════════════════════════════
        1. PROTOCOLOS DE ULTRASONIDO (16 estudios)
@@ -727,7 +729,7 @@ REGLAS ORTOGRÁFICAS OBLIGATORIAS:
     };
 
     /* ═══════════════════════════════════════════════════════════
-       3. NOMBRES, ICONOS, GUÍAS Y PRECIOS
+       3. NOMBRES CORTOS Y GUÍAS DE REFERENCIA
        ═══════════════════════════════════════════════════════════ */
     const NOMBRES_US = {
         abdomen: "Abdominal",
@@ -748,25 +750,6 @@ REGLAS ORTOGRÁFICAS OBLIGATORIAS:
         partes_blandas: "Partes blandas (EFSUMB/AIUM)"
     };
 
-    const ICONOS_US = {
-        abdomen: "🫀",
-        obstetrica_ge: "🤰",
-        obstetrica_t1: "🤰",
-        obstetrica_t2: "🤰",
-        obstetrica_t3: "🤰",
-        cardiaca: "❤️",
-        renal: "🩺",
-        tiroidea: "🦋",
-        musk: "🦴",
-        vascular: "🩸",
-        pelvica: "🌸",
-        mama: "🎗️",
-        prostatica: "♂️",
-        genital_masc: "♂️",
-        pediatrico: "🧒",
-        partes_blandas: "🔬"
-    };
-
     const GUIAIS_US = {
         abdomen: "ESR 2025, EFSUMB 2025, AASLD 2025, ACR 2026, SRU 2024",
         obstetrica_ge: "ISUOG 2026, NICE 2026, ACOG 2026",
@@ -784,6 +767,25 @@ REGLAS ORTOGRÁFICAS OBLIGATORIAS:
         genital_masc: "AUA 2025, EAU 2025",
         pediatrico: "ESPR 2025, EFSUMB 2025",
         partes_blandas: "EFSUMB 2025, AIUM 2026, ESSR 2025"
+    };
+
+    const ICONOS_US = {
+        abdomen: "🫀",
+        obstetrica_ge: "🤰",
+        obstetrica_t1: "🤰",
+        obstetrica_t2: "🤰",
+        obstetrica_t3: "🤰",
+        cardiaca: "❤️",
+        renal: "🩺",
+        tiroidea: "🦋",
+        musk: "🦴",
+        vascular: "🩸",
+        pelvica: "🌸",
+        mama: "🎗️",
+        prostatica: "♂️",
+        genital_masc: "♂️",
+        pediatrico: "🧒",
+        partes_blandas: "🔬"
     };
 
     const PRECIOS_US = {
@@ -806,7 +808,7 @@ REGLAS ORTOGRÁFICAS OBLIGATORIAS:
     };
 
     /* ═══════════════════════════════════════════════════════════
-       4. INSTRUCCIÓN JSON UNIVERSAL
+       4. INSTRUCCIÓN JSON UNIVERSAL (compatibilidad con el ecosistema)
        ═══════════════════════════════════════════════════════════ */
     const INSTRUCCION_JSON = `
 
@@ -832,78 +834,7 @@ Si no puedes llenar algún campo, usa null. NUNCA omitas el bloque completo.
 ===FIN_JSON===`;
 
     /* ═══════════════════════════════════════════════════════════
-       5. SECCIONES DE PARSEO POR ESTUDIO
-       ═══════════════════════════════════════════════════════════ */
-    const SECCIONES_US_BASE = [
-        { id: "sec_1", titulo: "1. DATOS CLÍNICOS RELEVANTES",   tituloRaw: "DATOS CLÍNICOS RELEVANTES",   tipo: "clinica" },
-        { id: "sec_2", titulo: "2. HALLAZGOS",                   tituloRaw: "HALLAZGOS",                   tipo: "estructurada" },
-        { id: "sec_3", titulo: "3. TABLA DE MEDICIONES",         tituloRaw: "TABLA DE MEDICIONES",         tipo: "tabla_metricas" },
-        { id: "sec_4", titulo: "4. PATRONES PATOLÓGICOS IDENTIFICADOS", tituloRaw: "PATRONES PATOLÓGICOS IDENTIFICADOS", tipo: "clinica" },
-        { id: "sec_5", titulo: "5. ANÁLISIS CLÍNICO",            tituloRaw: "ANÁLISIS CLÍNICO",            tipo: "clinica" },
-        { id: "sec_6", titulo: "6. RECOMENDACIONES",             tituloRaw: "RECOMENDACIONES",             tipo: "planNF" }
-    ];
-
-    const SECCIONES_US_POR_ESTUDIO = {
-        // Los 6 estudios estándar (6 secciones)
-        obstetrica_ge:    SECCIONES_US_BASE,
-        obstetrica_t1:    SECCIONES_US_BASE,
-        obstetrica_t2:    SECCIONES_US_BASE,
-        obstetrica_t3:    SECCIONES_US_BASE,
-        cardiaca:         SECCIONES_US_BASE,
-        renal:            SECCIONES_US_BASE,
-        musk:             SECCIONES_US_BASE,
-        vascular:         SECCIONES_US_BASE,
-        pelvica:          SECCIONES_US_BASE,
-        prostatica:       SECCIONES_US_BASE,
-        genital_masc:     SECCIONES_US_BASE,
-        pediatrico:       SECCIONES_US_BASE,
-
-        // Abdomen: "HALLAZGOS POR ÓRGANO" en lugar de "HALLAZGOS"
-        abdomen: [
-            { id: "sec_1", titulo: "1. DATOS CLÍNICOS RELEVANTES",       tituloRaw: "DATOS CLÍNICOS RELEVANTES",       tipo: "clinica" },
-            { id: "sec_2", titulo: "2. HALLAZGOS POR ÓRGANO",             tituloRaw: "HALLAZGOS POR ÓRGANO",             tipo: "estructurada" },
-            { id: "sec_3", titulo: "3. TABLA DE MEDICIONES",              tituloRaw: "TABLA DE MEDICIONES",              tipo: "tabla_metricas" },
-            { id: "sec_4", titulo: "4. PATRONES PATOLÓGICOS IDENTIFICADOS", tituloRaw: "PATRONES PATOLÓGICOS IDENTIFICADOS", tipo: "clinica" },
-            { id: "sec_5", titulo: "5. ANÁLISIS CLÍNICO",                 tituloRaw: "ANÁLISIS CLÍNICO",                 tipo: "clinica" },
-            { id: "sec_6", titulo: "6. RECOMENDACIONES",                  tituloRaw: "RECOMENDACIONES",                  tipo: "planNF" }
-        ],
-
-        // Tiroides: 7 secciones (incluye CLASIFICACIÓN TI-RADS)
-        tiroidea: [
-            { id: "sec_1", titulo: "1. DATOS CLÍNICOS RELEVANTES",       tituloRaw: "DATOS CLÍNICOS RELEVANTES",       tipo: "clinica" },
-            { id: "sec_2", titulo: "2. HALLAZGOS",                        tituloRaw: "HALLAZGOS",                        tipo: "estructurada" },
-            { id: "sec_3", titulo: "3. TABLA DE MEDICIONES",              tituloRaw: "TABLA DE MEDICIONES",              tipo: "tabla_metricas" },
-            { id: "sec_4", titulo: "4. CLASIFICACIÓN TI-RADS (ACR 2025)", tituloRaw: "CLASIFICACIÓN TI-RADS",            tipo: "clinica" },
-            { id: "sec_5", titulo: "5. PATRONES PATOLÓGICOS IDENTIFICADOS", tituloRaw: "PATRONES PATOLÓGICOS IDENTIFICADOS", tipo: "clinica" },
-            { id: "sec_6", titulo: "6. ANÁLISIS CLÍNICO",                 tituloRaw: "ANÁLISIS CLÍNICO",                 tipo: "clinica" },
-            { id: "sec_7", titulo: "7. RECOMENDACIONES",                  tituloRaw: "RECOMENDACIONES",                  tipo: "planNF" }
-        ],
-
-        // Mama: 7 secciones (incluye CLASIFICACIÓN BI-RADS)
-        mama: [
-            { id: "sec_1", titulo: "1. DATOS CLÍNICOS RELEVANTES",         tituloRaw: "DATOS CLÍNICOS RELEVANTES",         tipo: "clinica" },
-            { id: "sec_2", titulo: "2. HALLAZGOS",                          tituloRaw: "HALLAZGOS",                          tipo: "estructurada" },
-            { id: "sec_3", titulo: "3. TABLA DE MEDICIONES",                tituloRaw: "TABLA DE MEDICIONES",                tipo: "tabla_metricas" },
-            { id: "sec_4", titulo: "4. CLASIFICACIÓN BI-RADS (ACR 2025)",   tituloRaw: "CLASIFICACIÓN BI-RADS",             tipo: "clinica" },
-            { id: "sec_5", titulo: "5. PATRONES PATOLÓGICOS IDENTIFICADOS", tituloRaw: "PATRONES PATOLÓGICOS IDENTIFICADOS", tipo: "clinica" },
-            { id: "sec_6", titulo: "6. ANÁLISIS CLÍNICO",                   tituloRaw: "ANÁLISIS CLÍNICO",                   tipo: "clinica" },
-            { id: "sec_7", titulo: "7. RECOMENDACIONES",                    tituloRaw: "RECOMENDACIONES",                    tipo: "planNF" }
-        ],
-
-        // Partes blandas: 7 secciones con títulos propios
-        partes_blandas: [
-            { id: "sec_1", titulo: "1. DATOS CLÍNICOS RELEVANTES",           tituloRaw: "DATOS CLÍNICOS RELEVANTES",           tipo: "clinica" },
-            { id: "sec_2", titulo: "2. HALLAZGOS ECOGRÁFICOS",                tituloRaw: "HALLAZGOS ECOGRÁFICOS",                tipo: "estructurada" },
-            { id: "sec_3", titulo: "3. TABLA DE MEDICIONES Y CARACTERÍSTICAS", tituloRaw: "TABLA DE MEDICIONES Y CARACTERÍSTICAS", tipo: "tabla_metricas" },
-            { id: "sec_4", titulo: "4. PATRONES PATOLÓGICOS IDENTIFICADOS",  tituloRaw: "PATRONES PATOLÓGICOS IDENTIFICADOS",  tipo: "clinica" },
-            { id: "sec_5", titulo: "5. CLASIFICACIÓN Y SUGERENCIA DIAGNÓSTICA", tituloRaw: "CLASIFICACIÓN Y SUGERENCIA DIAGNÓSTICA", tipo: "clinica" },
-            { id: "sec_6", titulo: "6. ANÁLISIS CLÍNICO",                     tituloRaw: "ANÁLISIS CLÍNICO",                     tipo: "clinica" },
-            { id: "sec_7", titulo: "7. RECOMENDACIONES",                      tituloRaw: "RECOMENDACIONES",                      tipo: "planNF" }
-        ]
-    };
-
-    /* ═══════════════════════════════════════════════════════════
-       6. CONSTRUIR LOS OBJETOS DE TAMIZAJE
+       5. CONSTRUIR LOS OBJETOS DE TAMIZAJE
        ═══════════════════════════════════════════════════════════ */
     function construirTamizajesUS() {
         return Object.keys(PROTOCOLOS_US).map((id, index) => {
@@ -911,6 +842,7 @@ Si no puedes llenar algún campo, usa null. NUNCA omitas el bloque completo.
             const protocolo = PROTOCOLOS_US[id];
             const guias = (GUIAIS_US[id] || "").split(",").map(g => g.trim()).filter(Boolean);
 
+            // Generar etiquetas de imágenes a partir de los items del protocolo
             const etiquetas = protocolo.items.map(item => {
                 const primera = item.split(":")[0].trim();
                 return primera.length > 40 ? primera.substring(0, 40) : primera;
@@ -945,7 +877,7 @@ Si no puedes llenar algún campo, usa null. NUNCA omitas el bloque completo.
                     fijos: ["radiologo"],
                     interconsultas_disponibles: [
                         "internista", "ginecologo", "cardiologo",
-                        "endocrinologo", "nefrologo"
+                        "endocrinologo", "nefrologo", "gastroenterologo"
                     ]
                 },
                 reglasInterconsulta: {},
@@ -959,38 +891,25 @@ Si no puedes llenar algún campo, usa null. NUNCA omitas el bloque completo.
     }
 
     /* ═══════════════════════════════════════════════════════════
-       7. COMPLETAR REGEX DE SECCIONES
-       ═══════════════════════════════════════════════════════════ */
-    function completarSeccionConRegex(sec) {
-        const escaped = sec.tituloRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        return {
-            id: sec.id,
-            titulo: sec.titulo,
-            tituloRaw: sec.tituloRaw,
-            tipo: sec.tipo,
-            regex: new RegExp(`(?:^|\\n)\\s*(?:#+\\s*)?(?:\\d+[\\.\\)]?\\s*)?${escaped}`, "i")
-        };
-    }
-
-    /* ═══════════════════════════════════════════════════════════
-       8. APLICAR EL WRAPPER
+       6. APLICAR EL WRAPPER
        ═══════════════════════════════════════════════════════════ */
     function aplicarWrapper() {
         let exitos = 0;
         let errores = 0;
 
-        // ─── A. AÑADIR PROMPTS A PROMPTS_ESTUDIO ───
+        // ─── A. AÑADIR PROMPTS AL OBJETO GLOBAL ───
         if (typeof window.PROMPTS_ESTUDIO !== "undefined") {
             try {
-                let añadidos = 0;
+                const promptsConJSON = {};
                 Object.keys(PROMPTS_US).forEach(id => {
                     if (!window.PROMPTS_ESTUDIO[id]) {
-                        window.PROMPTS_ESTUDIO[id] = PROMPTS_US[id] + INSTRUCCION_JSON;
-                        añadidos++;
+                        // Añadimos la instrucción JSON al final del prompt
+                        promptsConJSON[id] = PROMPTS_US[id] + INSTRUCCION_JSON;
+                        console.log("  ✅ [Wrapper US] Prompt añadido: \"" + id + "\"");
+                        exitos++;
                     }
                 });
-                console.log("  ✅ [Wrapper US] " + añadidos + " prompt(s) añadidos a PROMPTS_ESTUDIO.");
-                exitos++;
+                Object.assign(window.PROMPTS_ESTUDIO, promptsConJSON);
             } catch (e) {
                 console.error("  ❌ [Wrapper US] Error añadiendo prompts:", e);
                 errores++;
@@ -999,31 +918,52 @@ Si no puedes llenar algún campo, usa null. NUNCA omitas el bloque completo.
             console.warn("  ⚠️ [Wrapper US] PROMPTS_ESTUDIO no disponible");
         }
 
-        // ─── B. ENVOLVER TAMIZAJES_REGISTRY.listar Y .obtener ───
+        // ─── B. ENVOLVER TAMIZAJES_REGISTRY.listar ───
         if (typeof window.TAMIZAJES_REGISTRY !== "undefined" && !window.TAMIZAJES_REGISTRY._usWrapped) {
             try {
                 const originalListar = window.TAMIZAJES_REGISTRY.listar.bind(window.TAMIZAJES_REGISTRY);
-                const originalObtener = window.TAMIZAJES_REGISTRY.obtener.bind(window.TAMIZAJES_REGISTRY);
                 const nuevosTamizajes = construirTamizajesUS();
 
                 window.TAMIZAJES_REGISTRY.listar = function() {
                     const listaOriginal = originalListar();
+                    // Evitar duplicados si el wrapper se aplica dos veces
                     const idsOriginales = new Set(listaOriginal.map(t => t.id));
                     const nuevosFiltrados = nuevosTamizajes.filter(t => !idsOriginales.has(t.id));
                     const resultado = [...listaOriginal, ...nuevosFiltrados];
+                    // Ordenar por meta.orden
                     return resultado.sort((a, b) => (a.meta.orden || 99) - (b.meta.orden || 99));
                 };
+                window.TAMIZAJES_REGISTRY._usWrapped = true;
+                console.log("  ✅ [Wrapper US] TAMIZAJES_REGISTRY.listar envuelto.");
+                exitos++;
 
+                // ─── C. ENVOLVER TAMIZAJES_REGISTRY.obtener ───
+                const originalObtener = window.TAMIZAJES_REGISTRY.obtener.bind(window.TAMIZAJES_REGISTRY);
                 window.TAMIZAJES_REGISTRY.obtener = function(id) {
                     const encontradoOriginal = originalObtener(id);
                     if (encontradoOriginal) return encontradoOriginal;
                     return nuevosTamizajes.find(t => t.id === id) || null;
                 };
-
-                window.TAMIZAJES_REGISTRY._usWrapped = true;
-                window.TAMIZAJES_REGISTRY._usNuevos = nuevosTamizajes;
-                console.log("  ✅ [Wrapper US] TAMIZAJES_REGISTRY.listar y .obtener envueltos.");
+                window.TAMIZAJES_REGISTRY._usObtenerWrapped = true;
+                console.log("  ✅ [Wrapper US] TAMIZAJES_REGISTRY.obtener envuelto.");
                 exitos++;
+
+                // ─── D. AÑADIR PRECIOS AL OBJETO GLOBAL ───
+                if (typeof window.PRECIOS_TAMIZAJES !== "undefined") {
+                    Object.keys(PRECIOS_US).forEach(id => {
+                        if (!window.PRECIOS_TAMIZAJES[id]) {
+                            const p = PRECIOS_US[id];
+                            window.PRECIOS_TAMIZAJES[id] = {
+                                corp: p.corp,
+                                rural: p.rural,
+                                tier: "ultrasonido",
+                                nombre: NOMBRES_US[id]
+                            };
+                        }
+                    });
+                    console.log("  ✅ [Wrapper US] Precios añadidos a PRECIOS_TAMIZAJES.");
+                    exitos++;
+                }
             } catch (e) {
                 console.error("  ❌ [Wrapper US] Error envolviendo TAMIZAJES_REGISTRY:", e);
                 errores++;
@@ -1034,58 +974,22 @@ Si no puedes llenar algún campo, usa null. NUNCA omitas el bloque completo.
             console.warn("  ⚠️ [Wrapper US] TAMIZAJES_REGISTRY no disponible");
         }
 
-        // ─── C. AÑADIR PRECIOS A PRECIOS_TAMIZAJES ───
-        if (typeof window.PRECIOS_TAMIZAJES !== "undefined") {
-            try {
-                let añadidos = 0;
-                Object.keys(PRECIOS_US).forEach(id => {
-                    if (!window.PRECIOS_TAMIZAJES[id]) {
-                        const p = PRECIOS_US[id];
-                        window.PRECIOS_TAMIZAJES[id] = {
-                            corp: p.corp,
-                            rural: p.rural,
-                            tier: "ultrasonido",
-                            nombre: NOMBRES_US[id]
-                        };
-                        añadidos++;
-                    }
-                });
-                console.log("  ✅ [Wrapper US] " + añadidos + " precio(s) añadidos a PRECIOS_TAMIZAJES.");
-                exitos++;
-            } catch (e) {
-                console.error("  ❌ [Wrapper US] Error añadiendo precios:", e);
-                errores++;
-            }
-        }
-
-        // ─── D. REGISTRAR SECCIONES EN SECCIONES_POR_TAMIZAJE ───
-        if (typeof window.SECCIONES_POR_TAMIZAJE !== "undefined") {
-            try {
-                let añadidos = 0;
-                Object.keys(SECCIONES_US_POR_ESTUDIO).forEach(idEstudio => {
-                    if (!window.SECCIONES_POR_TAMIZAJE[idEstudio]) {
-                        window.SECCIONES_POR_TAMIZAJE[idEstudio] =
-                            SECCIONES_US_POR_ESTUDIO[idEstudio].map(completarSeccionConRegex);
-                        añadidos++;
-                    }
-                });
-                console.log("  ✅ [Wrapper US] " + añadidos + " conjunto(s) de secciones registrados en SECCIONES_POR_TAMIZAJE.");
-                exitos++;
-            } catch (e) {
-                console.error("  ❌ [Wrapper US] Error registrando secciones:", e);
-                errores++;
-            }
-        } else {
-            console.warn("  ⚠️ [Wrapper US] SECCIONES_POR_TAMIZAJE no disponible. Los informes usarán secciones por defecto.");
-        }
-
         // ─── E. RE-RENDERIZAR LA UI ───
         setTimeout(() => {
             try {
-                if (typeof window.renderSelectorEstudios === "function") window.renderSelectorEstudios();
-                if (typeof window.renderTamizajeHeader === "function") window.renderTamizajeHeader();
-                if (typeof window.renderEcosistema === "function") window.renderEcosistema();
-                if (typeof window.renderSteps === "function") window.renderSteps();
+                if (typeof window.renderSelectorEstudios === "function") {
+                    window.renderSelectorEstudios();
+                    console.log("  ✅ [Wrapper US] renderSelectorEstudios ejecutado");
+                }
+                if (typeof window.renderTamizajeHeader === "function") {
+                    window.renderTamizajeHeader();
+                }
+                if (typeof window.renderEcosistema === "function") {
+                    window.renderEcosistema();
+                }
+                if (typeof window.renderSteps === "function") {
+                    window.renderSteps();
+                }
                 console.log("  ✅ [Wrapper US] UI re-renderizada.");
             } catch (e) {
                 console.error("  ❌ [Wrapper US] Error re-renderizando UI:", e);
@@ -1093,28 +997,26 @@ Si no puedes llenar algún campo, usa null. NUNCA omitas el bloque completo.
         }, 300);
 
         console.log("");
-        console.log("═══════════════════════════════════════════════════════════");
+        console.log("═══════════════════════════════════════════════════");
         console.log("🎉 [Wrapper US] INTEGRACIÓN COMPLETADA");
         console.log("   Exitos: " + exitos + " | Errores: " + errores);
-        console.log("   Estudios de US disponibles: " + Object.keys(PROTOCOLOS_US).length);
-        console.log("   Informes: se generarán con las secciones correctas.");
-        console.log("═══════════════════════════════════════════════════════════");
+        console.log("   Estudios de ultrasonido disponibles: " + Object.keys(PROTOCOLOS_US).length);
+        console.log("═══════════════════════════════════════════════════");
         console.log("");
     }
 
     /* ═══════════════════════════════════════════════════════════
-       9. ESPERAR A QUE EL SISTEMA PRINCIPAL ESTÉ LISTO
+       7. ESPERAR A QUE EL SISTEMA PRINCIPAL ESTÉ LISTO
        ═══════════════════════════════════════════════════════════ */
     let intentos = 0;
-    const MAX_INTENTOS = 60; // 15 segundos
+    const MAX_INTENTOS = 60; // 60 * 250ms = 15s
 
     const intervalo = setInterval(() => {
         intentos++;
         const listo =
             typeof window.TAMIZAJES_REGISTRY !== "undefined" &&
             typeof window.PROMPTS_ESTUDIO !== "undefined" &&
-            typeof window.PRECIOS_TAMIZAJES !== "undefined" &&
-            typeof window.SECCIONES_POR_TAMIZAJE !== "undefined";
+            typeof window.PRECIOS_TAMIZAJES !== "undefined";
 
         if (listo) {
             clearInterval(intervalo);
@@ -1122,12 +1024,11 @@ Si no puedes llenar algún campo, usa null. NUNCA omitas el bloque completo.
             aplicarWrapper();
         } else if (intentos >= MAX_INTENTOS) {
             clearInterval(intervalo);
-            console.error("❌ [Wrapper US] Timeout tras " + MAX_INTENTOS + " intentos.");
+            console.error("❌ [Wrapper US] Timeout tras " + MAX_INTENTOS + " intentos. Verifica que el HTML principal cargó correctamente.");
             console.error("   Estado actual:");
             console.error("   - TAMIZAJES_REGISTRY: " + typeof window.TAMIZAJES_REGISTRY);
             console.error("   - PROMPTS_ESTUDIO: " + typeof window.PROMPTS_ESTUDIO);
             console.error("   - PRECIOS_TAMIZAJES: " + typeof window.PRECIOS_TAMIZAJES);
-            console.error("   - SECCIONES_POR_TAMIZAJE: " + typeof window.SECCIONES_POR_TAMIZAJE);
         }
     }, 250);
 
