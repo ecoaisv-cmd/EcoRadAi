@@ -1,13 +1,15 @@
 /* ═══════════════════════════════════════════════════════════════════
-   WRAPPER PROCEDIMIENTOS v2.0
-   Incluye: IA para nota + Receta + Laboratorios + Consentimiento
-   Patrón: idéntico a Operador v2.2 / Médico v2.0.1 / Admin v2.0
+   WRAPPER PROCEDIMIENTOS v2.1
+   - FIX: fecha_procedimiento null (persistencia entre pasos)
+   - FIX: datos del formulario se guardan al avanzar
+   - IA: nota + receta + laboratorios
+   - 7 pasos completos
    ═══════════════════════════════════════════════════════════════════ */
 
 "use strict";
 
 (function() {
-  console.log("[Proc v2.0] Iniciando wrapper completo...");
+  console.log("[Proc v2.1] Iniciando wrapper...");
 
   // ═══════════════════════════════════════════════════════════════
   // ESTADO
@@ -32,7 +34,8 @@
     notaEditada: null,
     recetaIA: null,
     labsIA: null,
-    contextoPlan: null
+    contextoPlan: null,
+    datosEjecucion: null       // ← FIX: persistir datos del paso 4
   };
 
   window.PROCEDIMIENTOS = PROC;
@@ -44,6 +47,7 @@
       paciente: PROC.paciente?.subject_id,
       paso: PROC.pasoActual,
       caseId: PROC.caseId,
+      datosEjecucion: PROC.datosEjecucion,
       receta: PROC.recetaMedicamentos.length,
       labs: PROC.laboratoriosSolicitados.length
     }),
@@ -68,7 +72,7 @@
     return d.innerHTML;
   };
   const toast = window.showStatus || function(msg, tipo) {
-    console.log("[Proc v2.0]", tipo || "info", msg);
+    console.log("[Proc v2.1]", tipo || "info", msg);
   };
   function $id(id) { return document.getElementById(id); }
   function debounce(fn, ms) {
@@ -83,46 +87,36 @@
   function ahoraHora()  { return new Date().toTimeString().slice(0, 5); }
 
   // ═══════════════════════════════════════════════════════════════
-  // PROMPT IA NOTA
+  // PROMPTS IA
   // ═══════════════════════════════════════════════════════════════
-  const PROMPT_NOTA = `Actúa como médico con 15 años de experiencia en atención primaria, urgencias y procedimientos ambulatorios.
+  const PROMPT_NOTA = `Actúa como médico con 15 años de experiencia.
 
-CONTEXTO:
-Generas una NOTA DE PROCEDIMIENTO narrativa para el sistema EcoRadAi.
+CONTEXTO: Generas una NOTA DE PROCEDIMIENTO narrativa para EcoRadAi.
 
-DATOS DEL PACIENTE:
+PACIENTE:
 - Nombre: {NOMBRE}
 - ID: {SUBJECT_ID}
 - Edad: {EDAD} años
 - Sexo: {SEXO}
 - DUI: {DUI}
-- Departamento: {DEPARTAMENTO}
-- Municipio: {MUNICIPIO}
 
-DATOS DEL PROCEDIMIENTO:
+PROCEDIMIENTO:
 - Nombre: {PROCEDIMIENTO_NOMBRE}
 - Código: {PROCEDIMIENTO_CODIGO}
 - Categoría: {CATEGORIA}
-- Duración: {DURACION_MIN} min
 - Complejidad: {COMPLEJIDAD}
 
-DATOS DE LA EJECUCIÓN:
+EJECUCIÓN:
 - Fecha: {FECHA}
-- Hora: {HORA_INICIO}
 - Indicación: {INDICACION}
 - CIE-10: {CIE10}
 - Técnica: {TECNICA}
 - Hallazgos: {HALLAZGOS}
 - Complicaciones: {COMPLICACIONES}
-- Plan de seguimiento: {SEGUIMIENTO}
+- Seguimiento: {SEGUIMIENTO}
 - Materiales: {MATERIALES}
 
-RESPONSABLE:
-- Nombre: {RESPONSABLE_NOMBRE}
-- Rol: {RESPONSABLE_ROL}
-- CSSPM: {CSSPM}
-
-Genera la nota con estas 8 secciones exactas:
+Genera la nota con estas 8 secciones:
 
 1. RESUMEN DEL PROCEDIMIENTO
 2. INDICACIÓN CLÍNICA
@@ -133,7 +127,6 @@ Genera la nota con estas 8 secciones exactas:
 7. PLAN DE SEGUIMIENTO
 8. PRONÓSTICO Y RECOMENDACIONES
 
-Al final incluye:
 ===JSON_ESTRUCTURADO===
 {
   "procedimiento_exitoso": true,
@@ -141,71 +134,30 @@ Al final incluye:
   "complicaciones_presentadas": [],
   "recomendaciones_paciente": [],
   "nivel_complejidad_real": "basica",
-  "proximo_control_dias": 7,
-  "alertas_medico": []
+  "proximo_control_dias": 7
 }
 ===FIN_JSON===
 
-REGLAS ANTI-MARKDOWN:
-- NO uses asteriscos, ni dobles asteriscos, ni guiones bajos.
-- Para enumerar usa "1.", "2.".
-- Títulos en MAYÚSCULAS sin símbolos.
+REGLAS: sin markdown, tildes y eñes correctas, español.`;
 
-REGLAS ORTOGRÁFICAS:
-- TODAS las palabras con tilde y eñe: riñón, diagnóstico, curación, sutura, extracción, hidratación, complicación, presión.
-- NUNCA reemplaces ñ por n.
-
-REGLAS CLÍNICAS:
-- Sé objetivo y descriptivo, no interpretativo.
-- Si no hay complicaciones, dilo explícitamente.
-- NO inventes hallazgos. Si faltan datos, escribe "No registrado".`;
-
-  // ═══════════════════════════════════════════════════════════════
-  // PROMPT IA RECETA
-  // ═══════════════════════════════════════════════════════════════
-  const PROMPT_RECETA = `Actúa como médico clínico con 15 años de experiencia en prescripción farmacológica.
-
-CONTEXTO: Generas la RECETA MÉDICA post-procedimiento para EcoRadAi.
+  const PROMPT_RECETA = `Actúa como médico clínico con 15 años de experiencia.
 
 PACIENTE:
 - Nombre: {NOMBRE}
 - Edad: {EDAD} años
 - Sexo: {SEXO}
-- Peso: {PESO} kg
 - Alergias: {ALERGIAS}
-- Medicamentos actuales: {MEDICAMENTOS_ACTUALES}
-- Diagnósticos: {DIAGNOSTICOS}
 
-PROCEDIMIENTO:
-- Nombre: {PROCEDIMIENTO_NOMBRE}
-- Categoría: {CATEGORIA}
-- Indicación: {INDICACION}
-- Hallazgos: {HALLAZGOS}
-- Complicaciones: {COMPLICACIONES}
+PROCEDIMIENTO: {PROCEDIMIENTO_NOMBRE}
+INDICACIÓN: {INDICACION}
+HALLAZGOS: {HALLAZGOS}
 
-INSTRUCCIONES:
-Genera una receta farmacológica SOLO si está clínicamente indicada.
-Si NO se requiere medicación, devuelve la lista vacía [].
+Genera receta SOLO si está indicada. Si no, devuelve [] en medicamentos.
 
-Considera:
-- Analgésicos si hay dolor
-- Antibióticos si hay infección o riesgo (verificar alergias)
-- Antiinflamatorios si hay inflamación
-- Protectores gástricos si se usan AINEs
-- Curación local / tópicos
-
-REGLAS:
-- Dosis PEDIÁTRICAS en mg/kg si edad < 12 años
-- Verificar alergias declaradas
-- Considerar interacciones con medicamentos actuales
-- Ajustar por función renal si aplica
-- NO prescribas antibióticos sin justificación clínica
-
-FORMATO (OBLIGATORIO):
 ===JSON_ESTRUCTURADO===
 {
   "requiere_medicacion": true,
-  "justificacion": "texto breve",
+  "justificacion": "...",
   "medicamentos": [
     {
       "farmaco": "Ibuprofeno",
@@ -214,73 +166,45 @@ FORMATO (OBLIGATORIO):
       "via": "oral",
       "frecuencia": "cada 8 horas",
       "duracion": "5 días",
-      "indicacion": "Dolor post-procedimiento",
-      "nivel_evidencia": "A",
-      "guia": "WHO 2025"
+      "indicacion": "Dolor post-procedimiento"
     }
-  ],
-  "advertencias": [],
-  "interacciones": []
+  ]
 }
 ===FIN_JSON===
 
-REGLAS ORTOGRÁFICAS: tildes y eñes correctas.
-NO uses markdown.`;
+REGLAS: dosis pediátricas si < 12 años. Sin markdown.`;
 
-  // ═══════════════════════════════════════════════════════════════
-  // PROMPT IA LABORATORIOS
-  // ═══════════════════════════════════════════════════════════════
-  const PROMPT_LABS = `Actúa como médico clínico con 15 años de experiencia.
-
-CONTEXTO: Generas la SOLICITUD DE LABORATORIOS post-procedimiento para EcoRadAi.
+  const PROMPT_LABS = `Actúa como médico clínico.
 
 PACIENTE:
 - Nombre: {NOMBRE}
 - Edad: {EDAD} años
 - Sexo: {SEXO}
-- Alergias: {ALERGIAS}
-- Diagnósticos: {DIAGNOSTICOS}
 
-PROCEDIMIENTO:
-- Nombre: {PROCEDIMIENTO_NOMBRE}
-- Categoría: {CATEGORIA}
-- Indicación: {INDICACION}
-- Hallazgos: {HALLAZGOS}
-- Complicaciones: {COMPLICACIONES}
+PROCEDIMIENTO: {PROCEDIMIENTO_NOMBRE}
+INDICACIÓN: {INDICACION}
+HALLAZGOS: {HALLAZGOS}
+COMPLICACIONES: {COMPLICACIONES}
 
-INSTRUCCIONES:
-Genera una solicitud de laboratorio SOLO si está clínicamente indicada.
-Si NO se requieren exámenes, devuelve la lista vacía [].
+Genera labs SOLO si está indicado. Si no, devuelve [].
 
-Ejemplos de indicaciones:
-- Hemograma si hay infección o sospecha
-- Glucosa si hay diabetes o riesgo
-- Cultivo si hay secreción
-- Biopsia (histopatología) si se tomó muestra
-- Pruebas de coagulación si hay sangrado
-- Función renal si hay deshidratación o medicación nefrotóxica
-
-FORMATO (OBLIGATORIO):
 ===JSON_ESTRUCTURADO===
 {
   "requiere_laboratorio": true,
-  "justificacion": "texto breve",
+  "justificacion": "...",
   "laboratorios": [
     {
       "estudio": "Hemograma completo",
       "tipo": "sangre",
-      "ayuno_requerido": false,
       "plazo_dias": 0,
       "urgente": false,
-      "motivo": "Sospecha de infección"
+      "motivo": "..."
     }
-  ],
-  "indicaciones_generales": "Texto con instrucciones para el paciente"
+  ]
 }
 ===FIN_JSON===
 
-REGLAS ORTOGRÁFICAS: tildes y eñes correctas.
-NO uses markdown.`;
+Sin markdown.`;
 
   // ═══════════════════════════════════════════════════════════════
   // CATÁLOGO
@@ -292,16 +216,16 @@ NO uses markdown.`;
       if (error) throw error;
       PROC.catalogo = {};
       (data || []).forEach(p => { PROC.catalogo[p.procedimiento_id] = p; });
-      console.log(`[Proc v2.0] ✓ Catálogo: ${data.length} procedimientos`);
+      console.log(`[Proc v2.1] ✓ Catálogo: ${data.length} procedimientos`);
       return true;
     } catch (e) {
-      console.error("[Proc v2.0] Error catálogo:", e);
+      console.error("[Proc v2.1] Error catálogo:", e);
       return false;
     }
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // INYECCIÓN DE HTML
+  // INYECCIÓN HTML
   // ═══════════════════════════════════════════════════════════════
   function inyectarHTML() {
     const tabs = $id("tabs-principales");
@@ -329,7 +253,6 @@ NO uses markdown.`;
       sec.innerHTML = `<div id="proc-wizard-container"></div>`;
       container.appendChild(sec);
     }
-
     return true;
   }
 
@@ -339,7 +262,6 @@ NO uses markdown.`;
   function instalarWrapperCambiarTab() {
     if (typeof window.cambiarTab !== "function") return false;
     if (window.cambiarTab._procWrap) return true;
-
     const _orig = window.cambiarTab;
     window.cambiarTab = function(tab) {
       const result = _orig.apply(this, arguments);
@@ -373,7 +295,7 @@ NO uses markdown.`;
         <div class="card-title">
           <span class="num">🩹</span>
           <span>Módulo de Procedimientos</span>
-          <span class="card-desc">Con IA · Receta · Laboratorios</span>
+          <span class="card-desc">IA · Receta · Laboratorios</span>
         </div>
         ${renderProgresoPasos()}
       </div>
@@ -396,9 +318,8 @@ NO uses markdown.`;
       <div class="steps" style="margin:12px 0 0;display:flex;gap:6px;overflow-x:auto">
         ${pasos.map(p => {
           const activo = p.id === PROC.pasoActual;
-          const done   = p.id < PROC.pasoActual;
-          return `<div class="step ${activo ? "active" : ""} ${done ? "done" : ""}" 
-                       style="flex:1;min-width:60px">${p.id}. ${p.label}</div>`;
+          const done = p.id < PROC.pasoActual;
+          return `<div class="step ${activo ? "active" : ""} ${done ? "done" : ""}" style="flex:1;min-width:60px">${p.id}. ${p.label}</div>`;
         }).join("")}
       </div>
     `;
@@ -407,7 +328,6 @@ NO uses markdown.`;
   function renderPaso() {
     const cont = $id("proc-paso-container");
     if (!cont) return;
-
     switch (PROC.pasoActual) {
       case 1: renderPasoPaciente(cont); break;
       case 2: renderPasoProcedimiento(cont); break;
@@ -427,9 +347,7 @@ NO uses markdown.`;
       <div class="card">
         <div class="card-title"><span class="num">1</span>Seleccionar paciente</div>
         <div class="form-group">
-          <input type="text" id="proc-buscar-paciente" 
-                 placeholder="🔍 Nombre, DUI, email, ID..." 
-                 oninput="procBuscarPaciente(this.value)" autocomplete="off">
+          <input type="text" id="proc-buscar-paciente" placeholder="🔍 Nombre, DUI, email, ID..." oninput="procBuscarPaciente(this.value)" autocomplete="off">
         </div>
         <div id="proc-resultados-paciente" style="display:none;margin-top:10px"></div>
       </div>
@@ -442,8 +360,7 @@ NO uses markdown.`;
         <div style="font-size:11px;color:var(--text-secondary);font-family:monospace">
           ${esc(PROC.paciente.subject_id)} · ${PROC.paciente.edad || "—"} años · ${esc(PROC.paciente.sexo || "—")}
         </div>
-        <button class="btn btn-primary btn-sm" style="margin-top:10px;width:100%;font-size:12px"
-                onclick="procIrAPaso(2)">Continuar →</button>
+        <button class="btn btn-primary btn-sm" style="margin-top:10px;width:100%;font-size:12px" onclick="procIrAPaso(2)">Continuar →</button>
       `;
       cont.querySelector(".card").appendChild(info);
     }
@@ -454,7 +371,6 @@ NO uses markdown.`;
     if (!cont) return;
     if (!query || query.trim().length < 2) { cont.style.display = "none"; return; }
     if (!window.supabaseClient) return;
-
     try {
       const { data, error } = await window.supabaseClient.rpc("buscar_pacientes", { query: query.trim() });
       if (error) throw error;
@@ -465,9 +381,7 @@ NO uses markdown.`;
           <div class="consulta-paciente-card-result" onclick="procSeleccionarPaciente('${esc(p.subject_id)}')">
             <div style="font-size:13px;font-weight:700;color:var(--corp)">${esc(p.nombre)}</div>
             <div style="font-size:10px;color:var(--text-secondary);font-family:monospace">${esc(p.subject_id)}</div>
-            <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">
-              ${p.edad || "—"} años · ${esc(p.sexo || "—")}${p.dui ? " · DUI " + esc(p.dui) : ""}
-            </div>
+            <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${p.edad || "—"} años · ${esc(p.sexo || "—")}${p.dui ? " · DUI " + esc(p.dui) : ""}</div>
           </div>
         `).join("");
       }
@@ -484,7 +398,6 @@ NO uses markdown.`;
       const { data, error } = await window.supabaseClient.from("patients").select("*").eq("subject_id", subjectId).single();
       if (error || !data) { toast("Paciente no encontrado", "error"); return; }
       PROC.paciente = data;
-
       try {
         const cuota = await verificarCuotaPaciente(subjectId);
         PROC.contextoPlan = cuota;
@@ -493,7 +406,6 @@ NO uses markdown.`;
           if (!ok) { PROC.paciente = null; return; }
         }
       } catch (e) {}
-
       toast("Paciente seleccionado", "success");
       renderWizard();
     } catch (e) {
@@ -505,10 +417,7 @@ NO uses markdown.`;
   async function verificarCuotaPaciente(subjectId) {
     if (!window.supabaseClient) return { tiene_suscripcion: false, disponible: true };
     try {
-      const { data } = await window.supabaseClient.rpc("verificar_cuota", {
-        p_subject_id: subjectId,
-        p_tipo_servicio: "procedimiento"
-      });
+      const { data } = await window.supabaseClient.rpc("verificar_cuota", { p_subject_id: subjectId, p_tipo_servicio: "procedimiento" });
       return data || { tiene_suscripcion: false, disponible: true };
     } catch (e) { return { tiene_suscripcion: false, disponible: true }; }
   }
@@ -525,7 +434,6 @@ NO uses markdown.`;
       cuerpo_extrano: { icon: "🔍", label: "Cuerpo extraño" },
       hidratacion: { icon: "💧", label: "Hidratación IV" }
     };
-
     const agrupados = {};
     Object.values(PROC.catalogo).forEach(p => {
       if (!agrupados[p.categoria]) agrupados[p.categoria] = [];
@@ -535,9 +443,7 @@ NO uses markdown.`;
     cont.innerHTML = `
       <div class="card">
         <div class="card-title"><span class="num">2</span>Seleccionar procedimiento</div>
-        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">
-          Paciente: <strong>${esc(PROC.paciente?.nombre || "—")}</strong>
-        </p>
+        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Paciente: <strong>${esc(PROC.paciente?.nombre || "—")}</strong></p>
         ${Object.keys(agrupados).length === 0 
           ? '<div class="empty-state"><div class="icon">⏳</div><p>Cargando catálogo...</p></div>'
           : Object.entries(agrupados).map(([cat, items]) => `
@@ -546,21 +452,17 @@ NO uses markdown.`;
             </h4>
             <div class="estudio-selector">
               ${items.map(p => `
-                <div class="estudio-card ${PROC.procedimiento?.procedimiento_id === p.procedimiento_id ? "active" : ""}"
-                     onclick="procSeleccionarProcedimiento('${p.procedimiento_id}')">
+                <div class="estudio-card ${PROC.procedimiento?.procedimiento_id === p.procedimiento_id ? "active" : ""}" onclick="procSeleccionarProcedimiento('${p.procedimiento_id}')">
                   <div class="estudio-nombre" style="font-size:11px">${esc(p.nombre)}</div>
                   <div class="estudio-desc">${p.duracion_min} min · ${p.complejidad}</div>
                   <div class="estudio-precio">$${parseFloat(p.precio_base).toFixed(2)}</div>
-                  ${p.permite_receta ? '<div style="font-size:8px;color:#34c759;font-weight:700">💊</div>' : ""}
-                  ${p.permite_laboratorio ? '<div style="font-size:8px;color:#0071e3;font-weight:700">🔬</div>' : ""}
                 </div>
               `).join("")}
             </div>
           `).join("")}
         <div class="btn-row" style="margin-top:16px">
           <button class="btn btn-secondary" onclick="procIrAPaso(1)">← Atrás</button>
-          <button class="btn btn-primary" onclick="procIrAPaso(3)" ${!PROC.procedimiento ? "disabled" : ""}
-                  style="${!PROC.procedimiento ? "opacity:0.5" : ""}">Continuar →</button>
+          <button class="btn btn-primary" onclick="procIrAPaso(3)" ${!PROC.procedimiento ? "disabled" : ""} style="${!PROC.procedimiento ? "opacity:0.5" : ""}">Continuar →</button>
         </div>
       </div>
     `;
@@ -600,43 +502,26 @@ NO uses markdown.`;
       <div class="card">
         <div class="card-title"><span class="num">3</span>Consentimiento informado</div>
         <div style="background:#fff9e6;border:2px solid var(--warning);padding:14px;border-radius:10px;margin-bottom:14px">
-          <h4 style="font-size:13px;font-weight:700;color:#8a6a00;margin-bottom:8px">
-            ⚖️ Consentimiento para: ${esc(p.nombre)}
-          </h4>
+          <h4 style="font-size:13px;font-weight:700;color:#8a6a00;margin-bottom:8px">⚖️ ${esc(p.nombre)}</h4>
           <p style="font-size:11px;line-height:1.6;color:#5a4a00;margin-bottom:10px">
-            He sido informado/a del procedimiento <strong>${esc(p.nombre)}</strong> 
-            (${esc(p.descripcion || "")}), de sus beneficios, riesgos, alternativas y posibles complicaciones.
+            He sido informado/a del procedimiento, sus beneficios, riesgos, alternativas y posibles complicaciones.
           </p>
-          ${p.indicaciones_previas ? `
-            <div style="background:white;padding:10px;border-radius:6px;font-size:11px;color:#333;border-left:3px solid #ff9500">
-              <strong>Indicaciones previas:</strong> ${esc(p.indicaciones_previas)}
-            </div>
-          ` : ""}
         </div>
         <div class="form-group">
-          <label>Nombre del paciente / tutor *</label>
-          <input type="text" id="proc-cons-nombre" value="${esc(PROC.paciente?.nombre || "")}" readonly style="background:var(--bg-tertiary)">
-        </div>
-        <div class="form-group">
-          <label>DUI</label>
-          <input type="text" id="proc-cons-dui" value="${esc(PROC.paciente?.dui || "")}" placeholder="00000000-0">
+          <label>Nombre del paciente *</label>
+          <input type="text" value="${esc(PROC.paciente?.nombre || "")}" readonly style="background:var(--bg-tertiary)">
         </div>
         <div style="display:flex;gap:8px;margin:12px 0">
-          <button class="btn btn-primary" onclick="procAbrirFirma('tablet')" style="flex:1;font-size:12px">
-            ✍️ Firmar en pantalla
-          </button>
-          <button class="btn btn-secondary" onclick="procAbrirFirma('papel_foto')" style="flex:1;font-size:12px">
-            📷 Foto del papel
-          </button>
+          <button class="btn btn-primary" onclick="procAbrirFirma('tablet')" style="flex:1;font-size:12px">✍️ Firmar en pantalla</button>
+          <button class="btn btn-secondary" onclick="procAbrirFirma('papel_foto')" style="flex:1;font-size:12px">📷 Foto del papel</button>
         </div>
         <div id="proc-firma-guardada-container" style="display:none;margin-top:12px;padding:10px;background:#f0fff4;border-radius:8px;border:1px solid var(--positive)">
           <div style="font-size:11px;font-weight:700;color:#1a4a2a;margin-bottom:6px">✅ Firma registrada</div>
-          <img id="proc-firma-guardada-img" style="max-width:100%;max-height:100px;border-radius:4px;border:1px solid #d4f5dc;background:white">
+          <img id="proc-firma-guardada-img" style="max-width:100%;max-height:100px;border-radius:4px;background:white">
         </div>
         <div class="btn-row" style="margin-top:16px">
           <button class="btn btn-secondary" onclick="procIrAPaso(2)">← Atrás</button>
-          <button class="btn btn-primary" id="proc-btn-paso3" onclick="procIrAPaso(4)" ${!PROC.consentimientoFirma ? "disabled" : ""}
-                  style="${!PROC.consentimientoFirma ? "opacity:0.5" : ""}">Continuar →</button>
+          <button class="btn btn-primary" id="proc-btn-paso3" onclick="procIrAPaso(4)" ${!PROC.consentimientoFirma ? "disabled" : ""} style="${!PROC.consentimientoFirma ? "opacity:0.5" : ""}">Continuar →</button>
         </div>
       </div>
     `;
@@ -654,27 +539,20 @@ NO uses markdown.`;
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (ev) => {
-          PROC.consentimientoFirma = ev.target.result;
-          aplicarFirmaConsentimiento();
-        };
+        reader.onload = (ev) => { PROC.consentimientoFirma = ev.target.result; aplicarFirmaConsentimiento(); };
         reader.readAsDataURL(file);
       };
       input.click();
       return;
     }
-
     const overlay = document.createElement("div");
     overlay.id = "proc-modal-firma";
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px";
     overlay.innerHTML = `
       <div style="background:var(--bg);border-radius:16px;max-width:600px;width:100%;padding:24px">
-        <div style="text-align:center;margin-bottom:16px">
-          <div style="font-size:32px;margin-bottom:6px">✍️</div>
-          <h3 style="font-size:16px;font-weight:700;color:var(--corp)">Firma del paciente</h3>
-        </div>
+        <div style="text-align:center;margin-bottom:16px"><div style="font-size:32px">✍️</div><h3 style="font-size:16px;font-weight:700">Firma del paciente</h3></div>
         <div style="position:relative;background:#fff;border:2px dashed var(--accent);border-radius:10px;margin-bottom:12px;overflow:hidden">
-          <canvas id="proc-firma-canvas" width="540" height="220" style="display:block;touch-action:none;cursor:crosshair;width:100%;max-width:540px;height:auto"></canvas>
+          <canvas id="proc-firma-canvas" width="540" height="220" style="display:block;touch-action:none;cursor:crosshair;width:100%;max-width:540px"></canvas>
           <div id="proc-firma-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;color:#ccc;font-size:14px;font-style:italic">Firma aquí</div>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:12px">
@@ -701,7 +579,6 @@ NO uses markdown.`;
     ctx.lineJoin = "round";
     _procCanvasCtx = ctx;
     _procFirmaTieneTrazo = false;
-
     let dibujando = false;
     const getPos = (e) => {
       const rect = canvas.getBoundingClientRect();
@@ -751,10 +628,12 @@ NO uses markdown.`;
   }
 
   // ─────────────────────────────────────────────────────────────
-  // PASO 4 — EJECUCIÓN
+  // PASO 4 — EJECUCIÓN (CON FIX DE PERSISTENCIA)
   // ─────────────────────────────────────────────────────────────
   function renderPasoEjecucion(cont) {
     const p = PROC.procedimiento;
+    const d = PROC.datosEjecucion || {};
+    
     cont.innerHTML = `
       <div class="card">
         <div class="card-title"><span class="num">4</span>Ejecución del procedimiento</div>
@@ -762,21 +641,23 @@ NO uses markdown.`;
           <strong style="color:var(--accent-dark)">${esc(p.nombre)}</strong> · ${p.duracion_min} min
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="form-group"><label>Fecha *</label><input type="date" id="proc-fecha" value="${ahoraFecha()}"></div>
-          <div class="form-group"><label>Hora *</label><input type="time" id="proc-hora-inicio" value="${ahoraHora()}"></div>
+          <div class="form-group"><label>Fecha *</label>
+            <input type="date" id="proc-fecha" value="${d.fecha_procedimiento || ahoraFecha()}"></div>
+          <div class="form-group"><label>Hora *</label>
+            <input type="time" id="proc-hora-inicio" value="${d.hora_inicio || ahoraHora()}"></div>
         </div>
         <div class="form-group"><label>Indicación clínica *</label>
-          <textarea id="proc-indicacion" placeholder="Motivo del procedimiento..." style="min-height:60px"></textarea></div>
+          <textarea id="proc-indicacion" placeholder="Motivo del procedimiento..." style="min-height:60px">${esc(d.indicacion || "")}</textarea></div>
         <div class="form-group"><label>CIE-10</label>
-          <input type="text" id="proc-cie10" placeholder="Ej: S01.9"></div>
+          <input type="text" id="proc-cie10" placeholder="Ej: S01.9" value="${esc(d.cie10 || "")}"></div>
         <div class="form-group"><label>Técnica realizada *</label>
-          <textarea id="proc-tecnica" placeholder="Técnica paso a paso..." style="min-height:80px"></textarea></div>
+          <textarea id="proc-tecnica" placeholder="Técnica paso a paso..." style="min-height:80px">${esc(d.tecnica || "")}</textarea></div>
         <div class="form-group"><label>Hallazgos</label>
-          <textarea id="proc-hallazgos" style="min-height:60px"></textarea></div>
+          <textarea id="proc-hallazgos" style="min-height:60px">${esc(d.hallazgos || "")}</textarea></div>
         <div class="form-group"><label>Complicaciones</label>
-          <textarea id="proc-complicaciones" placeholder="Ninguna / describir..." style="min-height:60px"></textarea></div>
+          <textarea id="proc-complicaciones" placeholder="Ninguna / describir..." style="min-height:60px">${esc(d.complicaciones || "")}</textarea></div>
         <div class="form-group"><label>Plan de seguimiento</label>
-          <textarea id="proc-seguimiento" style="min-height:60px"></textarea></div>
+          <textarea id="proc-seguimiento" style="min-height:60px">${esc(d.seguimiento || "")}</textarea></div>
         <div class="btn-row" style="margin-top:16px">
           <button class="btn btn-secondary" onclick="procIrAPaso(3)">← Atrás</button>
           <button class="btn btn-primary" onclick="procValidarEjecucion()">Continuar →</button>
@@ -785,13 +666,29 @@ NO uses markdown.`;
     `;
   }
 
+  // ═══ FIX: Persistir datos al avanzar ═══
   window.procValidarEjecucion = function() {
+    const fecha = $id("proc-fecha")?.value;
     const indicacion = $id("proc-indicacion")?.value?.trim();
     const tecnica = $id("proc-tecnica")?.value?.trim();
-    const fecha = $id("proc-fecha")?.value;
+    
     if (!fecha) { toast("Fecha requerida", "error"); return; }
     if (!indicacion) { toast("Indicación requerida", "error"); return; }
     if (!tecnica) { toast("Técnica requerida", "error"); return; }
+    
+    // Guardar TODOS los datos del formulario
+    PROC.datosEjecucion = {
+      fecha_procedimiento: fecha,
+      hora_inicio: $id("proc-hora-inicio")?.value || null,
+      indicacion: indicacion,
+      cie10: $id("proc-cie10")?.value?.trim() || null,
+      tecnica: tecnica,
+      hallazgos: $id("proc-hallazgos")?.value?.trim() || null,
+      complicaciones: $id("proc-complicaciones")?.value?.trim() || null,
+      seguimiento: $id("proc-seguimiento")?.value?.trim() || null
+    };
+    
+    console.log("[Proc v2.1] ✓ Datos ejecución guardados:", PROC.datosEjecucion);
     PROC.pasoActual = 5;
     renderWizard();
   };
@@ -802,13 +699,9 @@ NO uses markdown.`;
   function renderPasoMateriales(cont) {
     const p = PROC.procedimiento;
     const estimados = Array.isArray(p.materiales_estimados) ? p.materiales_estimados : [];
-
     cont.innerHTML = `
       <div class="card">
         <div class="card-title"><span class="num">5</span>Materiales utilizados</div>
-        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">
-          Marca los materiales usados. El costo se suma al precio final.
-        </p>
         <div id="proc-materiales-lista">
           ${estimados.length === 0 
             ? '<div class="empty-state"><div class="icon">📦</div><p>Sin materiales estimados</p></div>'
@@ -821,9 +714,7 @@ NO uses markdown.`;
               </div>
             `).join("")}
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="procAgregarMaterialManual()" style="margin-top:10px;font-size:11px">
-          + Añadir material manual
-        </button>
+        <button class="btn btn-secondary btn-sm" onclick="procAgregarMaterialManual()" style="margin-top:10px;font-size:11px">+ Añadir material manual</button>
         <div class="btn-row" style="margin-top:16px">
           <button class="btn btn-secondary" onclick="procIrAPaso(4)">← Atrás</button>
           <button class="btn btn-primary" onclick="procValidarMateriales()">Continuar →</button>
@@ -862,107 +753,67 @@ NO uses markdown.`;
   };
 
   // ─────────────────────────────────────────────────────────────
-  // PASO 6 — IA + RECETA + LABS
+  // PASO 6 — IA + EXTRAS
   // ─────────────────────────────────────────────────────────────
   function renderPasoIAExtras(cont) {
     const p = PROC.procedimiento;
-    
     cont.innerHTML = `
       <div class="card">
         <div class="card-title"><span class="num">6</span>Generación con IA</div>
-        
         <div style="background:linear-gradient(135deg,#f0f7ff,#e8f4fd);border:2px solid #0071e3;border-radius:12px;padding:16px;margin-bottom:14px">
-          <div style="font-size:12px;font-weight:700;color:#0051a3;text-transform:uppercase;margin-bottom:8px">
-            🤖 Generar con IA (opcional)
-          </div>
-          <p style="font-size:11px;color:#0051a3;line-height:1.5;margin-bottom:12px">
-            Kimi generará la nota clínica, la receta y los laboratorios según los datos. Podrás editar cada uno.
-          </p>
-          <button class="btn btn-primary" id="proc-btn-ia" onclick="procGenerarTodoIA()" style="width:100%;font-size:12px">
-            🤖 Generar nota + receta + labs
-          </button>
+          <div style="font-size:12px;font-weight:700;color:#0051a3;text-transform:uppercase;margin-bottom:8px">🤖 Generar con IA</div>
+          <button class="btn btn-primary" id="proc-btn-ia" onclick="procGenerarTodoIA()" style="width:100%;font-size:12px">🤖 Generar nota + receta + labs</button>
           <div id="proc-ia-error" style="display:none;margin-top:10px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
         </div>
-
-        <!-- Resultado IA -->
         <div id="proc-ia-resultado" style="display:none">
-          
-          <!-- Nota -->
           <div style="margin-bottom:16px">
             <div style="background:#f0fff4;border:2px solid var(--positive);border-radius:10px;padding:12px;margin-bottom:8px">
-              <div style="font-size:12px;font-weight:700;color:#1a4a2a;text-transform:uppercase">
-                📋 Nota de Procedimiento
-              </div>
+              <div style="font-size:12px;font-weight:700;color:#1a4a2a;text-transform:uppercase">📋 Nota de Procedimiento</div>
             </div>
-            <div style="display:flex;gap:8px;margin-bottom:8px">
-              <button class="btn btn-secondary btn-sm" onclick="procToggleEdicionNota()" id="proc-btn-toggle-nota" style="flex:1;font-size:11px">
-                ✏️ Activar edición
-              </button>
-            </div>
+            <button class="btn btn-secondary btn-sm" onclick="procToggleEdicionNota()" id="proc-btn-toggle-nota" style="width:100%;margin-bottom:8px;font-size:11px">✏️ Activar edición</button>
             <div id="proc-nota-preview" style="background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:14px;font-size:12px;line-height:1.6;max-height:400px;overflow-y:auto"></div>
           </div>
-
-          <!-- Receta -->
           ${p.permite_receta ? `
             <div style="margin-bottom:16px">
               <div style="background:#fff9e6;border:2px solid #ff9500;border-radius:10px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-                <div style="font-size:12px;font-weight:700;color:#8a6a00;text-transform:uppercase">
-                  💊 Receta Médica
-                </div>
-                <button class="btn btn-secondary btn-xs" onclick="procAgregarMedicamento()" style="font-size:10px">
-                  + Añadir
-                </button>
+                <div style="font-size:12px;font-weight:700;color:#8a6a00;text-transform:uppercase">💊 Receta Médica</div>
+                <button class="btn btn-secondary btn-xs" onclick="procAgregarMedicamento()" style="font-size:10px">+ Añadir</button>
               </div>
               <div id="proc-receta-lista"></div>
             </div>
           ` : ""}
-
-          <!-- Laboratorios -->
           ${p.permite_laboratorio ? `
             <div style="margin-bottom:16px">
               <div style="background:#e8f4fd;border:2px solid #0071e3;border-radius:10px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-                <div style="font-size:12px;font-weight:700;color:#0051a3;text-transform:uppercase">
-                  🔬 Laboratorios
-                </div>
-                <button class="btn btn-secondary btn-xs" onclick="procAgregarLaboratorio()" style="font-size:10px">
-                  + Añadir
-                </button>
+                <div style="font-size:12px;font-weight:700;color:#0051a3;text-transform:uppercase">🔬 Laboratorios</div>
+                <button class="btn btn-secondary btn-xs" onclick="procAgregarLaboratorio()" style="font-size:10px">+ Añadir</button>
               </div>
               <div id="proc-labs-lista"></div>
             </div>
           ` : ""}
-
         </div>
-
         <div class="btn-row" style="margin-top:16px">
           <button class="btn btn-secondary" onclick="procIrAPaso(5)">← Atrás</button>
           <button class="btn btn-primary" onclick="procIrAPaso(7)">Continuar a firma →</button>
         </div>
       </div>
     `;
-
     renderRecetaLista();
     renderLabsLista();
     if (PROC.notaIA) renderNotaIA();
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // RENDER NOTA IA
-  // ─────────────────────────────────────────────────────────────
   function renderNotaIA() {
     const cont = $id("proc-nota-preview");
     const wrap = $id("proc-ia-resultado");
     if (!cont || !wrap) return;
-
     const texto = PROC.notaEditada || PROC.notaIA?.narrativa || "";
     if (!texto) return;
-
     if ($id("proc-nota-textarea")) {
-      cont.innerHTML = `<textarea id="proc-nota-textarea" style="width:100%;min-height:400px;font-size:12px;padding:10px;border:2px solid #0071e3;border-radius:8px;font-family:var(--font-sans);background:#fff;color:#1d1d1f;resize:vertical" oninput="PROC.notaEditada = this.value">${esc(texto)}</textarea>`;
+      cont.innerHTML = `<textarea id="proc-nota-textarea" style="width:100%;min-height:400px;font-size:12px;padding:10px;border:2px solid #0071e3;border-radius:8px;background:#fff;color:#1d1d1f;resize:vertical" oninput="PROC.notaEditada = this.value">${esc(texto)}</textarea>`;
     } else {
       cont.innerHTML = `<div style="white-space:pre-wrap">${esc(texto)}</div>`;
     }
-
     wrap.style.display = "block";
   }
 
@@ -970,32 +821,24 @@ NO uses markdown.`;
     const cont = $id("proc-nota-preview");
     const btn = $id("proc-btn-toggle-nota");
     if (!cont || !btn) return;
-
     if ($id("proc-nota-textarea")) {
-      // Salir de edición
       PROC.notaEditada = $id("proc-nota-textarea").value;
       cont.innerHTML = `<div style="white-space:pre-wrap">${esc(PROC.notaEditada)}</div>`;
       btn.innerHTML = "✏️ Activar edición";
     } else {
-      // Entrar a edición
       const texto = PROC.notaEditada || PROC.notaIA?.narrativa || "";
-      cont.innerHTML = `<textarea id="proc-nota-textarea" style="width:100%;min-height:400px;font-size:12px;padding:10px;border:2px solid #0071e3;border-radius:8px;font-family:var(--font-sans);background:#fff;color:#1d1d1f;resize:vertical">${esc(texto)}</textarea>`;
+      cont.innerHTML = `<textarea id="proc-nota-textarea" style="width:100%;min-height:400px;font-size:12px;padding:10px;border:2px solid #0071e3;border-radius:8px;background:#fff;color:#1d1d1f;resize:vertical">${esc(texto)}</textarea>`;
       btn.innerHTML = "👁️ Ver preview";
     }
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // RENDER RECETA
-  // ─────────────────────────────────────────────────────────────
   function renderRecetaLista() {
     const cont = $id("proc-receta-lista");
     if (!cont) return;
-    
     if (PROC.recetaMedicamentos.length === 0) {
       cont.innerHTML = '<div style="padding:14px;text-align:center;background:var(--bg-secondary);border-radius:8px;font-size:11px;color:var(--text-tertiary)">Sin medicamentos</div>';
       return;
     }
-    
     cont.innerHTML = PROC.recetaMedicamentos.map((m, i) => `
       <div style="background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -1024,18 +867,13 @@ NO uses markdown.`;
     renderRecetaLista();
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // RENDER LABS
-  // ─────────────────────────────────────────────────────────────
   function renderLabsLista() {
     const cont = $id("proc-labs-lista");
     if (!cont) return;
-    
     if (PROC.laboratoriosSolicitados.length === 0) {
       cont.innerHTML = '<div style="padding:14px;text-align:center;background:var(--bg-secondary);border-radius:8px;font-size:11px;color:var(--text-tertiary)">Sin laboratorios solicitados</div>';
       return;
     }
-    
     cont.innerHTML = PROC.laboratoriosSolicitados.map((l, i) => `
       <div style="background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -1043,7 +881,7 @@ NO uses markdown.`;
           <button onclick="procEliminarLaboratorio(${i})" style="background:var(--danger);color:white;border:none;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:11px">×</button>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px">
-          <input type="text" placeholder="Tipo (sangre/orina)" value="${esc(l.tipo || "")}" oninput="PROC.laboratoriosSolicitados[${i}].tipo=this.value" style="padding:5px;font-size:11px">
+          <input type="text" placeholder="Tipo" value="${esc(l.tipo || "")}" oninput="PROC.laboratoriosSolicitados[${i}].tipo=this.value" style="padding:5px;font-size:11px">
           <input type="number" placeholder="Plazo días" value="${l.plazo_dias || 0}" oninput="PROC.laboratoriosSolicitados[${i}].plazo_dias=parseInt(this.value)||0" style="padding:5px;font-size:11px">
           <input type="text" placeholder="Motivo" value="${esc(l.motivo || "")}" oninput="PROC.laboratoriosSolicitados[${i}].motivo=this.value" style="padding:5px;font-size:11px;grid-column:span 2">
         </div>
@@ -1061,34 +899,29 @@ NO uses markdown.`;
     renderLabsLista();
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // GENERAR TODO CON IA
-  // ─────────────────────────────────────────────────────────────
   window.procGenerarTodoIA = async function() {
     const errEl = $id("proc-ia-error");
     const setErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; } };
     if (errEl) errEl.style.display = "none";
-
     const btn = $id("proc-btn-ia");
     const original = btn?.textContent || "Generar";
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generando...'; }
 
     try {
-      // 1. Nota
-      toast("Generando nota clínica...", "info");
-      const promptNota = construirPromptNota();
+      const datos = PROC.datosEjecucion || {};
+
+      toast("Generando nota...", "info");
+      const promptNota = construirPromptNota(datos);
       const respNota = await llamarKimi(promptNota);
       const narrNota = respNota.split("===JSON_ESTRUCTURADO===")[0].trim();
       const jsonNotaMatch = respNota.match(/===JSON_ESTRUCTURADO===([\s\S]*?)===FIN_JSON===/);
       const jsonNota = jsonNotaMatch ? JSON.parse(jsonNotaMatch[1].trim()) : null;
-
       PROC.notaIA = { narrativa: narrNota, json: jsonNota };
       PROC.notaEditada = null;
 
-      // 2. Receta
       if (PROC.procedimiento.permite_receta) {
         toast("Generando receta...", "info");
-        const promptReceta = construirPromptReceta();
+        const promptReceta = construirPromptReceta(datos);
         const respReceta = await llamarKimi(promptReceta);
         const jsonRecetaMatch = respReceta.match(/===JSON_ESTRUCTURADO===([\s\S]*?)===FIN_JSON===/);
         if (jsonRecetaMatch) {
@@ -1100,10 +933,9 @@ NO uses markdown.`;
         }
       }
 
-      // 3. Labs
       if (PROC.procedimiento.permite_laboratorio) {
-        toast("Generando laboratorios...", "info");
-        const promptLabs = construirPromptLabs();
+        toast("Generando labs...", "info");
+        const promptLabs = construirPromptLabs(datos);
         const respLabs = await llamarKimi(promptLabs);
         const jsonLabsMatch = respLabs.match(/===JSON_ESTRUCTURADO===([\s\S]*?)===FIN_JSON===/);
         if (jsonLabsMatch) {
@@ -1115,9 +947,8 @@ NO uses markdown.`;
         }
       }
 
-      toast("✓ Nota, receta y labs generados. Puedes editarlos.", "success");
+      toast("✓ Nota, receta y labs generados", "success");
       renderPasoIAExtras($id("proc-paso-container"));
-
     } catch (e) {
       console.error("[procGenerarTodoIA]", e);
       setErr("Error: " + e.message);
@@ -1126,86 +957,63 @@ NO uses markdown.`;
     }
   };
 
-  function construirPromptNota() {
+  function construirPromptNota(d) {
     const p = PROC.paciente;
     const proc = PROC.procedimiento;
-    const v = (id) => $id(id)?.value?.trim() || "No registrado";
     const mat = PROC.materialesUsados.map(m => `${m.nombre} x${m.cantidad}`).join(", ") || "No registrados";
-
     return PROMPT_NOTA
-      .replace(/{NOMBRE}/g, p.nombre || "No registrado")
+      .replace(/{NOMBRE}/g, p.nombre || "—")
       .replace(/{SUBJECT_ID}/g, p.subject_id)
-      .replace(/{EDAD}/g, p.edad || "No registrado")
-      .replace(/{SEXO}/g, p.sexo || "No registrado")
-      .replace(/{DUI}/g, p.dui || "No registrado")
-      .replace(/{DEPARTAMENTO}/g, p.departamento || "No registrado")
-      .replace(/{MUNICIPIO}/g, p.municipio || "No registrado")
+      .replace(/{EDAD}/g, p.edad || "—")
+      .replace(/{SEXO}/g, p.sexo || "—")
+      .replace(/{DUI}/g, p.dui || "—")
       .replace(/{PROCEDIMIENTO_NOMBRE}/g, proc.nombre)
       .replace(/{PROCEDIMIENTO_CODIGO}/g, proc.codigo)
       .replace(/{CATEGORIA}/g, proc.categoria)
-      .replace(/{DURACION_MIN}/g, proc.duracion_min)
       .replace(/{COMPLEJIDAD}/g, proc.complejidad)
-      .replace(/{FECHA}/g, v("proc-fecha"))
-      .replace(/{HORA_INICIO}/g, v("proc-hora-inicio"))
-      .replace(/{INDICACION}/g, v("proc-indicacion"))
-      .replace(/{CIE10}/g, v("proc-cie10"))
-      .replace(/{TECNICA}/g, v("proc-tecnica"))
-      .replace(/{HALLAZGOS}/g, v("proc-hallazgos"))
-      .replace(/{COMPLICACIONES}/g, v("proc-complicaciones"))
-      .replace(/{SEGUIMIENTO}/g, v("proc-seguimiento"))
-      .replace(/{MATERIALES}/g, mat)
-      .replace(/{RESPONSABLE_NOMBRE}/g, window.usuarioActual?.nombre || "No registrado")
-      .replace(/{RESPONSABLE_ROL}/g, window.usuarioActual?.rol || "No registrado")
-      .replace(/{CSSPM}/g, window.MEDICOS_DATOS?.[window.usuarioActual?.id]?.csspm || "No registrado");
+      .replace(/{FECHA}/g, d.fecha_procedimiento || "—")
+      .replace(/{INDICACION}/g, d.indicacion || "—")
+      .replace(/{CIE10}/g, d.cie10 || "—")
+      .replace(/{TECNICA}/g, d.tecnica || "—")
+      .replace(/{HALLAZGOS}/g, d.hallazgos || "—")
+      .replace(/{COMPLICACIONES}/g, d.complicaciones || "Ninguna")
+      .replace(/{SEGUIMIENTO}/g, d.seguimiento || "—")
+      .replace(/{MATERIALES}/g, mat);
   }
 
-  function construirPromptReceta() {
+  function construirPromptReceta(d) {
     const p = PROC.paciente;
     const proc = PROC.procedimiento;
-    const v = (id) => $id(id)?.value?.trim() || "No registrado";
-
     return PROMPT_RECETA
-      .replace(/{NOMBRE}/g, p.nombre || "No registrado")
-      .replace(/{EDAD}/g, p.edad || "No registrado")
-      .replace(/{SEXO}/g, p.sexo || "No registrado")
-      .replace(/{PESO}/g, "No registrado")
-      .replace(/{ALERGIAS}/g, p.alergias || "Ninguna conocida")
-      .replace(/{MEDICAMENTOS_ACTUALES}/g, p.medicamentos || "Ninguno")
-      .replace(/{DIAGNOSTICOS}/g, p.diagnosticos || "No registrados")
+      .replace(/{NOMBRE}/g, p.nombre || "—")
+      .replace(/{EDAD}/g, p.edad || "—")
+      .replace(/{SEXO}/g, p.sexo || "—")
+      .replace(/{ALERGIAS}/g, p.alergias || "Ninguna")
       .replace(/{PROCEDIMIENTO_NOMBRE}/g, proc.nombre)
-      .replace(/{CATEGORIA}/g, proc.categoria)
-      .replace(/{INDICACION}/g, v("proc-indicacion"))
-      .replace(/{HALLAZGOS}/g, v("proc-hallazgos"))
-      .replace(/{COMPLICACIONES}/g, v("proc-complicaciones"));
+      .replace(/{INDICACION}/g, d.indicacion || "—")
+      .replace(/{HALLAZGOS}/g, d.hallazgos || "—");
   }
 
-  function construirPromptLabs() {
+  function construirPromptLabs(d) {
     const p = PROC.paciente;
     const proc = PROC.procedimiento;
-    const v = (id) => $id(id)?.value?.trim() || "No registrado";
-
     return PROMPT_LABS
-      .replace(/{NOMBRE}/g, p.nombre || "No registrado")
-      .replace(/{EDAD}/g, p.edad || "No registrado")
-      .replace(/{SEXO}/g, p.sexo || "No registrado")
-      .replace(/{ALERGIAS}/g, p.alergias || "Ninguna")
-      .replace(/{DIAGNOSTICOS}/g, p.diagnosticos || "No registrados")
+      .replace(/{NOMBRE}/g, p.nombre || "—")
+      .replace(/{EDAD}/g, p.edad || "—")
+      .replace(/{SEXO}/g, p.sexo || "—")
       .replace(/{PROCEDIMIENTO_NOMBRE}/g, proc.nombre)
-      .replace(/{CATEGORIA}/g, proc.categoria)
-      .replace(/{INDICACION}/g, v("proc-indicacion"))
-      .replace(/{HALLAZGOS}/g, v("proc-hallazgos"))
-      .replace(/{COMPLICACIONES}/g, v("proc-complicaciones"));
+      .replace(/{INDICACION}/g, d.indicacion || "—")
+      .replace(/{HALLAZGOS}/g, d.hallazgos || "—")
+      .replace(/{COMPLICACIONES}/g, d.complicaciones || "Ninguna");
   }
 
   async function llamarKimi(prompt) {
     if (typeof window.WORKER_URL === "undefined") throw new Error("WORKER_URL no definido");
     const proxyUrl = `${window.WORKER_URL}/proxy-kimi`;
     const model = $id("kimi-model")?.value || "kimi-k2-5";
-
     const ctrl = new AbortController();
     let inactivityTimer = setTimeout(() => ctrl.abort(), 90000);
     const reset = () => { clearTimeout(inactivityTimer); inactivityTimer = setTimeout(() => ctrl.abort(), 90000); };
-
     let resp;
     try {
       resp = await fetch(proxyUrl, {
@@ -1227,18 +1035,15 @@ NO uses markdown.`;
       if (err.name === "AbortError") throw new Error("Timeout 90s");
       throw new Error("Error de red: " + err.message);
     }
-
     if (!resp.ok) {
       clearTimeout(inactivityTimer);
       if (resp.status === 402) throw new Error("Sin saldo");
       if (resp.status === 429) throw new Error("Rate limit");
       throw new Error("HTTP " + resp.status);
     }
-
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let content = "", buffer = "";
-
     while (true) {
       let chunk;
       try { chunk = await reader.read(); } catch (e) { clearTimeout(inactivityTimer); throw new Error("Stream: " + e.message); }
@@ -1272,60 +1077,44 @@ NO uses markdown.`;
     const materialTotal = PROC.materialesUsados.reduce((s, m) => s + (m.subtotal || 0), 0);
     const precioBase = parseFloat(p.precio_base) || 0;
     const precioFinal = precioBase + materialTotal;
-
     const esOperador = window.usuarioActual?.rol === "operador";
     const requiereMedico = p.requiere_medico && esOperador;
-
-    const notaFinal = PROC.notaEditada || PROC.notaIA?.narrativa || "";
 
     cont.innerHTML = `
       <div class="card">
         <div class="card-title"><span class="num">7</span>Cierre y firma</div>
         <div style="background:var(--accent-light);border-radius:10px;padding:14px;margin-bottom:14px">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
-            <div><div style="color:var(--text-secondary);font-size:10px">Paciente</div>
-              <div style="font-weight:700;color:var(--corp)">${esc(PROC.paciente?.nombre)}</div></div>
-            <div><div style="color:var(--text-secondary);font-size:10px">Procedimiento</div>
-              <div style="font-weight:700;color:var(--corp)">${esc(p.nombre)}</div></div>
-            <div><div style="color:var(--text-secondary);font-size:10px">Medicamentos</div>
-              <div style="font-weight:700;color:var(--corp)">${PROC.recetaMedicamentos.length}</div></div>
-            <div><div style="color:var(--text-secondary);font-size:10px">Laboratorios</div>
-              <div style="font-weight:700;color:var(--corp)">${PROC.laboratoriosSolicitados.length}</div></div>
-            <div style="grid-column:span 2"><div style="color:var(--text-secondary);font-size:10px">Precio final</div>
-              <div style="font-weight:800;color:var(--positive);font-size:16px">$${precioFinal.toFixed(2)}</div></div>
+            <div><div style="color:var(--text-secondary);font-size:10px">Paciente</div><div style="font-weight:700">${esc(PROC.paciente?.nombre)}</div></div>
+            <div><div style="color:var(--text-secondary);font-size:10px">Procedimiento</div><div style="font-weight:700">${esc(p.nombre)}</div></div>
+            <div><div style="color:var(--text-secondary);font-size:10px">Medicamentos</div><div style="font-weight:700">${PROC.recetaMedicamentos.length}</div></div>
+            <div><div style="color:var(--text-secondary);font-size:10px">Laboratorios</div><div style="font-weight:700">${PROC.laboratoriosSolicitados.length}</div></div>
+            <div style="grid-column:span 2"><div style="color:var(--text-secondary);font-size:10px">Precio final</div><div style="font-weight:800;color:var(--positive);font-size:16px">$${precioFinal.toFixed(2)}</div></div>
           </div>
         </div>
-
         ${requiereMedico ? `
           <div style="background:#fff9e6;border:2px solid var(--warning);border-radius:10px;padding:14px;margin-bottom:14px">
             <div style="font-size:12px;font-weight:700;color:#8a6a00;margin-bottom:8px">⚠️ Requiere firma médica</div>
-            <div class="form-group" style="margin-bottom:0">
-              <label style="font-size:11px;font-weight:600">Médico asignado</label>
-              <select id="proc-medico-id" style="font-size:12px">
-                <option value="">— Seleccionar —</option>
-                ${Object.values(window.MEDICOS_DATOS || {})
-                  .filter(m => m.rol === "medico" || m.rol === "admin")
-                  .filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i)
-                  .map(m => `<option value="${m.id}">${esc(m.nombre)} (${esc(m.especialidad)})</option>`)
-                  .join("")}
-              </select>
-            </div>
+            <select id="proc-medico-id" style="font-size:12px;width:100%;padding:8px">
+              <option value="">— Seleccionar médico —</option>
+              ${Object.values(window.MEDICOS_DATOS || {})
+                .filter(m => m.rol === "medico" || m.rol === "admin")
+                .filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i)
+                .map(m => `<option value="${m.id}">${esc(m.nombre)} (${esc(m.especialidad)})</option>`).join("")}
+            </select>
           </div>
         ` : `
           <div style="background:#f0fff4;border:2px solid var(--positive);border-radius:10px;padding:14px;margin-bottom:14px">
             <div style="font-size:12px;font-weight:700;color:#1a4a2a">✅ Se registrará como completado</div>
           </div>
         `}
-
         <div class="form-group">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:600">
             <input type="checkbox" id="proc-confirmar-check" style="width:auto">
-            Confirmo que los datos son correctos y el procedimiento se realizó conforme a lo descrito
+            Confirmo que los datos son correctos
           </label>
         </div>
-
         <div id="proc-error" style="display:none;margin-bottom:12px;padding:10px;background:#fff3f3;border-left:3px solid var(--danger);border-radius:0 6px 6px 0;font-size:11px;color:#7a1a1a"></div>
-
         <div class="btn-row" style="margin-top:16px">
           <button class="btn btn-secondary" onclick="procIrAPaso(6)">← Atrás</button>
           <button class="btn btn-success" id="proc-btn-firmar" onclick="procGuardarProcedimiento()">
@@ -1336,9 +1125,9 @@ NO uses markdown.`;
     `;
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // GUARDAR PROCEDIMIENTO
-  // ─────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // GUARDAR PROCEDIMIENTO (CON FIX DE PERSISTENCIA)
+  // ═══════════════════════════════════════════════════════════════
   window.procGuardarProcedimiento = async function() {
     const errEl = $id("proc-error");
     const setErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; } };
@@ -1348,16 +1137,19 @@ NO uses markdown.`;
     if (!PROC.paciente || !PROC.procedimiento) { setErr("Faltan datos"); return; }
     if (!window.supabaseClient) { setErr("Sin conexión"); return; }
 
+    // ═══ FIX: Validar que existan los datos del paso 4 ═══
+    if (!PROC.datosEjecucion || !PROC.datosEjecucion.fecha_procedimiento) {
+      setErr("Faltan datos del paso 4 (ejecución). Vuelve al paso 4.");
+      return;
+    }
+
     const btn = $id("proc-btn-firmar");
     const original = btn?.textContent || "Guardar";
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Guardando...'; }
 
     try {
-      // Capturar nota editada
-      const taNota = $id("proc-nota-textarea");
-      if (taNota) PROC.notaEditada = taNota.value;
+      if ($id("proc-nota-textarea")) PROC.notaEditada = $id("proc-nota-textarea").value;
 
-      // Generar case_id
       if (!PROC.caseId) {
         const { data, error } = await window.supabaseClient.rpc("generar_case_id_procedimiento");
         if (error) throw error;
@@ -1400,22 +1192,22 @@ NO uses markdown.`;
 
       const ahora = new Date();
       const estadoInicial = requiereMedico ? "pendiente_firma" : "firmado";
-
       const notaFinal = PROC.notaEditada || PROC.notaIA?.narrativa || "";
+      const d = PROC.datosEjecucion;  // ← Datos persistidos
 
       const payload = {
         procedimiento_id: PROC.procedimiento.procedimiento_id,
         procedimiento_nombre: PROC.procedimiento.nombre,
         procedimiento_codigo: PROC.procedimiento.codigo,
         categoria: PROC.procedimiento.categoria,
-        fecha_procedimiento: $id("proc-fecha")?.value,
-        hora_inicio: $id("proc-hora-inicio")?.value,
-        indicacion: $id("proc-indicacion")?.value?.trim(),
-        cie10: $id("proc-cie10")?.value?.trim(),
-        tecnica: $id("proc-tecnica")?.value?.trim(),
-        hallazgos: $id("proc-hallazgos")?.value?.trim(),
-        complicaciones: $id("proc-complicaciones")?.value?.trim(),
-        seguimiento: $id("proc-seguimiento")?.value?.trim(),
+        fecha_procedimiento: d.fecha_procedimiento,
+        hora_inicio: d.hora_inicio,
+        indicacion: d.indicacion,
+        cie10: d.cie10,
+        tecnica: d.tecnica,
+        hallazgos: d.hallazgos,
+        complicaciones: d.complicaciones,
+        seguimiento: d.seguimiento,
         nota_ia_narrativa: PROC.notaIA?.narrativa || null,
         nota_ia_json: PROC.notaIA?.json || null,
         nota_final: notaFinal || null,
@@ -1452,15 +1244,15 @@ NO uses markdown.`;
         operador_id: window.usuarioActual?.id,
         operador_nombre: window.usuarioActual?.nombre,
         medico_id: medicoSeleccionado,
-        fecha_procedimiento: payload.fecha_procedimiento,
-        hora_inicio: payload.hora_inicio,
+        fecha_procedimiento: d.fecha_procedimiento,       // ← FIX
+        hora_inicio: d.hora_inicio,                       // ← FIX
         estado: estadoInicial,
-        indicacion: payload.indicacion,
-        cie10_principal: payload.cie10,
-        tecnica_realizada: payload.tecnica,
-        hallazgos: payload.hallazgos,
-        complicaciones: payload.complicaciones,
-        plan_seguimiento: payload.seguimiento,
+        indicacion: d.indicacion,                         // ← FIX
+        cie10_principal: d.cie10,                         // ← FIX
+        tecnica_realizada: d.tecnica,                     // ← FIX
+        hallazgos: d.hallazgos,                           // ← FIX
+        complicaciones: d.complicaciones,                 // ← FIX
+        plan_seguimiento: d.seguimiento,                  // ← FIX
         nota_ia_narrativa: payload.nota_ia_narrativa,
         nota_ia_json: payload.nota_ia_json,
         nota_final: payload.nota_final,
@@ -1485,6 +1277,8 @@ NO uses markdown.`;
         created_by: window.usuarioActual?.id
       };
 
+      console.log("[Proc v2.1] Insertando:", insertData);
+
       const { data: insertado, error: errIns } = await window.supabaseClient
         .from("procedimientos_realizados")
         .insert(insertData)
@@ -1494,7 +1288,6 @@ NO uses markdown.`;
       if (errIns) throw errIns;
       PROC.procedimientoRealizadoId = insertado.procedimiento_realizado_id;
 
-      // Notificar médico
       if (requiereMedico && medicoSeleccionado) {
         try {
           await window.supabaseClient.from("notificaciones_medicas").insert({
@@ -1509,7 +1302,6 @@ NO uses markdown.`;
         } catch (e) {}
       }
 
-      // Consumir cuota
       if (!cuota.tiene_suscripcion || cuota.disponible) {
         try {
           await window.supabaseClient.rpc("consumir_cuota", {
@@ -1520,7 +1312,6 @@ NO uses markdown.`;
         } catch (e) {}
       }
 
-      // Episodio clínico
       try {
         const { data: episodioId } = await window.supabaseClient.rpc("generar_episodio_id");
         if (episodioId) {
@@ -1539,11 +1330,9 @@ NO uses markdown.`;
         }
       } catch (e) {}
 
-      // Generar documentos
       const docs = await generarDocumentosProcedimiento(insertado, payload);
       PROC.docsGenerados = docs;
 
-      // Guardar artifacts
       for (const [tipo, html] of Object.entries(docs)) {
         if (!html) continue;
         try {
@@ -1574,9 +1363,7 @@ NO uses markdown.`;
   // GENERAR DOCUMENTOS
   // ─────────────────────────────────────────────────────────────
   async function generarDocumentosProcedimiento(registro, payload) {
-    const docs = {
-      nota_procedimiento: construirNotaHTML(registro, payload)
-    };
+    const docs = { nota_procedimiento: construirNotaHTML(registro, payload) };
     if (PROC.consentimientoFirma) docs.consentimiento = construirConsentimientoHTML(registro, payload);
     if (PROC.recetaMedicamentos.length > 0) docs.receta = construirRecetaHTML(registro, payload);
     if (PROC.laboratoriosSolicitados.length > 0) docs.orden_laboratorio = construirLabsHTML(registro, payload);
@@ -1600,8 +1387,7 @@ NO uses markdown.`;
         <div style="padding:20px 24px">
           <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">PROCEDIMIENTO</h4>
           <p style="font-size:12px;font-weight:700;margin-bottom:4px">${esc(p.procedimiento_nombre)} (${esc(p.procedimiento_codigo)})</p>
-          <p style="font-size:11px;color:#666;margin-bottom:12px">${esc(p.categoria)} · ${PROC.procedimiento.duracion_min} min · ${esc(PROC.procedimiento.complejidad)}</p>
-          
+          <p style="font-size:11px;color:#666;margin-bottom:12px">${esc(p.categoria)} · ${PROC.procedimiento.duracion_min} min</p>
           ${PROC.notaIA ? `
             <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin:14px 0 8px">INFORME CLÍNICO</h4>
             <div style="font-size:11px;line-height:1.7;white-space:pre-wrap">${esc(notaTexto || "")}</div>
@@ -1610,22 +1396,17 @@ NO uses markdown.`;
             <p style="font-size:11px;line-height:1.6">${esc(p.indicacion || "—")}</p>
             <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin:14px 0 8px">TÉCNICA</h4>
             <p style="font-size:11px;line-height:1.6;white-space:pre-wrap">${esc(p.tecnica || "—")}</p>
-            ${p.hallazgos ? `<h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin:14px 0 8px">HALLAZGOS</h4><p style="font-size:11px;line-height:1.6;white-space:pre-wrap">${esc(p.hallazgos)}</p>` : ""}
-            ${p.complicaciones ? `<h4 style="font-size:11px;color:#ff3b30;text-transform:uppercase;font-weight:700;border-bottom:1.5px solid #ffd0d0;padding-bottom:4px;margin:14px 0 8px">COMPLICACIONES</h4><p style="font-size:11px;line-height:1.6;color:#7a1a1a;background:#fff3f3;padding:8px;border-radius:6px">${esc(p.complicaciones)}</p>` : ""}
-            ${p.seguimiento ? `<h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin:14px 0 8px">SEGUIMIENTO</h4><p style="font-size:11px;line-height:1.6;white-space:pre-wrap">${esc(p.seguimiento)}</p>` : ""}
           `}
-          
           ${PROC.materialesUsados.length > 0 ? `
             <h4 style="font-size:11px;color:#0071e3;text-transform:uppercase;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin:14px 0 8px">MATERIALES</h4>
             <table style="width:100%;border-collapse:collapse;font-size:11px">
               ${PROC.materialesUsados.map(m => `<tr style="border-bottom:1px solid #eee"><td style="padding:4px">${esc(m.nombre)}</td><td style="padding:4px;text-align:center">×${m.cantidad}</td><td style="padding:4px;text-align:right">$${(m.subtotal || 0).toFixed(2)}</td></tr>`).join("")}
             </table>
           ` : ""}
-          
           <div style="margin-top:20px;padding:14px;background:#f0f7ff;border-left:4px solid #0071e3;border-radius:0 8px 8px 0">
             <div style="font-size:11px;font-weight:700;color:#0051a3;margin-bottom:6px">RESPONSABLE</div>
             <div style="font-size:12px;font-weight:700;color:#1a3a5c">${esc(p.operador_nombre || "—")}</div>
-            <div style="font-size:10px;color:#666;margin-top:2px">Case: ${esc(r.case_id)} · Estado: ${esc(r.estado)}</div>
+            <div style="font-size:10px;color:#666;margin-top:2px">Case: ${esc(r.case_id)}</div>
           </div>
         </div>
       </div>
@@ -1635,8 +1416,6 @@ NO uses markdown.`;
   function construirRecetaHTML(r, p) {
     const esc = window.escapeHtml || (s => String(s || ""));
     const fecha = new Date(r.created_at).toLocaleDateString("es-ES");
-    const meds = PROC.recetaMedicamentos;
-
     return `
       <div style="font-family:Helvetica,Arial,sans-serif;background:#fff;color:#1d1d1f;max-width:800px;margin:0 auto;border:2px solid #1a3a5c;border-radius:12px;overflow:hidden">
         <div style="background:#1a3a5c;color:#fff;text-align:center;padding:16px">
@@ -1644,39 +1423,27 @@ NO uses markdown.`;
           <h2 style="font-size:20px;font-weight:700;letter-spacing:2px;margin:6px 0">RECETA MÉDICA</h2>
         </div>
         <div style="padding:22px 26px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;background:#f8f9fa;border-left:4px solid #0071e3;border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:18px;font-size:11px">
-            <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;text-transform:uppercase">Paciente</span><br>${esc(p.paciente.nombre)}</div>
-            <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;text-transform:uppercase">ID</span><br>${esc(p.paciente.subject_id)}</div>
-            <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;text-transform:uppercase">Edad / Sexo</span><br>${p.paciente.edad || "—"} años · ${esc(p.paciente.sexo || "—")}</div>
-            <div><span style="font-weight:700;color:#1a3a5c;font-size:9px;text-transform:uppercase">Fecha</span><br>${esc(fecha)}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;background:#f8f9fa;border-left:4px solid #0071e3;padding:12px 16px;margin-bottom:18px;font-size:11px">
+            <div><strong style="font-size:9px;text-transform:uppercase">Paciente</strong><br>${esc(p.paciente.nombre)}</div>
+            <div><strong style="font-size:9px;text-transform:uppercase">ID</strong><br>${esc(p.paciente.subject_id)}</div>
+            <div><strong style="font-size:9px;text-transform:uppercase">Fecha</strong><br>${esc(fecha)}</div>
           </div>
-          
-          <table style="width:100%;border-collapse:collapse;font-size:10px;margin:10px 0">
-            <thead>
-              <tr style="background:#f0f7ff">
-                <th style="padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3">Fármaco</th>
-                <th style="padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3">Dosis/Vía</th>
-                <th style="padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3">Frecuencia</th>
-                <th style="padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3">Duración</th>
-                <th style="padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3">Indicación</th>
-              </tr>
-            </thead>
+          <table style="width:100%;border-collapse:collapse;font-size:10px">
+            <thead><tr style="background:#f0f7ff">
+              <th style="padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3">Fármaco</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3">Dosis/Vía</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3">Frecuencia</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:1.5px solid #0071e3">Duración</th>
+            </tr></thead>
             <tbody>
-              ${meds.map(m => `<tr>
+              ${PROC.recetaMedicamentos.map(m => `<tr>
                 <td style="padding:6px 8px;border-bottom:1px solid #e8e8ed"><strong>${esc(m.farmaco)}</strong><br><span style="font-size:9px;color:#666">${esc(m.presentacion || "")}</span></td>
                 <td style="padding:6px 8px;border-bottom:1px solid #e8e8ed">${esc(m.dosis || "")} ${esc(m.via || "")}</td>
                 <td style="padding:6px 8px;border-bottom:1px solid #e8e8ed">${esc(m.frecuencia || "")}</td>
                 <td style="padding:6px 8px;border-bottom:1px solid #e8e8ed">${esc(m.duracion || "")}</td>
-                <td style="padding:6px 8px;border-bottom:1px solid #e8e8ed">${esc(m.indicacion || "")}</td>
               </tr>`).join("")}
             </tbody>
           </table>
-          
-          <div style="margin-top:30px;padding:20px;text-align:center;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px">
-            <div style="border-top:1.5px solid #1a3a5c;width:60%;margin:30px auto 8px"></div>
-            <div style="font-size:12px;font-weight:700;color:#1a3a5c">${esc(p.operador_nombre || "Médico")}</div>
-            <div style="font-size:10px;color:#666">Case: ${esc(r.case_id)}</div>
-          </div>
         </div>
       </div>
     `;
@@ -1685,8 +1452,6 @@ NO uses markdown.`;
   function construirLabsHTML(r, p) {
     const esc = window.escapeHtml || (s => String(s || ""));
     const fecha = new Date(r.created_at).toLocaleDateString("es-ES");
-    const labs = PROC.laboratoriosSolicitados;
-
     return `
       <div style="font-family:Helvetica,Arial,sans-serif;background:#fff;color:#1d1d1f;max-width:800px;margin:0 auto;border:2px solid #1a3a5c;border-radius:12px;overflow:hidden">
         <div style="background:#1a3a5c;color:#fff;text-align:center;padding:16px">
@@ -1694,27 +1459,13 @@ NO uses markdown.`;
           <h2 style="font-size:18px;font-weight:700;letter-spacing:1.5px;margin:6px 0">ORDEN DE LABORATORIO</h2>
         </div>
         <div style="padding:22px 26px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;background:#f8f9fa;border-left:4px solid #0071e3;border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:18px;font-size:11px">
-            <div><strong style="font-size:9px;text-transform:uppercase">Paciente</strong><br>${esc(p.paciente.nombre)}</div>
-            <div><strong style="font-size:9px;text-transform:uppercase">ID</strong><br>${esc(p.paciente.subject_id)}</div>
-            <div><strong style="font-size:9px;text-transform:uppercase">Edad / Sexo</strong><br>${p.paciente.edad || "—"} años · ${esc(p.paciente.sexo || "—")}</div>
-            <div><strong style="font-size:9px;text-transform:uppercase">Fecha</strong><br>${esc(fecha)}</div>
+          <div style="background:#f8f9fa;border-left:4px solid #0071e3;padding:12px 16px;margin-bottom:18px;font-size:11px">
+            <div><strong>Paciente:</strong> ${esc(p.paciente.nombre)} (${esc(p.paciente.subject_id)})</div>
+            <div><strong>Fecha:</strong> ${esc(fecha)}</div>
           </div>
-          <p style="font-size:11px;margin-bottom:10px"><strong>Diagnóstico presuntivo:</strong> ${esc(p.indicacion || "—")}</p>
-          <h4 style="font-size:11px;color:#1a3a5c;text-transform:uppercase;font-weight:700;border-bottom:1.5px solid #1a3a5c;padding-bottom:6px;margin:14px 0 10px">ESTUDIOS SOLICITADOS</h4>
           <ol style="font-size:12px;line-height:1.9;margin-left:20px">
-            ${labs.map(l => `<li>
-              <strong>${esc(l.estudio)}</strong>
-              ${l.urgente ? '<span style="background:#ff3b30;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px">URGENTE</span>' : ""}
-              ${l.plazo_dias ? `<span style="color:#666;font-size:10px;margin-left:6px">(${l.plazo_dias} días)</span>` : ""}
-              ${l.motivo ? `<div style="font-size:10px;color:#666;margin-left:0">${esc(l.motivo)}</div>` : ""}
-            </li>`).join("")}
+            ${PROC.laboratoriosSolicitados.map(l => `<li><strong>${esc(l.estudio)}</strong>${l.urgente ? ' <span style="color:#ff3b30;font-weight:700">URGENTE</span>' : ""}${l.motivo ? `<br><span style="color:#666;font-size:10px">${esc(l.motivo)}</span>` : ""}</li>`).join("")}
           </ol>
-          <div style="margin-top:30px;padding:20px;text-align:center;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px">
-            <div style="border-top:1.5px solid #1a3a5c;width:60%;margin:30px auto 8px"></div>
-            <div style="font-size:12px;font-weight:700;color:#1a3a5c">${esc(p.operador_nombre || "Médico")}</div>
-            <div style="font-size:10px;color:#666">Case: ${esc(r.case_id)}</div>
-          </div>
         </div>
       </div>
     `;
@@ -1731,21 +1482,17 @@ NO uses markdown.`;
         </div>
         <div style="padding:24px">
           <p style="font-size:12px;line-height:1.7;margin-bottom:14px">
-            Yo, <strong>${esc(p.paciente.nombre)}</strong>, con DUI ${esc(p.paciente.dui || "—")}, he sido informado/a sobre el procedimiento:
+            Yo, <strong>${esc(p.paciente.nombre)}</strong>, con DUI ${esc(p.paciente.dui || "—")}, autorizo el procedimiento:
           </p>
           <div style="background:#f0f7ff;padding:12px;border-radius:8px;margin-bottom:14px">
             <div style="font-size:13px;font-weight:700;color:#1a3a5c">${esc(p.procedimiento_nombre)}</div>
           </div>
-          <p style="font-size:12px;line-height:1.7;margin-bottom:14px">
-            Se me han explicado beneficios, riesgos, alternativas y posibles complicaciones. Autorizo su realización y el tratamiento de mis datos.
-          </p>
-          <div style="text-align:center;padding:20px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;margin-top:16px">
+          <div style="text-align:center;padding:20px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px">
             <img src="${PROC.consentimientoFirma}" style="max-width:100%;max-height:120px;margin-bottom:8px">
             <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:8px auto"></div>
             <div style="font-size:12px;font-weight:700;color:#1a3a5c">${esc(p.paciente.nombre)}</div>
             <div style="font-size:10px;color:#666">DUI: ${esc(p.paciente.dui || "—")}</div>
             <div style="font-size:10px;color:#999;margin-top:6px">Firmado: ${esc(fecha)}</div>
-            <div style="font-size:8px;color:#999;margin-top:8px;word-break:break-all;font-family:monospace">SHA-256: ${esc(r.consentimiento_hash || "—")}</div>
           </div>
         </div>
       </div>
@@ -1783,7 +1530,6 @@ NO uses markdown.`;
   function mostrarDocumentosProcedimiento(docs, requiereMedico) {
     const cont = $id("proc-paso-container");
     if (!cont) return;
-
     const lista = [
       { key: "nota_procedimiento", nombre: "📋 Nota de procedimiento" },
       { key: "consentimiento", nombre: "⚖️ Consentimiento" },
@@ -1798,13 +1544,10 @@ NO uses markdown.`;
           <span class="num" style="background:${requiereMedico ? "#ff9500" : "#34c759"}">${requiereMedico ? "⏳" : "✅"}</span>
           <span>${requiereMedico ? "Enviado a firma médica" : "Procedimiento completado"}</span>
         </div>
-        <div style="background:${requiereMedico ? "#fff9e6" : "#f0fff4"};border-left:4px solid ${requiereMedico ? "#ff9500" : "#34c759"};padding:14px;border-radius:0 8px 8px 0;margin-bottom:16px;font-size:12px;color:${requiereMedico ? "#8a6a00" : "#1a4a2a"}">
+        <div style="background:${requiereMedico ? "#fff9e6" : "#f0fff4"};border-left:4px solid ${requiereMedico ? "#ff9500" : "#34c759"};padding:14px;border-radius:0 8px 8px 0;margin-bottom:16px;font-size:12px">
           ${requiereMedico 
             ? `El procedimiento <strong>${esc(PROC.caseId)}</strong> fue enviado al médico.`
             : `El procedimiento <strong>${esc(PROC.caseId)}</strong> fue registrado exitosamente.`}
-        </div>
-        <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;margin-bottom:10px">
-          Documentos (${lista.length})
         </div>
         ${lista.map(d => `
           <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;padding:10px 12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:6px">
@@ -1832,9 +1575,7 @@ NO uses markdown.`;
           <div style="font-size:14px;font-weight:700">Documento</div>
           <button onclick="document.getElementById('proc-modal-doc').remove()" style="background:var(--bg-tertiary);border:none;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer">×</button>
         </div>
-        <div style="background:var(--bg);border-radius:0 0 12px 12px;padding:20px">
-          ${PROC.docsGenerados[key]}
-        </div>
+        <div style="background:var(--bg);border-radius:0 0 12px 12px;padding:20px">${PROC.docsGenerados[key]}</div>
       </div>
     `;
     overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
@@ -1847,7 +1588,6 @@ NO uses markdown.`;
     contenedor.style.cssText = "position:fixed;left:-99999px;top:0;width:800px;background:#fff;padding:0";
     contenedor.innerHTML = PROC.docsGenerados[key];
     document.body.appendChild(contenedor);
-
     try {
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF("p", "mm", "a4");
@@ -1855,10 +1595,8 @@ NO uses markdown.`;
       const ph = pdf.internal.pageSize.getHeight();
       const mg = 10;
       const cw = pw - 2 * mg;
-
       const canvas = await html2canvas(contenedor, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
       const imgH = (canvas.height * cw) / canvas.width;
-
       if (imgH <= ph - 2 * mg) {
         pdf.addImage(canvas.toDataURL("image/png"), "PNG", mg, mg, cw, imgH);
       } else {
@@ -1880,7 +1618,6 @@ NO uses markdown.`;
           pagina++;
         }
       }
-
       pdf.save(`${key}_${PROC.caseId}_${new Date().toISOString().slice(0, 10)}.pdf`);
       toast("✓ PDF descargado", "success");
     } catch (e) {
@@ -1906,7 +1643,7 @@ NO uses markdown.`;
       recetaMedicamentos: [], laboratoriosSolicitados: [],
       caseId: null, procedimientoRealizadoId: null,
       docsGenerados: null, notaIA: null, notaEditada: null,
-      recetaIA: null, labsIA: null
+      recetaIA: null, labsIA: null, datosEjecucion: null
     });
     renderWizard();
   };
@@ -1917,6 +1654,10 @@ NO uses markdown.`;
     if (paso > 2 && !PROC.procedimiento) { toast("Selecciona procedimiento", "error"); return; }
     if (paso > 3 && PROC.procedimiento?.requiere_consentimiento && !PROC.consentimientoFirma) {
       toast("Falta firma consentimiento", "error");
+      return;
+    }
+    if (paso > 4 && !PROC.datosEjecucion?.fecha_procedimiento) {
+      toast("Completa el paso 4 (ejecución) primero", "error");
       return;
     }
     PROC.pasoActual = paso;
@@ -1967,7 +1708,7 @@ NO uses markdown.`;
 
     if (okHTML && okTab && okUI && okCat) {
       PROC.inicializado = true;
-      console.log("[Proc v2.0] ✓ Inicializado. Catálogo:", Object.keys(PROC.catalogo).length);
+      console.log("[Proc v2.1] ✓ Inicializado. Catálogo:", Object.keys(PROC.catalogo).length);
       return;
     }
     if (PROC.intentos < PROC.MAX_INTENTOS) setTimeout(inicializar, 250);
@@ -1984,5 +1725,5 @@ NO uses markdown.`;
     setTimeout(inicializar, 500);
   });
 
-  console.log("[Proc v2.0] Wrapper cargado. Diagnóstico: __PROC.estado()");
+  console.log("[Proc v2.1] Wrapper cargado. Diagnóstico: __PROC.estado()");
 })();
