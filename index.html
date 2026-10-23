@@ -5560,12 +5560,11 @@ function ajustarUIPorRol(rol) {
   // ═══ 4. FILTRAR TABS SEGÚN ROL ═══
   const tabsPermitidosPorRol = {
     admin:    ["captura", "consulta", "pacientes", "informes", "mis-envios", 
-               "por-firmar", "prompts", "admin", "config"],
+               "por-firmar", "prompts", "admin", "config", "procedimientos"],
     medico:   ["captura", "consulta", "pacientes", "informes", 
-               "por-firmar"],
-    operador: ["captura", "consulta","mis-envios", "mis-solicitudes", "config"]
-               
-  };
+               "por-firmar", "procedimientos"],
+    operador: ["captura", "consulta","mis-envios", "mis-solicitudes", "config", "procedimientos"]
+};
   
   const permitidos = tabsPermitidosPorRol[rol] || tabsPermitidosPorRol.operador;
   
@@ -24687,8 +24686,9 @@ document.addEventListener("visibilitychange", function() {
     "captura",
     "consulta",
     "pacientes",
-    "informes"
-  ];
+    "informes",
+    "procedimientos"
+];
   
   const TABS_BLOQUEADOS_MEDICO = [
     "admin",
@@ -25614,8 +25614,9 @@ document.addEventListener("visibilitychange", function() {
     "mis-envios",
     "mis-notificaciones",
     "mis-solicitudes",
-    "config"
-  ];
+    "config",
+    "procedimientos"
+];
 
   const TABS_BLOQUEADOS_OPERADOR = [
     "admin",
