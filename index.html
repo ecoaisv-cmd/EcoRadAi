@@ -6014,7 +6014,6 @@ async function obtenerArtifactsPorCasoDB(caseId) {
    PORTAL DEL PACIENTE v24.6 — FINAL
    Carga tamizajes Y consultas, con soporte para duplicados
    ═══════════════════════════════════════════════════════════ */
-
 async function cargarPortalPaciente() {
   if (!usuarioActual || usuarioActual.rol !== "paciente") return;
 
@@ -6033,71 +6032,64 @@ async function cargarPortalPaciente() {
       return;
     }
 
-    console.log("[Portal] Cargando para:", subjectId);
+    console.log("[Portal v24.7] Cargando para:", subjectId);
 
-    // ═══ 1. Cargar tamizajes ═══
+    // ═══════════════════════════════════════════════════════════
+    // 1. TAMIZAJES
+    // ═══════════════════════════════════════════════════════════
     const { data: casosRaw } = await window.supabaseClient
       .from("cases")
       .select("case_id, subject_id, payload, created_at")
       .eq("subject_id", subjectId)
       .order("created_at", { ascending: false });
-
     const casos = casosRaw || [];
 
-    // ═══ 2. Cargar consultas firmadas ═══
+    // ═══════════════════════════════════════════════════════════
+    // 2. CONSULTAS FIRMADAS
+    // ═══════════════════════════════════════════════════════════
     const { data: consultasRaw } = await window.supabaseClient
       .from("consultas")
       .select("consulta_id, case_id, subject_id, fecha_consulta, tipo, estado, motivo_consulta, cie10_principal, nivel_riesgo, complejidad, medico_nombre, created_at")
       .eq("subject_id", subjectId)
       .in("estado", ["firmada", "rectificada"])
       .order("created_at", { ascending: false });
-
     const consultas = consultasRaw || [];
 
-    console.log("[Portal] Tamizajes:", casos.length, "· Consultas:", consultas.length);
+    // ═══════════════════════════════════════════════════════════
+    // 3. PROCEDIMIENTOS  ← NUEVO v24.7
+    // ═══════════════════════════════════════════════════════════
+    const { data: procedimientosRaw } = await window.supabaseClient
+      .from("procedimientos_realizados")
+      .select("procedimiento_realizado_id, case_id, subject_id, procedimiento_id, fecha_procedimiento, estado, medico_nombre, operador_nombre, complejidad_final, created_at")
+      .eq("subject_id", subjectId)
+      .in("estado", ["firmado", "pendiente_firma"])
+      .order("created_at", { ascending: false });
+    const procedimientos = procedimientosRaw || [];
 
-    const total = casos.length + consultas.length;
+    console.log("[Portal v24.7] Tamizajes:", casos.length, "· Consultas:", consultas.length, "· Procedimientos:", procedimientos.length);
+
+    const total = casos.length + consultas.length + procedimientos.length;
     if (total === 0) {
       contenedor.innerHTML = `
         <div class="empty-state">
           <div class="icon">📭</div>
           <p>No tienes informes disponibles todavía.</p>
           <p style="font-size:11px;color:var(--text-tertiary);margin-top:8px">
-            Si ya te realizaron un tamizaje o consulta, contacta a tu médico.
+            Si ya te realizaron un tamizaje, consulta o procedimiento, contacta a tu médico.
           </p>
         </div>
       `;
       return;
     }
 
-    // ═══ 3. Unificar eventos ═══
-    const eventos = [
-      ...casos.map(c => ({
-        kind: "tamizaje",
-        id: c.case_id,
-        fecha: c.payload?.encounter?.fecha || c.created_at?.slice(0, 10) || "—",
-        timestamp: new Date(c.created_at || 0).getTime(),
-        nombreTamizaje: TAMIZAJES_REGISTRY.obtener(c.payload?.encounter?.estudio)?.meta?.nombre || "Tamizaje",
-        nivel: normalizarNivel(c.payload?.riesgo_global?.nivel || "MODERADO"),
-        imagenes: c.payload?.acquisition?.imagenes || []
-      })),
-      ...consultas.map(c => ({
-        kind: "consulta",
-        id: c.consulta_id,
-        caseId: c.case_id,
-        fecha: c.fecha_consulta || c.created_at?.slice(0, 10) || "—",
-        timestamp: new Date(c.created_at || 0).getTime(),
-        nombreTamizaje: `Consulta — ${(c.tipo || "").replace(/_/g, " ")}`,
-        nivel: normalizarNivel(c.nivel_riesgo || "MODERADO"),
-        motivo: c.motivo_consulta,
-        cie10: c.cie10_principal,
-        medico: c.medico_nombre,
-        complejidad: c.complejidad
-      }))
-    ].sort((a, b) => b.timestamp - a.timestamp);
-
-    // ═══ 4. Cargar artifacts ═══
-    const todosCaseIds = eventos.map(e => e.kind === "tamizaje" ? e.id : e.caseId).filter(Boolean);
+    // ═══════════════════════════════════════════════════════════
+    // 4. CARGAR ARTIFACTS en un solo query batch
+    // ═══════════════════════════════════════════════════════════
+    const todosCaseIds = [
+      ...casos.map(c => c.case_id),
+      ...consultas.map(c => c.case_id),
+      ...procedimientos.map(p => p.case_id)
+    ].filter(Boolean);
 
     const { data: arts } = await window.supabaseClient
       .from("artifacts")
@@ -6112,69 +6104,131 @@ async function cargarPortalPaciente() {
       }
     });
 
-    console.log("[Portal] artifactsMap:", artifactsMap);
+    // ═══════════════════════════════════════════════════════════
+    // 5. UNIFICAR EVENTOS
+    // ═══════════════════════════════════════════════════════════
+    const eventos = [
+      ...casos.map(c => ({
+        kind: "tamizaje",
+        id: c.case_id,
+        fecha: c.payload?.encounter?.fecha || c.created_at?.slice(0, 10) || "—",
+        timestamp: new Date(c.created_at || 0).getTime(),
+        nombreTamizaje: TAMIZAJES_REGISTRY.obtener(c.payload?.encounter?.estudio)?.meta?.nombre || "Tamizaje",
+        nivel: normalizarNivel(c.payload?.riesgo_global?.nivel || "MODERADO"),
+        imagenes: c.payload?.acquisition?.imagenes || [],
+        caseId: c.case_id
+      })),
 
-    // ═══ 5. Renderizar ═══
+      ...consultas.map(c => ({
+        kind: "consulta",
+        id: c.consulta_id,
+        caseId: c.case_id,
+        fecha: c.fecha_consulta || c.created_at?.slice(0, 10) || "—",
+        timestamp: new Date(c.created_at || 0).getTime(),
+        nombreTamizaje: `Consulta — ${(c.tipo || "").replace(/_/g, " ")}`,
+        nivel: normalizarNivel(c.nivel_riesgo || "MODERADO"),
+        motivo: c.motivo_consulta,
+        cie10: c.cie10_principal,
+        medico: c.medico_nombre,
+        complejidad: c.complejidad,
+        caseId: c.case_id
+      })),
+
+      ...procedimientos.map(p => ({
+        kind: "procedimiento",
+        id: p.procedimiento_realizado_id,
+        caseId: p.case_id,
+        fecha: p.fecha_procedimiento || p.created_at?.slice(0, 10) || "—",
+        timestamp: new Date(p.created_at || 0).getTime(),
+        nombreTamizaje: `Procedimiento — ${(p.procedimiento_id || "").replace(/_/g, " ")}`,
+        nivel: "BAJO",
+        medico: p.medico_nombre,
+        operador: p.operador_nombre,
+        complejidad: p.complejidad_final,
+        estadoProc: p.estado,
+        caseId: p.case_id
+      }))
+    ].sort((a, b) => b.timestamp - a.timestamp);
+
+    // ═══════════════════════════════════════════════════════════
+    // 6. RENDERIZAR
+    // ═══════════════════════════════════════════════════════════
     contenedor.innerHTML = eventos.map(e => {
       const nc = e.nivel === "MUY ALTO" ? "muy-alto"
                : e.nivel === "ALTO" ? "alto"
                : e.nivel === "MODERADO" ? "moderado"
                : "bajo";
 
-      const icono = e.kind === "tamizaje" ? "🩺" : "📋";
-      const colorBorde = e.kind === "tamizaje" ? "var(--accent)" : "var(--positive)";
+      const icono = e.kind === "tamizaje" ? "🩺"
+                  : e.kind === "consulta" ? "📋"
+                  : "🩹";
 
-      const caseIdParaVer = e.kind === "tamizaje" ? e.id : e.caseId;
-      const tipos = artifactsMap[caseIdParaVer] || [];
+      const colorBorde = e.kind === "tamizaje" ? "var(--accent)"
+                       : e.kind === "consulta" ? "var(--positive)"
+                       : "#d4a017";
 
+      const tipos = artifactsMap[e.caseId] || [];
       const botones = [];
 
       if (e.kind === "tamizaje") {
         if (tipos.includes("informeMedico")) {
-          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${caseIdParaVer}', 'informeMedico')">🩺 Informe médico</button>`);
+          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'informeMedico')">🩺 Informe médico</button>`);
         }
         if (tipos.includes("lite")) {
-          botones.push(`<button class="btn btn-success btn-sm" style="font-size:11px" onclick="verArtefacto('${caseIdParaVer}', 'lite')">📄 Informe lite</button>`);
+          botones.push(`<button class="btn btn-success btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'lite')">📄 Informe lite</button>`);
         }
         if (tipos.includes("receta")) {
-          botones.push(`<button class="btn btn-corp btn-sm" style="font-size:11px" onclick="verArtefacto('${caseIdParaVer}', 'receta')">💊 Receta</button>`);
+          botones.push(`<button class="btn btn-corp btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'receta')">💊 Receta</button>`);
         }
         if (tipos.includes("imagenes") || e.imagenes.length > 0) {
-          botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verImagenes('${caseIdParaVer}')">🖼️ Imágenes</button>`);
+          botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verImagenes('${e.caseId}')">🖼️ Imágenes</button>`);
         }
-      } else {
-        // Nota clínica
+      }
+
+      else if (e.kind === "consulta") {
         if (tipos.includes("notaClinica") || tipos.includes("nota_clinica")) {
           const tipoReal = tipos.includes("notaClinica") ? "notaClinica" : "nota_clinica";
-          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${caseIdParaVer}', '${tipoReal}')">📋 Nota clínica</button>`);
+          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipoReal}')">📋 Nota clínica</button>`);
         }
-        // Receta
         if (tipos.includes("receta")) {
-          botones.push(`<button class="btn btn-corp btn-sm" style="font-size:11px" onclick="verArtefacto('${caseIdParaVer}', 'receta')">💊 Receta</button>`);
+          botones.push(`<button class="btn btn-corp btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'receta')">💊 Receta</button>`);
         }
-        // Órdenes de laboratorio
         if (tipos.includes("orden_laboratorio") || tipos.includes("ordenesLab")) {
           const tipoReal = tipos.includes("orden_laboratorio") ? "orden_laboratorio" : "ordenesLab";
-          botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verArtefacto('${caseIdParaVer}', '${tipoReal}')">🔬 Lab</button>`);
+          botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipoReal}')">🔬 Lab</button>`);
         }
-        // Órdenes de imagen
         if (tipos.includes("orden_imagen") || tipos.includes("ordenesImagen")) {
           const tipoReal = tipos.includes("orden_imagen") ? "orden_imagen" : "ordenesImagen";
-          botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verArtefacto('${caseIdParaVer}', '${tipoReal}')">🖼️ Imagen</button>`);
+          botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipoReal}')">🖼️ Imagen</button>`);
         }
-        // Referencia
         if (tipos.includes("referencia")) {
-          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${caseIdParaVer}', 'referencia')">📤 Referencia</button>`);
+          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'referencia')">📤 Referencia</button>`);
         }
-        // Constancia incapacidad
         if (tipos.includes("constancia_incapacidad") || tipos.includes("constanciaIncapacidad")) {
           const tipoReal = tipos.includes("constancia_incapacidad") ? "constancia_incapacidad" : "constanciaIncapacidad";
-          botones.push(`<button class="btn btn-danger btn-sm" style="font-size:11px" onclick="verArtefacto('${caseIdParaVer}', '${tipoReal}')">📝 Incapacidad</button>`);
+          botones.push(`<button class="btn btn-danger btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipoReal}')">📝 Incapacidad</button>`);
         }
-        // Constancia acompañamiento
         if (tipos.includes("constancia_acompanamiento") || tipos.includes("constanciaAcompanamiento")) {
           const tipoReal = tipos.includes("constancia_acompanamiento") ? "constancia_acompanamiento" : "constanciaAcompanamiento";
-          botones.push(`<button class="btn btn-danger btn-sm" style="font-size:11px" onclick="verArtefacto('${caseIdParaVer}', '${tipoReal}')">👨‍👩‍👧 Acompañamiento</button>`);
+          botones.push(`<button class="btn btn-danger btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipoReal}')">👨‍👩‍👧 Acompañamiento</button>`);
+        }
+      }
+
+      else if (e.kind === "procedimiento") {
+        if (tipos.includes("nota_procedimiento")) {
+          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'nota_procedimiento')">🩹 Nota procedimiento</button>`);
+        }
+        if (tipos.includes("receta")) {
+          botones.push(`<button class="btn btn-corp btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'receta')">💊 Receta</button>`);
+        }
+        if (tipos.includes("orden_laboratorio")) {
+          botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'orden_laboratorio')">🔬 Lab</button>`);
+        }
+        if (tipos.includes("consentimiento")) {
+          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'consentimiento')">✍️ Consentimiento</button>`);
+        }
+        if (tipos.includes("indicaciones_paciente")) {
+          botones.push(`<button class="btn btn-success btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'indicaciones_paciente')">📄 Indicaciones</button>`);
         }
       }
 
@@ -6187,11 +6241,12 @@ async function cargarPortalPaciente() {
                 📅 ${escapeHtml(e.fecha)}
                 ${e.medico ? ` · Dr(a). ${escapeHtml(e.medico)}` : ""}
                 ${e.complejidad ? ` · ${escapeHtml(e.complejidad)}` : ""}
+                ${e.estadoProc === "pendiente_firma" ? ' · ⏳ Pendiente firma' : ""}
               </div>
               ${e.cie10 ? `<div style="font-size:10px;color:var(--accent);font-weight:600;margin-top:3px">CIE-10: ${escapeHtml(e.cie10)}</div>` : ""}
               ${e.motivo ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:3px;line-height:1.4">${escapeHtml(e.motivo.substring(0, 100))}${e.motivo.length > 100 ? "…" : ""}</div>` : ""}
             </div>
-            <div class="timeline-risk ${nc}">${e.nivel}</div>
+            ${e.kind !== "procedimiento" ? `<div class="timeline-risk ${nc}">${e.nivel}</div>` : ""}
           </div>
 
           ${botones.length === 0
@@ -6200,7 +6255,7 @@ async function cargarPortalPaciente() {
                  <details style="margin-top:6px;text-align:left;font-size:10px">
                    <summary style="cursor:pointer">🔍 Diagnóstico</summary>
                    <div style="margin-top:4px;font-family:monospace;line-height:1.5;background:white;padding:6px;border-radius:4px;word-break:break-all">
-                     caseId: <strong>${escapeHtml(caseIdParaVer)}</strong><br>
+                     caseId: <strong>${escapeHtml(e.caseId)}</strong><br>
                      tipos: [${tipos.join(", ")}]<br>
                      kind: ${e.kind}
                    </div>
@@ -6212,11 +6267,10 @@ async function cargarPortalPaciente() {
       `;
     }).join("");
 
-    console.log("[Portal] ✅ Renderizado completo");
+    console.log("[Portal v24.7] ✅ Renderizado completo:", total, "eventos");
 
-  
   } catch (e) {
-    console.error("[Portal] Error:", e);
+    console.error("[Portal v24.7] Error:", e);
     contenedor.innerHTML = `
       <div class="empty-state">
         <div class="icon">⚠️</div>
@@ -6293,16 +6347,16 @@ async function verArtefacto(caseId, tipo) {
       }
     }
 
-    // ═══ CASO 2: Es un tamizaje (ECO-) ═══
-    if (!html && caseId.startsWith("ECO-")) {
-      const arts = await obtenerArtifactsPorCasoDB(caseId);
-      const art = arts.find(a => tiposBuscar.includes(a.tipo));
-      if (art?.html) {
-        html = art.html;
-        tipoReal = art.tipo;
-        console.log(`✅ Encontrado por obtenerArtifactsPorCasoDB: ${html.length} caracteres`);
-      }
-    }
+    // ═══ CASO 2: Es un tamizaje (ECO-) o procedimiento (PROC-) ═══
+if (!html && (caseId.startsWith("ECO-") || caseId.startsWith("PROC-"))) {
+  const arts = await obtenerArtifactsPorCasoDB(caseId);
+  const art = arts.find(a => tiposBuscar.includes(a.tipo));
+  if (art?.html) {
+    html = art.html;
+    tipoReal = art.tipo;
+    console.log(`✅ Encontrado por obtenerArtifactsPorCasoDB: ${html.length} caracteres`);
+  }
+}
 
     // ═══ CASO 3: Fallback genérico ═══
     if (!html) {
@@ -6329,22 +6383,26 @@ async function verArtefacto(caseId, tipo) {
     }
 
     // ═══ Mostrar modal ═══
-    const titulos = {
-      informeMedico: "🩺 Informe médico",
-      lite: "📄 Informe lite",
-      receta: "💊 Receta",
-      notaClinica: "📋 Nota clínica SOAP",
-      nota_clinica: "📋 Nota clínica SOAP",
-      orden_laboratorio: "🔬 Órdenes de laboratorio",
-      ordenesLab: "🔬 Órdenes de laboratorio",
-      orden_imagen: "🖼️ Órdenes de imagen",
-      ordenesImagen: "🖼️ Órdenes de imagen",
-      referencia: "📤 Hoja de referencia",
-      constancia_incapacidad: "📝 Constancia de incapacidad",
-      constanciaIncapacidad: "📝 Constancia de incapacidad",
-      constancia_acompanamiento: "👨‍👩‍👧 Constancia de acompañamiento",
-      constanciaAcompanamiento: "👨‍👩‍👧 Constancia de acompañamiento"
-    };
+   const titulos = {
+  informeMedico: "🩺 Informe médico",
+  lite: "📄 Informe lite",
+  receta: "💊 Receta",
+  notaClinica: "📋 Nota clínica SOAP",
+  nota_clinica: "📋 Nota clínica SOAP",
+  orden_laboratorio: "🔬 Órdenes de laboratorio",
+  ordenesLab: "🔬 Órdenes de laboratorio",
+  orden_imagen: "🖼️ Órdenes de imagen",
+  ordenesImagen: "🖼️ Órdenes de imagen",
+  referencia: "📤 Hoja de referencia",
+  constancia_incapacidad: "📝 Constancia de incapacidad",
+  constanciaIncapacidad: "📝 Constancia de incapacidad",
+  constancia_acompanamiento: "👨‍👩‍👧 Constancia de acompañamiento",
+  constanciaAcompanamiento: "👨‍👩‍👧 Constancia de acompañamiento",
+  // ═══ NUEVO v24.7 — Procedimientos ═══
+  nota_procedimiento: "🩹 Nota de procedimiento",
+  consentimiento: "✍️ Consentimiento informado",
+  indicaciones_paciente: "📄 Indicaciones al paciente"
+};
 
     const overlay = document.createElement("div");
     overlay.id = "modal-artefacto";
