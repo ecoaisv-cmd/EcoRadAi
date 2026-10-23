@@ -27864,7 +27864,7 @@ REGLAS:
   // ═══════════════════════════════════════════════════════════
   // FORMULARIO (con textarea de alcaldía editable)
   // ═══════════════════════════════════════════════════════════
-  function renderFormularioActa() {
+   function renderFormularioActa() {
     const cont = $id("ad-nueva-contenido");
     if (!cont) return;
 
@@ -28079,14 +28079,16 @@ REGLAS:
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="form-group">
-            <label>Parentesco</label>
+            <label>Parentesco *</label>
             <select id="ad-informante-parentesco">
-              <option value="">—</option>
-              <option value="conyuge">Cónyuge</option>
-              <option value="hijo">Hijo/a</option>
+              <option value="">— Seleccionar —</option>
               <option value="padre">Padre</option>
               <option value="madre">Madre</option>
-              <option value="hermano">Hermano/a</option>
+              <option value="hijo">Hijo</option>
+              <option value="hija">Hija</option>
+              <option value="conyuge">Cónyuge</option>
+              <option value="hermano">Hermano</option>
+              <option value="hermana">Hermana</option>
               <option value="otro_familiar">Otro familiar</option>
               <option value="amigo">Amigo/a</option>
               <option value="autoridad">Autoridad</option>
@@ -28096,6 +28098,25 @@ REGLAS:
           <div class="form-group">
             <label>DUI</label>
             <input type="text" id="ad-informante-dui">
+          </div>
+        </div>
+
+        <!-- NUEVO: Campo de estado civil y ocupación para el acta -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+          <div class="form-group">
+            <label>Estado civil del fallecido</label>
+            <select id="ad-estado-civil">
+              <option value="">— Seleccionar —</option>
+              <option value="soltero">Soltero/a</option>
+              <option value="casado">Casado/a</option>
+              <option value="acompanado">Acompañado/a</option>
+              <option value="viudo">Viudo/a</option>
+              <option value="divorciado">Divorciado/a</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Ocupación del fallecido</label>
+            <input type="text" id="ad-ocupacion-fallecido" placeholder="Ej: Agricultor">
           </div>
         </div>
 
@@ -28147,7 +28168,6 @@ REGLAS:
           <div id="ad-ia-narrativa" style="background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:16px;font-size:12px;line-height:1.6;max-height:600px;overflow-y:auto"></div>
         </div>
 
-        <!-- ═══ FIX 5: Textarea editable del acta de alcaldía ═══ -->
         <div id="ad-alcaldia-resultado" style="display:none;margin-top:20px">
           <div style="background:#f0f7ff;border:2px solid #0071e3;border-radius:12px;padding:16px;margin-bottom:14px">
             <div style="font-size:12px;font-weight:700;color:#0051a3;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
@@ -28169,7 +28189,7 @@ REGLAS:
                         padding:12px;
                         border:2px solid #0071e3;
                         border-radius:8px;
-                        font-family:var(--font-mono);
+                        font-family:var(--font-sans);
                         background:#ffffff !important;
                         color:#1d1d1f !important;
                         resize:vertical;
@@ -28203,7 +28223,6 @@ REGLAS:
     const selM = $id("ad-municipio");
     if (selM) selM.innerHTML = '<option value="">—</option>';
 
-    // Si estamos en modo rectificación, precargar el paciente original
     if (AD.modoRectificacion && AD.actaOriginal) {
       precargarActaParaRectificacion(AD.actaOriginal);
     }
@@ -28771,7 +28790,7 @@ REGLAS:
     wrap.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function poblarTextareaAlcaldia() {
+    function poblarTextareaAlcaldia() {
     const ta = $id("ad-alcaldia-edit");
     const wrap = $id("ad-alcaldia-resultado");
     if (!ta || !wrap) return;
@@ -28780,53 +28799,46 @@ REGLAS:
     const p = AD.pacienteSeleccionado;
     if (!p) return;
 
-    const actaTemp = {
-      subject_id: p.subject_id,
-      paciente_nombre: p.nombre,
-      paciente_edad: p.edad,
-      paciente_sexo: p.sexo,
-      paciente_dui: p.dui || null,
-      paciente_fecha_nacimiento: p.fecha_nacimiento || null,
-      paciente_departamento: p.departamento || null,
-      paciente_municipio: p.municipio || null,
-      fecha_defuncion: v("ad-fecha-defuncion"),
-      hora_defuncion: v("ad-hora-defuncion") || null,
-      departamento_defuncion: v("ad-departamento"),
-      municipio_defuncion: v("ad-municipio"),
-      lugar_defuncion: v("ad-lugar"),
-      intrahospitalaria: v("ad-intrahospitalaria") === "true",
-      establecimiento_salud: v("ad-establecimiento") || null,
-      causa_a: v("ad-causa-a"),
-      codigo_a: v("ad-codigo-a") || null,
-      causa_b: v("ad-causa-b") || null,
-      codigo_b: v("ad-codigo-b") || null,
-      causa_c: v("ad-causa-c") || null,
-      codigo_c: v("ad-codigo-c") || null,
-      causa_basica: v("ad-causa-basica"),
-      codigo_basica: v("ad-codigo-basica"),
-      otros_estados: v("ad-otros-estados") || null,
-      manera_muerte: v("ad-manera"),
-      autopsia: v("ad-autopsia") === "true",
-      notificado_fiscalia: $id("ad-notificado-fiscalia")?.checked || false,
-      informante_nombre: v("ad-informante-nombre"),
-      informante_parentesco: v("ad-informante-parentesco") || null,
-      informante_dui: v("ad-informante-dui") || null,
-      informante_telefono: v("ad-informante-telefono") || null,
-      informante_direccion: v("ad-informante-direccion") || null,
-      observaciones: v("ad-observaciones") || null,
-      medico_nombre: window.usuarioActual?.nombre || "Médico",
-      medico_csspm: AD.medicoPerfil?.csspm || "N/E",
-      medico_especialidad: AD.medicoPerfil?.especialidad || "Médico General",
-      firma_hash: "pendiente-de-firma",
-      firmada_at: new Date().toISOString()
-    };
+    // Generar un texto narrativo (formato de borrador) en lugar de HTML puro
+    const narrativaAlcaldia = `ACTA DE DEFUNCIÓN - BORRADOR PARA ALCALDÍA
+--------------------------------------------------
+DATOS DEL FALLECIDO:
+Nombre: ${p.nombre}
+DUI: ${p.dui || "—"}
+Edad: ${p.edad || "—"} años
+Sexo: ${p.sexo || "—"}
+Estado Familiar: ${v("ad-estado-civil") || "—"}
+Ocupación: ${v("ad-ocupacion-fallecido") || "—"}
+Nacionalidad: Salvadoreña
+Departamento: ${p.departamento || "—"}
+Municipio: ${p.municipio || "—"}
+Nombre del padre: —
+Nombre de la madre: —
 
-    const htmlAlcaldia = construirHTMLActaAlcaldia(actaTemp, { acta_id: "BORRADOR" });
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlAlcaldia, "text/html");
-    ta.value = doc.body.innerHTML;
+DATOS DEL FALLECIMIENTO:
+Fecha: ${v("ad-fecha-defuncion")}
+Hora: ${v("ad-hora-defuncion")}
+Lugar: ${v("ad-lugar")}, ${v("ad-municipio")}, ${v("ad-departamento")}
+Establecimiento: ${v("ad-establecimiento") || "No aplica"}
+Intrahospitalaria: ${v("ad-intrahospitalaria") === "true" ? "SÍ" : "NO"}
+
+CAUSA DE DEFUNCIÓN (CIE-10):
+Causa directa (a): ${v("ad-causa-a")} [${v("ad-codigo-a")}]
+${v("ad-causa-b") ? `Causa antecedente (b): ${v("ad-causa-b")} [${v("ad-codigo-b")}]\n` : ""}${v("ad-causa-c") ? `Causa antecedente (c): ${v("ad-causa-c")} [${v("ad-codigo-c")}]\n` : ""}Causa básica: ${v("ad-causa-basica")} [${v("ad-codigo-basica")}]
+Manera de muerte: ${v("ad-manera")}
+Autopsia: ${v("ad-autopsia") === "true" ? "SÍ" : "NO"}
+
+INFORMANTE:
+Nombre: ${v("ad-informante-nombre")}
+Parentesco: ${v("ad-informante-parentesco")}
+DUI: ${v("ad-informante-dui")}
+
+OBSERVACIONES:
+${v("ad-observaciones") || "Sin observaciones adicionales."}`;
+
+    ta.value = narrativaAlcaldia;
     wrap.style.display = "block";
-    console.log("[ActaDefunción] ✓ Textarea de alcaldía poblado");
+    console.log("[ActaDefunción] ✓ Textarea de alcaldía poblado en formato narrativo");
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -29590,17 +29602,31 @@ REGLAS:
   // ═══════════════════════════════════════════════════════════
   // GENERAR PDF ALCALDÍA
   // ═══════════════════════════════════════════════════════════
-  async function generarPDFActaAlcaldia(acta, registro) {
+   async function generarPDFActaAlcaldia(acta, registro) {
     if (typeof html2canvas === "undefined") throw new Error("html2canvas no cargado");
 
     let htmlAlcaldia;
-    if (acta.informe_alcaldia_editado && acta.informe_alcaldia_editado.trim().length > 50) {
+    if (acta.informe_alcaldia_editado && acta.informe_alcaldia_editado.trim().length > 10) {
+      // Si el texto no tiene etiquetas HTML, le aplicamos estilo para que respete los saltos de línea
+      const textoFormateado = acta.informe_alcaldia_editado.replace(/\n/g, "<br>");
+      
       htmlAlcaldia = `
-        <div style="font-family:Helvetica,Arial,sans-serif;color:#000;background:#fff;width:800px;font-size:11px;line-height:1.5">
-          ${acta.informe_alcaldia_editado}
+        <div style="font-family:Helvetica,Arial,sans-serif;color:#000;background:#fff;width:800px;font-size:12px;line-height:1.6;padding:40px;box-sizing:border-box;">
+          <div style="text-align:center;margin-bottom:30px;">
+            <h1 style="font-size:20px;font-weight:bold;margin:0;">ACTA DE DEFUNCIÓN</h1>
+            <p style="font-size:12px;color:#666;">Documento para Alcaldía</p>
+          </div>
+          <div style="white-space: pre-wrap; font-family: inherit;">${textoFormateado}</div>
+          
+          <div style="margin-top:80px; text-align:center;">
+            ${acta.sello_url ? `<img src="${acta.sello_url}" style="max-width:200px;">` : ""}
+            <div style="border-top:1px solid #000; width:60%; margin:20px auto;"></div>
+            <p style="font-weight:bold; margin:0;">${acta.medico_nombre}</p>
+            <p style="font-size:11px; margin:0;">JVPM: ${acta.medico_csspm}</p>
+          </div>
         </div>
       `;
-      console.log("[PDF Alcaldía] ✓ Usando HTML editado por el médico");
+      console.log("[PDF Alcaldía] ✓ Usando texto narrativo editado por el médico");
     } else {
       htmlAlcaldia = construirHTMLActaAlcaldia(acta, registro);
       console.log("[PDF Alcaldía] ℹ️ Usando HTML generado automáticamente");
@@ -29646,78 +29672,32 @@ REGLAS:
       const chMax = ph - 2 * mg;
       let y = mg;
 
-      const bloques = [];
-      const header = contenedor.querySelector(".alc-header");
-      if (header) bloques.push(header);
-      
-      const secciones = contenedor.querySelectorAll(".alc-seccion");
-      if (secciones.length > 0) {
-        secciones.forEach(s => bloques.push(s));
+      const canvas = await html2canvas(contenedor, { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false, windowWidth: 800 });
+      const imgW = cw;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      const imgData = canvas.toDataURL("image/png");
+
+      if (imgH <= chMax) {
+        pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
       } else {
-        bloques.push(contenedor.firstElementChild || contenedor);
-      }
-      
-      const firma = contenedor.querySelector(".alc-firma");
-      if (firma && !bloques.includes(firma)) bloques.push(firma);
-
-      for (const bloque of bloques) {
-        const rect = bloque.getBoundingClientRect();
-        if (rect.height < 2 || rect.width < 2) continue;
-
-        let canvas;
-        try {
-          canvas = await html2canvas(bloque, {
-            scale: 2, useCORS: true, backgroundColor: "#ffffff",
-            logging: false, windowWidth: 800
-          });
-        } catch (err) { continue; }
-
-        if (!canvas || canvas.width === 0) continue;
-
-        const imgW = cw;
-        const imgH = (canvas.height * imgW) / canvas.width;
-        const imgData = canvas.toDataURL("image/png");
-
-        if (y + imgH <= ph - mg - 5) {
-          pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
-          y += imgH + 3;
-        } else if (imgH <= chMax) {
-          pdf.addPage();
-          y = mg;
-          pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
-          y += imgH + 3;
-        } else {
-          if (y > mg + 1) { pdf.addPage(); y = mg; }
-          const pxPorMm = canvas.width / imgW;
-          const altoPaginaPx = chMax * pxPorMm;
-          let offsetY = 0;
-          let primerCorte = true;
-          while (offsetY < canvas.height) {
-            const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
-            const temp = document.createElement("canvas");
-            temp.width = canvas.width;
-            temp.height = altoCorte;
-            const ctx = temp.getContext("2d");
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(0, 0, temp.width, temp.height);
-            ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
-            if (!primerCorte) pdf.addPage();
-            pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoCorte / pxPorMm);
-            offsetY += altoCorte;
-            primerCorte = false;
-          }
-          y = mg;
+        const pxPorMm = canvas.width / imgW;
+        const altoPaginaPx = chMax * pxPorMm;
+        let offsetY = 0;
+        let primerCorte = true;
+        while (offsetY < canvas.height) {
+          const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
+          const temp = document.createElement("canvas");
+          temp.width = canvas.width;
+          temp.height = altoCorte;
+          const ctx = temp.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, temp.width, temp.height);
+          ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
+          if (!primerCorte) pdf.addPage();
+          pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoCorte / pxPorMm);
+          offsetY += altoCorte;
+          primerCorte = false;
         }
-      }
-
-      const totalPags = pdf.internal.getNumberOfPages();
-      for (let i = 1; i <= totalPags; i++) {
-        pdf.setPage(i);
-        pdf.setFontSize(7);
-        pdf.setTextColor(150);
-        pdf.text("EcoRadAi · Acta para Alcaldía · " + new Date().toLocaleDateString("es-ES"), mg, ph - 6);
-        pdf.text("Página " + i + " de " + totalPags, pw - mg, ph - 6, { align: "right" });
-        pdf.text("Acta: " + (registro?.acta_id || "—"), pw - mg, ph - 3, { align: "right" });
       }
 
       return pdf.output("blob");
