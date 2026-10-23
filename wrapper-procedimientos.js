@@ -1726,4 +1726,430 @@ Sin markdown.`;
   });
 
   console.log("[Proc v2.1] Wrapper cargado. Diagnóstico: __PROC.estado()");
+/* ═══════════════════════════════════════════════════════════════
+   HISTORIAL DE PROCEDIMIENTOS — v2.1
+   Inyecta su propia pestaña dentro de #sec-informes
+   Sin tocar el monolito. Autónomo.
+   ═══════════════════════════════════════════════════════════════ */
+
+(function() {
+  "use strict";
+
+  console.log("[Proc Historial v2.1] Iniciando...");
+
+  const PH = {
+    inicializado: false,
+    intentos: 0,
+    MAX_INTENTOS: 40,
+    cache: [],
+    filtroEstado: "todos",
+    busqueda: ""
+  };
+
+  window.__PROC_HISTORIAL = {
+    estado: () => ({
+      inicializado: PH.inicializado,
+      intentos: PH.intentos,
+      procedimientos: PH.cache.length,
+      filtro: PH.filtroEstado
+    }),
+    recargar: () => window.procHistorialCargar(),
+    diagnosticar: async () => {
+      if (!window.supabaseClient) return "Sin Supabase";
+      const { data, error } = await window.supabaseClient
+        .from("procedimientos_realizados")
+        .select("*")
+        .limit(5);
+      console.log("Diagnóstico procedimientos:", { data, error });
+      return { data, error };
+    }
+  };
+
+  const esc = window.escapeHtml || function(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  };
+  const toast = window.showStatus || function(msg, tipo) {
+    console.log("[Proc Historial]", tipo || "info", msg);
+  };
+  function $id(id) { return document.getElementById(id); }
+  function debounce(fn, ms) {
+    let t;
+    return function() {
+      clearTimeout(t);
+      const ctx = this, args = arguments;
+      t = setTimeout(() => fn.apply(ctx, args), ms);
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // INYECTAR PESTAÑA DENTRO DE #sec-informes
+  // ═══════════════════════════════════════════════════════════
+  function inyectarSeccionHistorial() {
+    const secInformes = $id("sec-informes");
+    if (!secInformes) return false;
+
+    // Si ya existe, no duplicar
+    if ($id("proc-historial-wrap")) return true;
+
+    // Añadir selector de tipo arriba (encima del buscador de informes)
+    const card = secInformes.querySelector(".card");
+    if (!card) return false;
+
+    const wrap = document.createElement("div");
+    wrap.id = "proc-historial-wrap";
+    wrap.style.cssText = "margin-top:16px;padding-top:16px;border-top:2px dashed var(--border)";
+
+    wrap.innerHTML = `
+      <div class="card-title" style="margin-bottom:10px">
+        <span class="num" style="background:#d4a017">🩹</span>
+        <span>Historial de procedimientos</span>
+        <button class="btn btn-secondary btn-xs" style="margin-left:auto" onclick="procHistorialCargar()">🔄</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <div class="form-group" style="margin-bottom:0">
+          <label style="font-size:11px;font-weight:600">Estado</label>
+          <select id="proc-hist-estado" style="font-size:12px" onchange="procHistorialCambiarFiltro(this.value)">
+            <option value="todos">Todos</option>
+            <option value="borrador">Borrador</option>
+            <option value="firmado">Firmado</option>
+            <option value="anulado">Anulado</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label style="font-size:11px;font-weight:600">Límite</label>
+          <input type="number" id="proc-hist-limit" value="100" min="10" max="500"
+                 style="font-size:12px" onchange="procHistorialCargar()">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px">
+        <input type="text" id="proc-hist-buscar"
+               placeholder="🔍 Buscar por paciente, procedimiento o ID..."
+               oninput="procHistorialBuscar(this.value)"
+               style="font-size:12px">
+      </div>
+
+      <div id="proc-hist-lista">
+        <div class="empty-state"><div class="icon">⏳</div><p>Cargando procedimientos...</p></div>
+      </div>
+    `;
+
+    card.appendChild(wrap);
+    console.log("[Proc Historial v2.1] ✓ Sección inyectada en #sec-informes");
+    return true;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // CARGAR PROCEDIMIENTOS
+  // ═══════════════════════════════════════════════════════════
+  window.procHistorialCargar = async function() {
+    const cont = $id("proc-hist-lista");
+    if (!cont) return;
+    if (!window.supabaseClient) {
+      cont.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Sin conexión a Supabase</p></div>';
+      return;
+    }
+
+    cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
+
+    const estado = $id("proc-hist-estado")?.value || "todos";
+    const limite = parseInt($id("proc-hist-limit")?.value) || 100;
+
+    try {
+      let query = window.supabaseClient
+        .from("procedimientos_realizados")
+        .select("procedimiento_realizado_id, case_id, subject_id, procedimiento_id, fecha_procedimiento, estado, medico_nombre, operador_nombre, created_at")
+        .order("created_at", { ascending: false })
+        .limit(limite);
+
+      if (estado !== "todos") query = query.eq("estado", estado);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      PH.cache = data || [];
+
+      // Cargar nombres de pacientes en batch
+      const subjectIds = [...new Set(PH.cache.map(p => p.subject_id).filter(Boolean))];
+      let mapaPacientes = {};
+      if (subjectIds.length > 0) {
+        const { data: pacs } = await window.supabaseClient
+          .from("patients")
+          .select("subject_id, nombre, edad, sexo")
+          .in("subject_id", subjectIds);
+        if (pacs) mapaPacientes = Object.fromEntries(pacs.map(p => [p.subject_id, p]));
+      }
+
+      renderLista(mapaPacientes);
+
+    } catch (e) {
+      console.error("[procHistorialCargar]", e);
+      cont.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">⚠️</div>
+          <p>Error al cargar: ${esc(e.message)}</p>
+          <button class="btn btn-primary btn-sm" onclick="procHistorialCargar()" style="margin-top:10px">🔄 Reintentar</button>
+        </div>`;
+    }
+  };
+
+  function renderLista(mapaPacientes) {
+    const cont = $id("proc-hist-lista");
+    if (!cont) return;
+
+    let lista = PH.cache.slice();
+
+    // Filtro de búsqueda
+    const q = (PH.busqueda || "").toLowerCase().trim();
+    if (q) {
+      lista = lista.filter(p => {
+        const pac = mapaPacientes[p.subject_id] || {};
+        return (pac.nombre || "").toLowerCase().includes(q) ||
+               (p.procedimiento_id || "").toLowerCase().includes(q) ||
+               (p.case_id || "").toLowerCase().includes(q);
+      });
+    }
+
+    if (lista.length === 0) {
+      cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Sin procedimientos</p></div>';
+      return;
+    }
+
+    const estadoCfg = {
+      borrador: { color: "#86868b", label: "Borrador", icono: "📝" },
+      firmado:  { color: "#34c759", label: "Firmado",  icono: "✅" },
+      anulado:  { color: "#ff3b30", label: "Anulado",  icono: "❌" }
+    };
+
+    cont.innerHTML = `
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">
+        <strong>${lista.length}</strong> procedimiento(s)
+      </div>
+      ${lista.map(p => {
+        const pac = mapaPacientes[p.subject_id] || {};
+        const cfg = estadoCfg[p.estado] || estadoCfg.borrador;
+        return `
+          <div class="card" style="border-left:4px solid ${cfg.color};padding:12px;margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+              <div style="flex:1;min-width:200px">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                  <div style="font-size:13px;font-weight:700;color:var(--corp)">
+                    🩹 ${esc(pac.nombre || "Sin nombre")}
+                  </div>
+                  <span style="background:${cfg.color};color:white;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px;text-transform:uppercase">
+                    ${cfg.icono} ${cfg.label}
+                  </span>
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary)">
+                  <strong>Procedimiento:</strong> ${esc((p.procedimiento_id || "").replace(/_/g, " "))}
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">
+                  📅 ${esc(p.fecha_procedimiento || "")}
+                  ${pac.edad ? " · " + pac.edad + " años" : ""}
+                  ${p.medico_nombre ? " · 🩺 " + esc(p.medico_nombre) : ""}
+                  ${p.operador_nombre ? " · 👤 " + esc(p.operador_nombre) : ""}
+                </div>
+                <div style="font-size:9px;color:var(--text-tertiary);margin-top:4px;font-family:var(--font-mono)">
+                  ${esc(p.case_id)}
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <button class="btn btn-primary btn-xs" style="font-size:10px"
+                        onclick="procHistorialVer('${p.case_id}')">
+                  👁️ Ver documentos
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    `;
+  }
+
+  window.procHistorialCambiarFiltro = function(estado) {
+    PH.filtroEstado = estado;
+    window.procHistorialCargar();
+  };
+
+  window.procHistorialBuscar = debounce(function(valor) {
+    PH.busqueda = valor;
+    window.procHistorialCargar();
+  }, 300);
+
+  // ═══════════════════════════════════════════════════════════
+  // VER DOCUMENTOS DEL PROCEDIMIENTO
+  // ═══════════════════════════════════════════════════════════
+  window.procHistorialVer = async function(caseId) {
+    if (!window.supabaseClient) { toast("Sin conexión", "error"); return; }
+
+    toast("Cargando documentos...", "info");
+
+    try {
+      // 1. Datos del procedimiento
+      const { data: proc, error: errP } = await window.supabaseClient
+        .from("procedimientos_realizados")
+        .select("*")
+        .eq("case_id", caseId)
+        .maybeSingle();
+
+      if (errP || !proc) throw new Error("Procedimiento no encontrado");
+
+      // 2. Paciente
+      const { data: pac } = await window.supabaseClient
+        .from("patients")
+        .select("nombre, edad, sexo, subject_id")
+        .eq("subject_id", proc.subject_id)
+        .maybeSingle();
+
+      // 3. Artifacts
+      const { data: arts, error: errA } = await window.supabaseClient
+        .from("artifacts")
+        .select("tipo, html")
+        .eq("case_id", caseId);
+
+      if (errA) throw new Error("Error leyendo documentos: " + errA.message);
+
+      const docs = {};
+      (arts || []).forEach(a => { if (a.html) docs[a.tipo] = a.html; });
+
+      // 4. Modal
+      const overlay = document.createElement("div");
+      overlay.id = "modal-proc-hist";
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);z-index:99999;overflow-y:auto;padding:16px";
+
+      const titulos = {
+        nota_procedimiento: "🩹 Nota del procedimiento",
+        receta: "💊 Receta",
+        orden_laboratorio: "🔬 Órdenes de laboratorio",
+        orden_imagen: "🖼️ Órdenes de imagen",
+        referencia: "📤 Hoja de referencia",
+        consentimiento: "✍️ Consentimiento",
+        constancia_incapacidad: "📝 Incapacidad",
+        constancia_acompanamiento: "👨‍👩‍👧 Acompañamiento"
+      };
+
+      let docsHTML = "";
+      if (Object.keys(docs).length === 0) {
+        docsHTML = `
+          <div style="background:#fff9e6;border-left:4px solid #ff9500;border-radius:0 8px 8px 0;padding:16px;font-size:12px;color:#8a6a00;text-align:center">
+            <div style="font-size:32px;margin-bottom:8px">⚠️</div>
+            Este procedimiento no tiene documentos guardados.
+          </div>
+        `;
+      } else {
+        Object.entries(docs).forEach(([tipo, html]) => {
+          docsHTML += `
+            <div style="margin-bottom:24px">
+              <div style="
+                position:sticky;top:0;z-index:1;
+                background:var(--bg);padding:8px 12px;
+                border-left:4px solid var(--accent);
+                border-radius:0 6px 6px 0;
+                font-size:11px;font-weight:700;color:var(--accent);
+                text-transform:uppercase;letter-spacing:0.5px;
+                margin-bottom:8px;
+              ">${titulos[tipo] || tipo}</div>
+              <div style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+                ${html}
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      overlay.innerHTML = `
+        <div style="max-width:900px;margin:0 auto">
+          <div style="position:sticky;top:0;z-index:3;background:#d4a017;border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:10px;box-shadow:0 4px 12px rgba(0,0,0,0.2)">
+            <div style="flex:1;min-width:0;color:#fff">
+              <div style="font-size:15px;font-weight:700">🩹 Procedimiento — ${esc(pac?.nombre || "Sin nombre")}</div>
+              <div style="font-size:11px;opacity:0.9;margin-top:2px">
+                ${esc((proc.procedimiento_id || "").replace(/_/g, " "))} · ${esc(proc.fecha_procedimiento || "")}
+              </div>
+              <div style="font-size:10px;opacity:0.8;margin-top:2px;font-family:monospace">
+                ${esc(proc.case_id)}
+              </div>
+            </div>
+            <button onclick="document.getElementById('modal-proc-hist').remove()"
+                    style="background:rgba(255,255,255,0.2);border:none;width:34px;height:34px;border-radius:50%;font-size:18px;color:#fff;cursor:pointer;flex-shrink:0">×</button>
+          </div>
+          <div style="background:var(--bg-secondary);border-radius:0 0 var(--radius-lg) var(--radius-lg);padding:16px;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+            ${docsHTML}
+          </div>
+        </div>
+      `;
+
+      overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+      document.body.appendChild(overlay);
+
+    } catch (e) {
+      console.error("[procHistorialVer]", e);
+      toast("Error: " + e.message, "error");
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // HOOK: Recargar cuando se abre la pestaña Informes
+  // ═══════════════════════════════════════════════════════════
+  function instalarHookInformes() {
+    if (window.cambiarTab && !window.cambiarTab._procHistHook) {
+      const _orig = window.cambiarTab;
+      window.cambiarTab = function(tab) {
+        const r = _orig.apply(this, arguments);
+        if (tab === "informes") {
+          setTimeout(() => {
+            inyectarSeccionHistorial();
+            window.procHistorialCargar();
+          }, 200);
+        }
+        return r;
+      };
+      window.cambiarTab._procHistHook = true;
+      console.log("[Proc Historial v2.1] ✓ Hook cambiarTab instalado");
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // INICIALIZAR
+  // ═══════════════════════════════════════════════════════════
+  function intentarInicializar() {
+    PH.intentos++;
+
+    const rol = window.usuarioActual?.rol;
+    const rolesPermitidos = ["admin", "medico", "operador"];
+
+    if (!rol || !rolesPermitidos.includes(rol)) {
+      if (PH.intentos < PH.MAX_INTENTOS) setTimeout(intentarInicializar, 300);
+      return;
+    }
+
+    const okSec = inyectarSeccionHistorial();
+    instalarHookInformes();
+
+    if (okSec) {
+      PH.inicializado = true;
+      console.log("[Proc Historial v2.1] ✓ Inicializado para rol:", rol);
+
+      // Si ya estamos en la pestaña Informes, cargar de una vez
+      const tabActiva = document.querySelector("#tabs-principales .tab.active");
+      if (tabActiva?.dataset.tab === "informes") {
+        window.procHistorialCargar();
+      }
+      return;
+    }
+
+    if (PH.intentos < PH.MAX_INTENTOS) setTimeout(intentarInicializar, 300);
+    else console.warn("[Proc Historial v2.1] Timeout. La sección #sec-informes no apareció.");
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(intentarInicializar, 800));
+  } else {
+    setTimeout(intentarInicializar, 800);
+  }
+
+  console.log("[Proc Historial v2.1] Módulo cargado. Diagnóstico: __PROC_HISTORIAL.estado()");
 })();
+
