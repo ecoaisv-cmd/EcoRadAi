@@ -1726,21 +1726,21 @@ Sin markdown.`;
   });
 
   console.log("[Proc v2.1] Wrapper cargado. Diagnóstico: __PROC.estado()");
-/* ═══════════════════════════════════════════════════════════════
-   HISTORIAL DE PROCEDIMIENTOS — v2.1
-   Inyecta su propia pestaña dentro de #sec-informes
-   Sin tocar el monolito. Autónomo.
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   HISTORIAL DE PROCEDIMIENTOS — v2.2 (FIX INYECCIÓN)
+   Se inyecta DIRECTAMENTE en #sec-informes al cargar
+   Sin depender del hook de cambiarTab (más robusto)
+   ═══════════════════════════════════════════════════════════ */
 
 (function() {
   "use strict";
 
-  console.log("[Proc Historial v2.1] Iniciando...");
+  console.log("[Proc Historial v2.2] Iniciando...");
 
   const PH = {
     inicializado: false,
     intentos: 0,
-    MAX_INTENTOS: 40,
+    MAX_INTENTOS: 60,
     cache: [],
     filtroEstado: "todos",
     busqueda: ""
@@ -1762,7 +1762,8 @@ Sin markdown.`;
         .limit(5);
       console.log("Diagnóstico procedimientos:", { data, error });
       return { data, error };
-    }
+    },
+    forzarInyeccion: () => inyectarSeccionHistorial(true)
   };
 
   const esc = window.escapeHtml || function(s) {
@@ -1771,7 +1772,7 @@ Sin markdown.`;
     return d.innerHTML;
   };
   const toast = window.showStatus || function(msg, tipo) {
-    console.log("[Proc Historial]", tipo || "info", msg);
+    console.log("[Proc Historial v2.2]", tipo || "info", msg);
   };
   function $id(id) { return document.getElementById(id); }
   function debounce(fn, ms) {
@@ -1786,16 +1787,26 @@ Sin markdown.`;
   // ═══════════════════════════════════════════════════════════
   // INYECTAR PESTAÑA DENTRO DE #sec-informes
   // ═══════════════════════════════════════════════════════════
-  function inyectarSeccionHistorial() {
+  function inyectarSeccionHistorial(forzar) {
     const secInformes = $id("sec-informes");
-    if (!secInformes) return false;
+    if (!secInformes) {
+      if (forzar) console.warn("[Proc Historial v2.2] #sec-informes no existe aún");
+      return false;
+    }
 
     // Si ya existe, no duplicar
     if ($id("proc-historial-wrap")) return true;
 
-    // Añadir selector de tipo arriba (encima del buscador de informes)
-    const card = secInformes.querySelector(".card");
-    if (!card) return false;
+    // Buscar el .card dentro de #sec-informes
+    let card = secInformes.querySelector(".card");
+    
+    // Si no hay .card, crear uno
+    if (!card) {
+      card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = '<div class="card-title"><span class="num">📁</span>Casos guardados</div><div id="informes-lista-container"><div class="empty-state"><div class="icon">📁</div><p>No hay casos guardados</p></div></div>';
+      secInformes.appendChild(card);
+    }
 
     const wrap = document.createElement("div");
     wrap.id = "proc-historial-wrap";
@@ -1815,6 +1826,7 @@ Sin markdown.`;
             <option value="todos">Todos</option>
             <option value="borrador">Borrador</option>
             <option value="firmado">Firmado</option>
+            <option value="pendiente_firma">Pendiente firma</option>
             <option value="anulado">Anulado</option>
           </select>
         </div>
@@ -1838,7 +1850,7 @@ Sin markdown.`;
     `;
 
     card.appendChild(wrap);
-    console.log("[Proc Historial v2.1] ✓ Sección inyectada en #sec-informes");
+    console.log("[Proc Historial v2.2] ✓ Sección inyectada en #sec-informes");
     return true;
   }
 
@@ -1847,7 +1859,10 @@ Sin markdown.`;
   // ═══════════════════════════════════════════════════════════
   window.procHistorialCargar = async function() {
     const cont = $id("proc-hist-lista");
-    if (!cont) return;
+    if (!cont) {
+      console.warn("[Proc Historial v2.2] #proc-hist-lista no existe");
+      return;
+    }
     if (!window.supabaseClient) {
       cont.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>Sin conexión a Supabase</p></div>';
       return;
@@ -1902,7 +1917,6 @@ Sin markdown.`;
 
     let lista = PH.cache.slice();
 
-    // Filtro de búsqueda
     const q = (PH.busqueda || "").toLowerCase().trim();
     if (q) {
       lista = lista.filter(p => {
@@ -1921,6 +1935,7 @@ Sin markdown.`;
     const estadoCfg = {
       borrador: { color: "#86868b", label: "Borrador", icono: "📝" },
       firmado:  { color: "#34c759", label: "Firmado",  icono: "✅" },
+      pendiente_firma: { color: "#ff9500", label: "Pendiente", icono: "⏳" },
       anulado:  { color: "#ff3b30", label: "Anulado",  icono: "❌" }
     };
 
@@ -1980,7 +1995,7 @@ Sin markdown.`;
   }, 300);
 
   // ═══════════════════════════════════════════════════════════
-  // VER DOCUMENTOS DEL PROCEDIMIENTO
+  // VER DOCUMENTOS
   // ═══════════════════════════════════════════════════════════
   window.procHistorialVer = async function(caseId) {
     if (!window.supabaseClient) { toast("Sin conexión", "error"); return; }
@@ -1988,7 +2003,6 @@ Sin markdown.`;
     toast("Cargando documentos...", "info");
 
     try {
-      // 1. Datos del procedimiento
       const { data: proc, error: errP } = await window.supabaseClient
         .from("procedimientos_realizados")
         .select("*")
@@ -1997,14 +2011,12 @@ Sin markdown.`;
 
       if (errP || !proc) throw new Error("Procedimiento no encontrado");
 
-      // 2. Paciente
       const { data: pac } = await window.supabaseClient
         .from("patients")
         .select("nombre, edad, sexo, subject_id")
         .eq("subject_id", proc.subject_id)
         .maybeSingle();
 
-      // 3. Artifacts
       const { data: arts, error: errA } = await window.supabaseClient
         .from("artifacts")
         .select("tipo, html")
@@ -2015,7 +2027,6 @@ Sin markdown.`;
       const docs = {};
       (arts || []).forEach(a => { if (a.html) docs[a.tipo] = a.html; });
 
-      // 4. Modal
       const overlay = document.createElement("div");
       overlay.id = "modal-proc-hist";
       overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);z-index:99999;overflow-y:auto;padding:16px";
@@ -2027,6 +2038,7 @@ Sin markdown.`;
         orden_imagen: "🖼️ Órdenes de imagen",
         referencia: "📤 Hoja de referencia",
         consentimiento: "✍️ Consentimiento",
+        indicaciones_paciente: "📄 Indicaciones al paciente",
         constancia_incapacidad: "📝 Incapacidad",
         constancia_acompanamiento: "👨‍👩‍👧 Acompañamiento"
       };
@@ -2091,9 +2103,10 @@ Sin markdown.`;
   };
 
   // ═══════════════════════════════════════════════════════════
-  // HOOK: Recargar cuando se abre la pestaña Informes
+  // HOOK MEJORADO: envuelve cambiarTab Y renderCasosGuardados
   // ═══════════════════════════════════════════════════════════
-  function instalarHookInformes() {
+  function instalarHooks() {
+    // Hook 1: cambiarTab
     if (window.cambiarTab && !window.cambiarTab._procHistHook) {
       const _orig = window.cambiarTab;
       window.cambiarTab = function(tab) {
@@ -2102,12 +2115,27 @@ Sin markdown.`;
           setTimeout(() => {
             inyectarSeccionHistorial();
             window.procHistorialCargar();
-          }, 200);
+          }, 250);
         }
         return r;
       };
       window.cambiarTab._procHistHook = true;
-      console.log("[Proc Historial v2.1] ✓ Hook cambiarTab instalado");
+      console.log("[Proc Historial v2.2] ✓ Hook cambiarTab instalado");
+    }
+
+    // Hook 2: renderCasosGuardados (para cuando se re-renderice)
+    if (typeof window.renderCasosGuardados === "function" && !window.renderCasosGuardados._procHistHook) {
+      const _origRender = window.renderCasosGuardados;
+      window.renderCasosGuardados = async function() {
+        const r = await _origRender.apply(this, arguments);
+        setTimeout(() => {
+          inyectarSeccionHistorial();
+          window.procHistorialCargar();
+        }, 300);
+        return r;
+      };
+      window.renderCasosGuardados._procHistHook = true;
+      console.log("[Proc Historial v2.2] ✓ Hook renderCasosGuardados instalado");
     }
   }
 
@@ -2126,13 +2154,13 @@ Sin markdown.`;
     }
 
     const okSec = inyectarSeccionHistorial();
-    instalarHookInformes();
+    instalarHooks();
 
     if (okSec) {
       PH.inicializado = true;
-      console.log("[Proc Historial v2.1] ✓ Inicializado para rol:", rol);
+      console.log("[Proc Historial v2.2] ✓ Inicializado para rol:", rol);
 
-      // Si ya estamos en la pestaña Informes, cargar de una vez
+      // Si ya estamos en Informes, cargar
       const tabActiva = document.querySelector("#tabs-principales .tab.active");
       if (tabActiva?.dataset.tab === "informes") {
         window.procHistorialCargar();
@@ -2141,15 +2169,20 @@ Sin markdown.`;
     }
 
     if (PH.intentos < PH.MAX_INTENTOS) setTimeout(intentarInicializar, 300);
-    else console.warn("[Proc Historial v2.1] Timeout. La sección #sec-informes no apareció.");
+    else console.warn("[Proc Historial v2.2] Timeout. #sec-informes no apareció tras", PH.MAX_INTENTOS, "intentos");
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => setTimeout(intentarInicializar, 800));
+    document.addEventListener("DOMContentLoaded", () => setTimeout(intentarInicializar, 1000));
   } else {
-    setTimeout(intentarInicializar, 800);
+    setTimeout(intentarInicializar, 1000);
   }
 
-  console.log("[Proc Historial v2.1] Módulo cargado. Diagnóstico: __PROC_HISTORIAL.estado()");
-})();
+  // Reintentar cuando cambie el rol (login)
+  window.addEventListener("ecoradai:login", () => {
+    PH.intentos = 0;
+    setTimeout(intentarInicializar, 800);
+  });
 
+  console.log("[Proc Historial v2.2] Módulo cargado. Diagnóstico: __PROC_HISTORIAL.estado()");
+})();
