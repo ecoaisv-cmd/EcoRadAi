@@ -1,15 +1,24 @@
 /* ═══════════════════════════════════════════════════════════════════
-   WRAPPER PROCEDIMIENTOS v2.1
-   - FIX: fecha_procedimiento null (persistencia entre pasos)
-   - FIX: datos del formulario se guardan al avanzar
-   - IA: nota + receta + laboratorios
-   - 7 pasos completos
+   WRAPPER PROCEDIMIENTOS v2.3 — DEFINITIVO
+   
+   CORRECCIONES v2.3:
+   - IIFE correctamente cerrado (fix SyntaxError crítico)
+   - Tab inyectada antes de pacientes/informes
+   - MAX_INTENTOS ampliado a 80 (20s)
+   - Logs claros para diagnóstico
+   - Historial en su propio IIFE independiente
+   - Datos de ejecución persistidos entre pasos
+   - IA generadora de nota + receta + labs
    ═══════════════════════════════════════════════════════════════════ */
 
 "use strict";
 
+/* ═══════════════════════════════════════════════════════════════════
+   PARTE 1 — WIZARD DE PROCEDIMIENTOS
+   ═══════════════════════════════════════════════════════════════════ */
+
 (function() {
-  console.log("[Proc v2.1] Iniciando wrapper...");
+  console.log("[Proc v2.3] Iniciando wrapper del wizard...");
 
   // ═══════════════════════════════════════════════════════════════
   // ESTADO
@@ -17,7 +26,7 @@
   const PROC = {
     inicializado: false,
     intentos: 0,
-    MAX_INTENTOS: 40,
+    MAX_INTENTOS: 80,
     catalogo: {},
     paciente: null,
     procedimiento: null,
@@ -35,13 +44,14 @@
     recetaIA: null,
     labsIA: null,
     contextoPlan: null,
-    datosEjecucion: null       // ← FIX: persistir datos del paso 4
+    datosEjecucion: null
   };
 
   window.PROCEDIMIENTOS = PROC;
   window.__PROC = {
     estado: () => ({
       inicializado: PROC.inicializado,
+      intentos: PROC.intentos,
       rol: window.usuarioActual?.rol,
       catalogoCargado: Object.keys(PROC.catalogo).length,
       paciente: PROC.paciente?.subject_id,
@@ -54,11 +64,16 @@
     recargarCatalogo: () => cargarCatalogo(),
     forzarRender: () => {
       const sec = document.getElementById("sec-procedimientos");
-      if (!sec) return "Sección no existe";
+      if (!sec) return "Sección no existe — llama __PROC.forzarInyeccion()";
       document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
       sec.classList.add("active");
       renderWizard();
       return "Render forzado";
+    },
+    forzarInyeccion: () => {
+      const ok = inyectarHTML();
+      console.log("[Proc v2.3] Inyección forzada:", ok);
+      return ok;
     },
     verCatalogo: () => console.table(Object.values(PROC.catalogo))
   };
@@ -72,7 +87,7 @@
     return d.innerHTML;
   };
   const toast = window.showStatus || function(msg, tipo) {
-    console.log("[Proc v2.1]", tipo || "info", msg);
+    console.log("[Proc v2.3]", tipo || "info", msg);
   };
   function $id(id) { return document.getElementById(id); }
   function debounce(fn, ms) {
@@ -216,21 +231,25 @@ Sin markdown.`;
       if (error) throw error;
       PROC.catalogo = {};
       (data || []).forEach(p => { PROC.catalogo[p.procedimiento_id] = p; });
-      console.log(`[Proc v2.1] ✓ Catálogo: ${data.length} procedimientos`);
+      console.log(`[Proc v2.3] ✓ Catálogo: ${data?.length || 0} procedimientos`);
       return true;
     } catch (e) {
-      console.error("[Proc v2.1] Error catálogo:", e);
+      console.error("[Proc v2.3] Error catálogo:", e);
       return false;
     }
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // INYECCIÓN HTML
+  // INYECCIÓN HTML — CON LOGS CLAROS
   // ═══════════════════════════════════════════════════════════════
   function inyectarHTML() {
     const tabs = $id("tabs-principales");
-    if (!tabs) return false;
+    if (!tabs) {
+      console.warn("[Proc v2.3] ⚠️ #tabs-principales no existe aún");
+      return false;
+    }
 
+    // 1. Inyectar TAB
     if (!document.querySelector('[data-tab="procedimientos"]')) {
       const tab = document.createElement("div");
       tab.className = "tab";
@@ -238,13 +257,23 @@ Sin markdown.`;
       tab.dataset.acceso = "todos";
       tab.innerHTML = "🩹 Procedimientos";
       tab.onclick = () => window.cambiarTab("procedimientos");
-      const refTab = tabs.querySelector('[data-tab="pacientes"]') 
-                  || tabs.querySelector('[data-tab="consulta"]') 
-                  || tabs.lastChild;
-      if (refTab) tabs.insertBefore(tab, refTab);
-      else tabs.appendChild(tab);
+
+      // Insertar SIEMPRE antes de pacientes/informes si existen
+      const refTab = tabs.querySelector('[data-tab="pacientes"]')
+                  || tabs.querySelector('[data-tab="informes"]')
+                  || tabs.querySelector('[data-tab="consulta"]');
+
+      if (refTab) {
+        tabs.insertBefore(tab, refTab);
+      } else {
+        tabs.appendChild(tab);
+      }
+      console.log("[Proc v2.3] ✓ Tab 'procedimientos' inyectada");
+    } else {
+      console.log("[Proc v2.3] ℹ️ Tab 'procedimientos' ya existía");
     }
 
+    // 2. Inyectar SECCIÓN
     if (!$id("sec-procedimientos")) {
       const container = document.querySelector(".container") || document.body;
       const sec = document.createElement("div");
@@ -252,7 +281,11 @@ Sin markdown.`;
       sec.id = "sec-procedimientos";
       sec.innerHTML = `<div id="proc-wizard-container"></div>`;
       container.appendChild(sec);
+      console.log("[Proc v2.3] ✓ Sección #sec-procedimientos inyectada");
+    } else {
+      console.log("[Proc v2.3] ℹ️ Sección #sec-procedimientos ya existía");
     }
+
     return true;
   }
 
@@ -260,8 +293,12 @@ Sin markdown.`;
   // WRAPPER cambiarTab
   // ═══════════════════════════════════════════════════════════════
   function instalarWrapperCambiarTab() {
-    if (typeof window.cambiarTab !== "function") return false;
+    if (typeof window.cambiarTab !== "function") {
+      console.warn("[Proc v2.3] ⚠️ window.cambiarTab no existe");
+      return false;
+    }
     if (window.cambiarTab._procWrap) return true;
+
     const _orig = window.cambiarTab;
     window.cambiarTab = function(tab) {
       const result = _orig.apply(this, arguments);
@@ -272,12 +309,56 @@ Sin markdown.`;
             document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
             sec.classList.add("active");
             renderWizard();
+          } else {
+            console.warn("[Proc v2.3] ⚠️ #sec-procedimientos no existe al cambiar tab");
           }
         }, 100);
       }
       return result;
     };
     window.cambiarTab._procWrap = true;
+    console.log("[Proc v2.3] ✓ Wrapper cambiarTab instalado");
+    return true;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // WRAPPER ajustarUIPorRol — PROTEGE LA TAB
+  // ═══════════════════════════════════════════════════════════════
+  function instalarWrapperAjustarUI() {
+    if (typeof window.ajustarUIPorRol !== "function") {
+      console.warn("[Proc v2.3] ⚠️ window.ajustarUIPorRol no existe");
+      return false;
+    }
+    if (window.ajustarUIPorRol._procWrap) return true;
+
+    const _orig = window.ajustarUIPorRol;
+    window.ajustarUIPorRol = function(rol) {
+      const result = _orig.apply(this, arguments);
+      if (rol === "operador" || rol === "medico" || rol === "admin") {
+        const forzarTab = () => {
+          const tab = document.querySelector('[data-tab="procedimientos"]');
+          if (tab) {
+            tab.style.display = "";
+            tab.style.visibility = "visible";
+            tab.style.pointerEvents = "auto";
+            tab.style.width = "";
+            tab.style.height = "";
+            tab.style.padding = "";
+            tab.style.margin = "";
+            tab.style.border = "";
+            tab.style.position = "";
+          }
+        };
+        setTimeout(forzarTab, 50);
+        setTimeout(forzarTab, 300);
+        setTimeout(forzarTab, 800);
+        setTimeout(forzarTab, 1500);
+        setTimeout(forzarTab, 3000);
+      }
+      return result;
+    };
+    window.ajustarUIPorRol._procWrap = true;
+    console.log("[Proc v2.3] ✓ Wrapper ajustarUIPorRol instalado");
     return true;
   }
 
@@ -286,7 +367,10 @@ Sin markdown.`;
   // ═══════════════════════════════════════════════════════════════
   function renderWizard() {
     const cont = $id("proc-wizard-container");
-    if (!cont) return;
+    if (!cont) {
+      console.warn("[Proc v2.3] ⚠️ #proc-wizard-container no existe");
+      return;
+    }
     if (!PROC.paciente) PROC.pasoActual = 1;
     if (!PROC.procedimiento) PROC.pasoActual = Math.min(PROC.pasoActual, 2);
 
@@ -628,7 +712,7 @@ Sin markdown.`;
   }
 
   // ─────────────────────────────────────────────────────────────
-  // PASO 4 — EJECUCIÓN (CON FIX DE PERSISTENCIA)
+  // PASO 4 — EJECUCIÓN (con persistencia)
   // ─────────────────────────────────────────────────────────────
   function renderPasoEjecucion(cont) {
     const p = PROC.procedimiento;
@@ -666,7 +750,6 @@ Sin markdown.`;
     `;
   }
 
-  // ═══ FIX: Persistir datos al avanzar ═══
   window.procValidarEjecucion = function() {
     const fecha = $id("proc-fecha")?.value;
     const indicacion = $id("proc-indicacion")?.value?.trim();
@@ -676,7 +759,6 @@ Sin markdown.`;
     if (!indicacion) { toast("Indicación requerida", "error"); return; }
     if (!tecnica) { toast("Técnica requerida", "error"); return; }
     
-    // Guardar TODOS los datos del formulario
     PROC.datosEjecucion = {
       fecha_procedimiento: fecha,
       hora_inicio: $id("proc-hora-inicio")?.value || null,
@@ -688,7 +770,7 @@ Sin markdown.`;
       seguimiento: $id("proc-seguimiento")?.value?.trim() || null
     };
     
-    console.log("[Proc v2.1] ✓ Datos ejecución guardados:", PROC.datosEjecucion);
+    console.log("[Proc v2.3] ✓ Datos ejecución guardados");
     PROC.pasoActual = 5;
     renderWizard();
   };
@@ -810,7 +892,7 @@ Sin markdown.`;
     const texto = PROC.notaEditada || PROC.notaIA?.narrativa || "";
     if (!texto) return;
     if ($id("proc-nota-textarea")) {
-      cont.innerHTML = `<textarea id="proc-nota-textarea" style="width:100%;min-height:400px;font-size:12px;padding:10px;border:2px solid #0071e3;border-radius:8px;background:#fff;color:#1d1d1f;resize:vertical" oninput="PROC.notaEditada = this.value">${esc(texto)}</textarea>`;
+      cont.innerHTML = `<textarea id="proc-nota-textarea" style="width:100%;min-height:400px;font-size:12px;padding:10px;border:2px solid #0071e3;border-radius:8px;background:#fff;color:#1d1d1f;resize:vertical" oninput="PROCEDIMIENTOS.notaEditada = this.value">${esc(texto)}</textarea>`;
     } else {
       cont.innerHTML = `<div style="white-space:pre-wrap">${esc(texto)}</div>`;
     }
@@ -846,12 +928,12 @@ Sin markdown.`;
           <button onclick="procEliminarMedicamento(${i})" style="background:var(--danger);color:white;border:none;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:11px">×</button>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px">
-          <input type="text" placeholder="Presentación" value="${esc(m.presentacion || "")}" oninput="PROC.recetaMedicamentos[${i}].presentacion=this.value" style="padding:5px;font-size:11px">
-          <input type="text" placeholder="Dosis" value="${esc(m.dosis || "")}" oninput="PROC.recetaMedicamentos[${i}].dosis=this.value" style="padding:5px;font-size:11px">
-          <input type="text" placeholder="Vía" value="${esc(m.via || "")}" oninput="PROC.recetaMedicamentos[${i}].via=this.value" style="padding:5px;font-size:11px">
-          <input type="text" placeholder="Frecuencia" value="${esc(m.frecuencia || "")}" oninput="PROC.recetaMedicamentos[${i}].frecuencia=this.value" style="padding:5px;font-size:11px">
-          <input type="text" placeholder="Duración" value="${esc(m.duracion || "")}" oninput="PROC.recetaMedicamentos[${i}].duracion=this.value" style="padding:5px;font-size:11px">
-          <input type="text" placeholder="Indicación" value="${esc(m.indicacion || "")}" oninput="PROC.recetaMedicamentos[${i}].indicacion=this.value" style="padding:5px;font-size:11px">
+          <input type="text" placeholder="Presentación" value="${esc(m.presentacion || "")}" oninput="PROCEDIMIENTOS.recetaMedicamentos[${i}].presentacion=this.value" style="padding:5px;font-size:11px">
+          <input type="text" placeholder="Dosis" value="${esc(m.dosis || "")}" oninput="PROCEDIMIENTOS.recetaMedicamentos[${i}].dosis=this.value" style="padding:5px;font-size:11px">
+          <input type="text" placeholder="Vía" value="${esc(m.via || "")}" oninput="PROCEDIMIENTOS.recetaMedicamentos[${i}].via=this.value" style="padding:5px;font-size:11px">
+          <input type="text" placeholder="Frecuencia" value="${esc(m.frecuencia || "")}" oninput="PROCEDIMIENTOS.recetaMedicamentos[${i}].frecuencia=this.value" style="padding:5px;font-size:11px">
+          <input type="text" placeholder="Duración" value="${esc(m.duracion || "")}" oninput="PROCEDIMIENTOS.recetaMedicamentos[${i}].duracion=this.value" style="padding:5px;font-size:11px">
+          <input type="text" placeholder="Indicación" value="${esc(m.indicacion || "")}" oninput="PROCEDIMIENTOS.recetaMedicamentos[${i}].indicacion=this.value" style="padding:5px;font-size:11px">
         </div>
       </div>
     `).join("");
@@ -881,9 +963,9 @@ Sin markdown.`;
           <button onclick="procEliminarLaboratorio(${i})" style="background:var(--danger);color:white;border:none;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:11px">×</button>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px">
-          <input type="text" placeholder="Tipo" value="${esc(l.tipo || "")}" oninput="PROC.laboratoriosSolicitados[${i}].tipo=this.value" style="padding:5px;font-size:11px">
-          <input type="number" placeholder="Plazo días" value="${l.plazo_dias || 0}" oninput="PROC.laboratoriosSolicitados[${i}].plazo_dias=parseInt(this.value)||0" style="padding:5px;font-size:11px">
-          <input type="text" placeholder="Motivo" value="${esc(l.motivo || "")}" oninput="PROC.laboratoriosSolicitados[${i}].motivo=this.value" style="padding:5px;font-size:11px;grid-column:span 2">
+          <input type="text" placeholder="Tipo" value="${esc(l.tipo || "")}" oninput="PROCEDIMIENTOS.laboratoriosSolicitados[${i}].tipo=this.value" style="padding:5px;font-size:11px">
+          <input type="number" placeholder="Plazo días" value="${l.plazo_dias || 0}" oninput="PROCEDIMIENTOS.laboratoriosSolicitados[${i}].plazo_dias=parseInt(this.value)||0" style="padding:5px;font-size:11px">
+          <input type="text" placeholder="Motivo" value="${esc(l.motivo || "")}" oninput="PROCEDIMIENTOS.laboratoriosSolicitados[${i}].motivo=this.value" style="padding:5px;font-size:11px;grid-column:span 2">
         </div>
       </div>
     `).join("");
@@ -1126,7 +1208,7 @@ Sin markdown.`;
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // GUARDAR PROCEDIMIENTO (CON FIX DE PERSISTENCIA)
+  // GUARDAR PROCEDIMIENTO
   // ═══════════════════════════════════════════════════════════════
   window.procGuardarProcedimiento = async function() {
     const errEl = $id("proc-error");
@@ -1137,7 +1219,6 @@ Sin markdown.`;
     if (!PROC.paciente || !PROC.procedimiento) { setErr("Faltan datos"); return; }
     if (!window.supabaseClient) { setErr("Sin conexión"); return; }
 
-    // ═══ FIX: Validar que existan los datos del paso 4 ═══
     if (!PROC.datosEjecucion || !PROC.datosEjecucion.fecha_procedimiento) {
       setErr("Faltan datos del paso 4 (ejecución). Vuelve al paso 4.");
       return;
@@ -1193,7 +1274,7 @@ Sin markdown.`;
       const ahora = new Date();
       const estadoInicial = requiereMedico ? "pendiente_firma" : "firmado";
       const notaFinal = PROC.notaEditada || PROC.notaIA?.narrativa || "";
-      const d = PROC.datosEjecucion;  // ← Datos persistidos
+      const d = PROC.datosEjecucion;
 
       const payload = {
         procedimiento_id: PROC.procedimiento.procedimiento_id,
@@ -1244,15 +1325,15 @@ Sin markdown.`;
         operador_id: window.usuarioActual?.id,
         operador_nombre: window.usuarioActual?.nombre,
         medico_id: medicoSeleccionado,
-        fecha_procedimiento: d.fecha_procedimiento,       // ← FIX
-        hora_inicio: d.hora_inicio,                       // ← FIX
+        fecha_procedimiento: d.fecha_procedimiento,
+        hora_inicio: d.hora_inicio,
         estado: estadoInicial,
-        indicacion: d.indicacion,                         // ← FIX
-        cie10_principal: d.cie10,                         // ← FIX
-        tecnica_realizada: d.tecnica,                     // ← FIX
-        hallazgos: d.hallazgos,                           // ← FIX
-        complicaciones: d.complicaciones,                 // ← FIX
-        plan_seguimiento: d.seguimiento,                  // ← FIX
+        indicacion: d.indicacion,
+        cie10_principal: d.cie10,
+        tecnica_realizada: d.tecnica,
+        hallazgos: d.hallazgos,
+        complicaciones: d.complicaciones,
+        plan_seguimiento: d.seguimiento,
         nota_ia_narrativa: payload.nota_ia_narrativa,
         nota_ia_json: payload.nota_ia_json,
         nota_final: payload.nota_final,
@@ -1277,7 +1358,7 @@ Sin markdown.`;
         created_by: window.usuarioActual?.id
       };
 
-      console.log("[Proc v2.1] Insertando:", insertData);
+      console.log("[Proc v2.3] Insertando:", insertData);
 
       const { data: insertado, error: errIns } = await window.supabaseClient
         .from("procedimientos_realizados")
@@ -1664,34 +1745,9 @@ Sin markdown.`;
     renderWizard();
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // WRAPPER ajustarUIPorRol
-  // ─────────────────────────────────────────────────────────────
-  function instalarWrapperAjustarUI() {
-    if (typeof window.ajustarUIPorRol !== "function") return false;
-    if (window.ajustarUIPorRol._procWrap) return true;
-    const _orig = window.ajustarUIPorRol;
-    window.ajustarUIPorRol = function(rol) {
-      const result = _orig.apply(this, arguments);
-      if (rol === "operador" || rol === "medico" || rol === "admin") {
-        setTimeout(() => {
-          const tab = document.querySelector('[data-tab="procedimientos"]');
-          if (tab) {
-            tab.style.display = "";
-            tab.style.visibility = "visible";
-            tab.style.pointerEvents = "auto";
-          }
-        }, 300);
-      }
-      return result;
-    };
-    window.ajustarUIPorRol._procWrap = true;
-    return true;
-  }
-
-  // ─────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
   // INICIALIZACIÓN
-  // ─────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
   async function inicializar() {
     PROC.intentos++;
     if (!window.supabaseClient || !window.usuarioActual) {
@@ -1699,7 +1755,10 @@ Sin markdown.`;
       return;
     }
     const rol = window.usuarioActual.rol;
-    if (!["operador", "medico", "admin"].includes(rol)) return;
+    if (!["operador", "medico", "admin"].includes(rol)) {
+      console.log("[Proc v2.3] Rol no aplicable:", rol);
+      return;
+    }
 
     const okHTML = inyectarHTML();
     const okTab = instalarWrapperCambiarTab();
@@ -1708,10 +1767,18 @@ Sin markdown.`;
 
     if (okHTML && okTab && okUI && okCat) {
       PROC.inicializado = true;
-      console.log("[Proc v2.1] ✓ Inicializado. Catálogo:", Object.keys(PROC.catalogo).length);
+      console.log("[Proc v2.3] ✓ Inicializado. Catálogo:", Object.keys(PROC.catalogo).length);
       return;
     }
-    if (PROC.intentos < PROC.MAX_INTENTOS) setTimeout(inicializar, 250);
+    if (PROC.intentos < PROC.MAX_INTENTOS) {
+      setTimeout(inicializar, 250);
+    } else {
+      console.error("[Proc v2.3] ❌ Timeout tras", PROC.MAX_INTENTOS, "intentos. Estado:", {
+        okHTML, okTab, okUI, okCat,
+        usuarioActual: window.usuarioActual?.rol,
+        supabaseClient: !!window.supabaseClient
+      });
+    }
   }
 
   if (document.readyState === "loading") {
@@ -1725,22 +1792,24 @@ Sin markdown.`;
     setTimeout(inicializar, 500);
   });
 
-  console.log("[Proc v2.1] Wrapper cargado. Diagnóstico: __PROC.estado()");
-/* ═══════════════════════════════════════════════════════════
-   HISTORIAL DE PROCEDIMIENTOS — v2.2 (FIX INYECCIÓN)
-   Se inyecta DIRECTAMENTE en #sec-informes al cargar
-   Sin depender del hook de cambiarTab (más robusto)
-   ═══════════════════════════════════════════════════════════ */
+  console.log("[Proc v2.3] ✓ Wrapper del wizard cargado. Diagnóstico: __PROC.estado()");
+
+})();  /* ← CIERRE DEL IIFE v2.3 */
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   PARTE 2 — HISTORIAL DE PROCEDIMIENTOS EN #sec-informes
+   ═══════════════════════════════════════════════════════════════════ */
 
 (function() {
   "use strict";
 
-  console.log("[Proc Historial v2.2] Iniciando...");
+  console.log("[Proc Historial v2.3] Iniciando...");
 
   const PH = {
     inicializado: false,
     intentos: 0,
-    MAX_INTENTOS: 60,
+    MAX_INTENTOS: 80,
     cache: [],
     filtroEstado: "todos",
     busqueda: ""
@@ -1754,15 +1823,6 @@ Sin markdown.`;
       filtro: PH.filtroEstado
     }),
     recargar: () => window.procHistorialCargar(),
-    diagnosticar: async () => {
-      if (!window.supabaseClient) return "Sin Supabase";
-      const { data, error } = await window.supabaseClient
-        .from("procedimientos_realizados")
-        .select("*")
-        .limit(5);
-      console.log("Diagnóstico procedimientos:", { data, error });
-      return { data, error };
-    },
     forzarInyeccion: () => inyectarSeccionHistorial(true)
   };
 
@@ -1772,7 +1832,7 @@ Sin markdown.`;
     return d.innerHTML;
   };
   const toast = window.showStatus || function(msg, tipo) {
-    console.log("[Proc Historial v2.2]", tipo || "info", msg);
+    console.log("[Proc Historial v2.3]", tipo || "info", msg);
   };
   function $id(id) { return document.getElementById(id); }
   function debounce(fn, ms) {
@@ -1790,17 +1850,13 @@ Sin markdown.`;
   function inyectarSeccionHistorial(forzar) {
     const secInformes = $id("sec-informes");
     if (!secInformes) {
-      if (forzar) console.warn("[Proc Historial v2.2] #sec-informes no existe aún");
+      if (forzar) console.warn("[Proc Historial v2.3] #sec-informes no existe aún");
       return false;
     }
 
-    // Si ya existe, no duplicar
     if ($id("proc-historial-wrap")) return true;
 
-    // Buscar el .card dentro de #sec-informes
     let card = secInformes.querySelector(".card");
-    
-    // Si no hay .card, crear uno
     if (!card) {
       card = document.createElement("div");
       card.className = "card";
@@ -1850,7 +1906,7 @@ Sin markdown.`;
     `;
 
     card.appendChild(wrap);
-    console.log("[Proc Historial v2.2] ✓ Sección inyectada en #sec-informes");
+    console.log("[Proc Historial v2.3] ✓ Sección inyectada en #sec-informes");
     return true;
   }
 
@@ -1860,7 +1916,7 @@ Sin markdown.`;
   window.procHistorialCargar = async function() {
     const cont = $id("proc-hist-lista");
     if (!cont) {
-      console.warn("[Proc Historial v2.2] #proc-hist-lista no existe");
+      console.warn("[Proc Historial v2.3] #proc-hist-lista no existe");
       return;
     }
     if (!window.supabaseClient) {
@@ -1887,7 +1943,6 @@ Sin markdown.`;
 
       PH.cache = data || [];
 
-      // Cargar nombres de pacientes en batch
       const subjectIds = [...new Set(PH.cache.map(p => p.subject_id).filter(Boolean))];
       let mapaPacientes = {};
       if (subjectIds.length > 0) {
@@ -1916,7 +1971,6 @@ Sin markdown.`;
     if (!cont) return;
 
     let lista = PH.cache.slice();
-
     const q = (PH.busqueda || "").toLowerCase().trim();
     if (q) {
       lista = lista.filter(p => {
@@ -2038,9 +2092,7 @@ Sin markdown.`;
         orden_imagen: "🖼️ Órdenes de imagen",
         referencia: "📤 Hoja de referencia",
         consentimiento: "✍️ Consentimiento",
-        indicaciones_paciente: "📄 Indicaciones al paciente",
-        constancia_incapacidad: "📝 Incapacidad",
-        constancia_acompanamiento: "👨‍👩‍👧 Acompañamiento"
+        indicaciones_paciente: "📄 Indicaciones al paciente"
       };
 
       let docsHTML = "";
@@ -2103,10 +2155,9 @@ Sin markdown.`;
   };
 
   // ═══════════════════════════════════════════════════════════
-  // HOOK MEJORADO: envuelve cambiarTab Y renderCasosGuardados
+  // HOOKS
   // ═══════════════════════════════════════════════════════════
   function instalarHooks() {
-    // Hook 1: cambiarTab
     if (window.cambiarTab && !window.cambiarTab._procHistHook) {
       const _orig = window.cambiarTab;
       window.cambiarTab = function(tab) {
@@ -2120,10 +2171,9 @@ Sin markdown.`;
         return r;
       };
       window.cambiarTab._procHistHook = true;
-      console.log("[Proc Historial v2.2] ✓ Hook cambiarTab instalado");
+      console.log("[Proc Historial v2.3] ✓ Hook cambiarTab instalado");
     }
 
-    // Hook 2: renderCasosGuardados (para cuando se re-renderice)
     if (typeof window.renderCasosGuardados === "function" && !window.renderCasosGuardados._procHistHook) {
       const _origRender = window.renderCasosGuardados;
       window.renderCasosGuardados = async function() {
@@ -2135,7 +2185,7 @@ Sin markdown.`;
         return r;
       };
       window.renderCasosGuardados._procHistHook = true;
-      console.log("[Proc Historial v2.2] ✓ Hook renderCasosGuardados instalado");
+      console.log("[Proc Historial v2.3] ✓ Hook renderCasosGuardados instalado");
     }
   }
 
@@ -2158,9 +2208,7 @@ Sin markdown.`;
 
     if (okSec) {
       PH.inicializado = true;
-      console.log("[Proc Historial v2.2] ✓ Inicializado para rol:", rol);
-
-      // Si ya estamos en Informes, cargar
+      console.log("[Proc Historial v2.3] ✓ Inicializado para rol:", rol);
       const tabActiva = document.querySelector("#tabs-principales .tab.active");
       if (tabActiva?.dataset.tab === "informes") {
         window.procHistorialCargar();
@@ -2168,8 +2216,11 @@ Sin markdown.`;
       return;
     }
 
-    if (PH.intentos < PH.MAX_INTENTOS) setTimeout(intentarInicializar, 300);
-    else console.warn("[Proc Historial v2.2] Timeout. #sec-informes no apareció tras", PH.MAX_INTENTOS, "intentos");
+    if (PH.intentos < PH.MAX_INTENTOS) {
+      setTimeout(intentarInicializar, 300);
+    } else {
+      console.warn("[Proc Historial v2.3] ⚠️ Timeout tras", PH.MAX_INTENTOS, "intentos");
+    }
   }
 
   if (document.readyState === "loading") {
@@ -2178,11 +2229,11 @@ Sin markdown.`;
     setTimeout(intentarInicializar, 1000);
   }
 
-  // Reintentar cuando cambie el rol (login)
   window.addEventListener("ecoradai:login", () => {
     PH.intentos = 0;
     setTimeout(intentarInicializar, 800);
   });
 
-  console.log("[Proc Historial v2.2] Módulo cargado. Diagnóstico: __PROC_HISTORIAL.estado()");
-})();
+  console.log("[Proc Historial v2.3] ✓ Módulo cargado. Diagnóstico: __PROC_HISTORIAL.estado()");
+
+})();  /* ← CIERRE DEL IIFE v2.3 */
