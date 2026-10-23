@@ -6054,7 +6054,16 @@ async function cargarPortalPaciente() {
       .order("created_at", { ascending: false });
 
     const consultas = consultasRaw || [];
+    // ═══ NUEVO: Cargar procedimientos firmados ═══
+    const { data: procedimientosRaw } = await window.supabaseClient
+   .from("procedimientos_realizados")
+   .select("procedimiento_realizado_id, case_id, subject_id, procedimiento_id, fecha_procedimiento, estado, medico_nombre, operador_nombre")
+   .eq("subject_id", subjectId)
+   .in("estado", ["firmado"])
+   .order("created_at", { ascending: false });
 
+const procedimientos = procedimientosRaw || [];
+console.log("[Portal] Procedimientos:", procedimientos.length);
     console.log("[Portal] Tamizajes:", casos.length, "· Consultas:", consultas.length);
 
     const total = casos.length + consultas.length;
@@ -6095,9 +6104,20 @@ async function cargarPortalPaciente() {
         medico: c.medico_nombre,
         complejidad: c.complejidad
       }))
-    ].sort((a, b) => b.timestamp - a.timestamp);
+       // ═══ NUEVO: Procedimientos ═══
+      ...procedimientos.map(p => ({
+        kind: "procedimiento",
+        id: p.case_id,
+        fecha: p.fecha_procedimiento,
+        timestamp: new Date(p.fecha_procedimiento || 0).getTime(),
+        nombreTamizaje: "Procedimiento médico",
+        nivel: "BAJO",
+        medico: p.medico_nombre,
+        operador: p.operador_nombre
+  }))
+].sort((a, b) => b.timestamp - a.timestamp);
 
-    // ═══ 4. Cargar artifacts ═══
+  // ═══ 4. Cargar artifacts ═══
     const todosCaseIds = eventos.map(e => e.kind === "tamizaje" ? e.id : e.caseId).filter(Boolean);
 
     const { data: arts } = await window.supabaseClient
@@ -17281,11 +17301,13 @@ const PLANES_SUSCRIPCION = {
       consultas: 1,
       tamizajes: 1,
       interconsultas: 0,
-      constancias: 1
+      constancias: 1,
+      procedimientos: 1            // ← AGREGADO
     },
     beneficios: [
       "1 consulta médica al mes",
       "1 tamizaje IA al mes",
+      "1 procedimiento menor al mes",   // ← AGREGADO
       "Portal del paciente 24/7",
       "Historial de 6 meses",
       "Receta electrónica",
@@ -17305,12 +17327,14 @@ const PLANES_SUSCRIPCION = {
       consultas: 3,
       tamizajes: 1,
       interconsultas: 2,
-      constancias: 3
+      constancias: 3,
+      procedimientos: 3            // ← AGREGADO
     },
     beneficios: [
       "3 consultas médicas al mes",
       "1 tamizaje IA al mes",
       "2 interconsultas con IA al mes",
+      "3 procedimientos al mes",        // ← AGREGADO
       "Historial de 24 meses",
       "Alertas proactivas",
       "Timeline unificado",
@@ -17331,12 +17355,14 @@ const PLANES_SUSCRIPCION = {
       consultas: 5,
       tamizajes: 2,
       interconsultas: 5,
-      constancias: 99
+      constancias: 99,
+      procedimientos: 5            // ← AGREGADO
     },
     beneficios: [
       "5 consultas médicas al mes",
       "2 tamizajes IA al mes",
       "5 interconsultas con IA al mes",
+      "5 procedimientos al mes",        // ← AGREGADO
       "Historial ilimitado",
       "Alertas proactivas + Timeline",
       "Videoconsulta (próximamente)",
@@ -17988,11 +18014,11 @@ window.renderAdminSuscripciones = async function() {
                     : `📅 Próximo cobro: ${formatearFechaSuscripcion(s.fecha_proximo_cobro)} (${diasRestantes} días)`}
                 </div>
                 <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
-                  <strong>Cuotas:</strong>
-                  ${s.cuota_consultas_usada}/${plan.cuotas?.consultas || 0} cons ·
-                  ${s.cuota_tamizajes_usada}/${plan.cuotas?.tamizajes || 0} tam ·
-                  ${s.cuota_interconsultas_usada}/${plan.cuotas?.interconsultas || 0} inter
-                </div>
+                 <strong>Cuotas:</strong>
+                 ${s.cuota_consultas_usada}/${plan.cuotas?.consultas || 0} cons ·
+                 ${s.cuota_tamizajes_usada}/${plan.cuotas?.tamizajes || 0} tam ·
+                 ${s.cuota_interconsultas_usada}/${plan.cuotas?.interconsultas || 0} inter ·
+                 ${s.cuota_procedimientos_usada || 0}/${plan.cuotas?.procedimientos || 0} proc
                 ${extrasTexto}
               </div>
               
@@ -22679,13 +22705,13 @@ console.log("[Header] ✓ Módulo de menú de usuario cargado");
   const ADMIN_EMAIL = "ecoaisv@gmail.com";
 
   const PLANES_INFO = {
-    basico:  { nombre: "Básico",  icono: "🥉", precio: 9.90,  color: "#86868b",
-               cuotas: { consultas: 1, tamizajes: 1, interconsultas: 0, constancias: 1 } },
-    plus:    { nombre: "Plus",    icono: "🥈", precio: 15.00, color: "#0071e3",
-               cuotas: { consultas: 3, tamizajes: 1, interconsultas: 2, constancias: 3 } },
-    premium: { nombre: "Premium", icono: "🥇", precio: 20.00, color: "#d4a017",
-               cuotas: { consultas: 5, tamizajes: 2, interconsultas: 5, constancias: 99 } }
-  };
+  basico:  { nombre: "Básico",  icono: "🥉", precio: 9.90,  color: "#86868b",
+             cuotas: { consultas: 1, tamizajes: 1, interconsultas: 0, constancias: 1, procedimientos: 1 } },
+  plus:    { nombre: "Plus",    icono: "🥈", precio: 15.00, color: "#0071e3",
+             cuotas: { consultas: 3, tamizajes: 1, interconsultas: 2, constancias: 3, procedimientos: 3 } },
+  premium: { nombre: "Premium", icono: "🥇", precio: 20.00, color: "#d4a017",
+             cuotas: { consultas: 5, tamizajes: 2, interconsultas: 5, constancias: 99, procedimientos: 5 } }
+};
 
   /* ═══════════════════════════════════════════════════════════
      PARTE A — VERIFICAR PLAN DEL PACIENTE
