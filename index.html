@@ -27732,62 +27732,6 @@ REGLAS:
 - Sé respetuoso y objetivo`;
 
   // ═══════════════════════════════════════════════════════════
-  // NUEVO: CATÁLOGO CIE-10 LOCAL (Autocompletado sin internet)
-  // ═══════════════════════════════════════════════════════════
-  const CIE10_CATALOGO = [
-    { code: "I21.9", name: "Infarto agudo de miocardio" },
-    { code: "I21.4", name: "Infarto subendocárdico" },
-    { code: "I63.9", name: "Infarto cerebral (ACV isquémico)" },
-    { code: "I61.9", name: "Hemorragia intracerebral" },
-    { code: "I10", name: "Hipertensión esencial (primaria)" },
-    { code: "I50.9", name: "Insuficiencia cardíaca congestiva" },
-    { code: "J18.9", name: "Neumonía, no especificada" },
-    { code: "J15.9", name: "Neumonía bacteriana" },
-    { code: "J44.1", name: "EPOC con exacerbación aguda" },
-    { code: "J96.0", name: "Insuficiencia respiratoria aguda" },
-    { code: "E11.9", name: "Diabetes mellitus tipo 2" },
-    { code: "E14.9", name: "Diabetes mellitus no especificada" },
-    { code: "E87.6", name: "Hipopotasemia" },
-    { code: "E87.8", name: "Desequilibrio electrolítico" },
-    { code: "N17.9", name: "Insuficiencia renal aguda" },
-    { code: "N18.9", name: "Enfermedad renal crónica terminal" },
-    { code: "K72.9", name: "Insuficiencia hepática" },
-    { code: "K92.2", name: "Hemorragia gastrointestinal" },
-    { code: "A41.9", name: "Sepsis no especificada" },
-    { code: "A09.9", name: "Gastroenteritis y colitis de origen infeccioso" },
-    { code: "C61",   name: "Tumor maligno de la próstata" },
-    { code: "C50.9", name: "Tumor maligno de la mama" },
-    { code: "C34.9", name: "Tumor maligno de los bronquios o pulmón" },
-    { code: "U07.1", name: "COVID-19, virus identificado" },
-    { code: "W19",   name: "Caída no especificada" },
-    { code: "X70",   name: "Lesión autoinfligida intencionalmente" },
-    { code: "Y09",   name: "Agresión con medios no especificados" },
-    { code: "R54",   name: "Senectud (Solo usar si es mayor de 90 años)" },
-    { code: "R99",   name: "Causa desconocida (Evitar su uso)" }
-  ];
-
-  // Función que inyecta el catálogo en el HTML
-  function inyectarDatalistCIE10() {
-    if (document.getElementById("datalist-cie10-global")) return;
-    
-    const datalist = document.createElement("datalist");
-    datalist.id = "datalist-cie10-global";
-    
-    // Generar opciones
-    datalist.innerHTML = CIE10_CATALOGO.map(item => 
-      `<option value="${item.code} - ${item.name}">${item.code} - ${item.name}</option>`
-    ).join("");
-    
-    document.body.appendChild(datalist);
-    
-    // Asignar el datalist a los inputs correspondientes
-    const inputs = ["ad-causa-a", "ad-causa-b", "ad-causa-c", "ad-causa-basica"];
-    inputs.forEach(id => {
-      const input = document.getElementById(id);
-      if (input) input.setAttribute("list", "datalist-cie10-global");
-    });
-  }  
-// ═══════════════════════════════════════════════════════════
   // INYECTAR TAB Y SECCIÓN
   // ═══════════════════════════════════════════════════════════
   function inyectarTabYSeccion() {
@@ -27920,7 +27864,7 @@ REGLAS:
   // ═══════════════════════════════════════════════════════════
   // FORMULARIO (con textarea de alcaldía editable)
   // ═══════════════════════════════════════════════════════════
-   function renderFormularioActa() {
+  function renderFormularioActa() {
     const cont = $id("ad-nueva-contenido");
     if (!cont) return;
 
@@ -28135,16 +28079,14 @@ REGLAS:
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="form-group">
-            <label>Parentesco *</label>
+            <label>Parentesco</label>
             <select id="ad-informante-parentesco">
-              <option value="">— Seleccionar —</option>
+              <option value="">—</option>
+              <option value="conyuge">Cónyuge</option>
+              <option value="hijo">Hijo/a</option>
               <option value="padre">Padre</option>
               <option value="madre">Madre</option>
-              <option value="hijo">Hijo</option>
-              <option value="hija">Hija</option>
-              <option value="conyuge">Cónyuge</option>
-              <option value="hermano">Hermano</option>
-              <option value="hermana">Hermana</option>
+              <option value="hermano">Hermano/a</option>
               <option value="otro_familiar">Otro familiar</option>
               <option value="amigo">Amigo/a</option>
               <option value="autoridad">Autoridad</option>
@@ -28154,25 +28096,6 @@ REGLAS:
           <div class="form-group">
             <label>DUI</label>
             <input type="text" id="ad-informante-dui">
-          </div>
-        </div>
-
-        <!-- NUEVO: Campo de estado civil y ocupación para el acta -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
-          <div class="form-group">
-            <label>Estado civil del fallecido</label>
-            <select id="ad-estado-civil">
-              <option value="">— Seleccionar —</option>
-              <option value="soltero">Soltero/a</option>
-              <option value="casado">Casado/a</option>
-              <option value="acompanado">Acompañado/a</option>
-              <option value="viudo">Viudo/a</option>
-              <option value="divorciado">Divorciado/a</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Ocupación del fallecido</label>
-            <input type="text" id="ad-ocupacion-fallecido" placeholder="Ej: Agricultor">
           </div>
         </div>
 
@@ -28224,6 +28147,7 @@ REGLAS:
           <div id="ad-ia-narrativa" style="background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:16px;font-size:12px;line-height:1.6;max-height:600px;overflow-y:auto"></div>
         </div>
 
+        <!-- ═══ FIX 5: Textarea editable del acta de alcaldía ═══ -->
         <div id="ad-alcaldia-resultado" style="display:none;margin-top:20px">
           <div style="background:#f0f7ff;border:2px solid #0071e3;border-radius:12px;padding:16px;margin-bottom:14px">
             <div style="font-size:12px;font-weight:700;color:#0051a3;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
@@ -28245,7 +28169,7 @@ REGLAS:
                         padding:12px;
                         border:2px solid #0071e3;
                         border-radius:8px;
-                        font-family:var(--font-sans);
+                        font-family:var(--font-mono);
                         background:#ffffff !important;
                         color:#1d1d1f !important;
                         resize:vertical;
@@ -28279,12 +28203,10 @@ REGLAS:
     const selM = $id("ad-municipio");
     if (selM) selM.innerHTML = '<option value="">—</option>';
 
+    // Si estamos en modo rectificación, precargar el paciente original
     if (AD.modoRectificacion && AD.actaOriginal) {
       precargarActaParaRectificacion(AD.actaOriginal);
     }
-        // Inyectar el catálogo CIE-10 local
-    setTimeout(inyectarDatalistCIE10, 100);
-  }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -28849,7 +28771,7 @@ REGLAS:
     wrap.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-    function poblarTextareaAlcaldia() {
+  function poblarTextareaAlcaldia() {
     const ta = $id("ad-alcaldia-edit");
     const wrap = $id("ad-alcaldia-resultado");
     if (!ta || !wrap) return;
@@ -28858,46 +28780,53 @@ REGLAS:
     const p = AD.pacienteSeleccionado;
     if (!p) return;
 
-    // Generar un texto narrativo (formato de borrador) en lugar de HTML puro
-    const narrativaAlcaldia = `ACTA DE DEFUNCIÓN - BORRADOR PARA ALCALDÍA
---------------------------------------------------
-DATOS DEL FALLECIDO:
-Nombre: ${p.nombre}
-DUI: ${p.dui || "—"}
-Edad: ${p.edad || "—"} años
-Sexo: ${p.sexo || "—"}
-Estado Familiar: ${v("ad-estado-civil") || "—"}
-Ocupación: ${v("ad-ocupacion-fallecido") || "—"}
-Nacionalidad: Salvadoreña
-Departamento: ${p.departamento || "—"}
-Municipio: ${p.municipio || "—"}
-Nombre del padre: —
-Nombre de la madre: —
+    const actaTemp = {
+      subject_id: p.subject_id,
+      paciente_nombre: p.nombre,
+      paciente_edad: p.edad,
+      paciente_sexo: p.sexo,
+      paciente_dui: p.dui || null,
+      paciente_fecha_nacimiento: p.fecha_nacimiento || null,
+      paciente_departamento: p.departamento || null,
+      paciente_municipio: p.municipio || null,
+      fecha_defuncion: v("ad-fecha-defuncion"),
+      hora_defuncion: v("ad-hora-defuncion") || null,
+      departamento_defuncion: v("ad-departamento"),
+      municipio_defuncion: v("ad-municipio"),
+      lugar_defuncion: v("ad-lugar"),
+      intrahospitalaria: v("ad-intrahospitalaria") === "true",
+      establecimiento_salud: v("ad-establecimiento") || null,
+      causa_a: v("ad-causa-a"),
+      codigo_a: v("ad-codigo-a") || null,
+      causa_b: v("ad-causa-b") || null,
+      codigo_b: v("ad-codigo-b") || null,
+      causa_c: v("ad-causa-c") || null,
+      codigo_c: v("ad-codigo-c") || null,
+      causa_basica: v("ad-causa-basica"),
+      codigo_basica: v("ad-codigo-basica"),
+      otros_estados: v("ad-otros-estados") || null,
+      manera_muerte: v("ad-manera"),
+      autopsia: v("ad-autopsia") === "true",
+      notificado_fiscalia: $id("ad-notificado-fiscalia")?.checked || false,
+      informante_nombre: v("ad-informante-nombre"),
+      informante_parentesco: v("ad-informante-parentesco") || null,
+      informante_dui: v("ad-informante-dui") || null,
+      informante_telefono: v("ad-informante-telefono") || null,
+      informante_direccion: v("ad-informante-direccion") || null,
+      observaciones: v("ad-observaciones") || null,
+      medico_nombre: window.usuarioActual?.nombre || "Médico",
+      medico_csspm: AD.medicoPerfil?.csspm || "N/E",
+      medico_especialidad: AD.medicoPerfil?.especialidad || "Médico General",
+      firma_hash: "pendiente-de-firma",
+      firmada_at: new Date().toISOString()
+    };
 
-DATOS DEL FALLECIMIENTO:
-Fecha: ${v("ad-fecha-defuncion")}
-Hora: ${v("ad-hora-defuncion")}
-Lugar: ${v("ad-lugar")}, ${v("ad-municipio")}, ${v("ad-departamento")}
-Establecimiento: ${v("ad-establecimiento") || "No aplica"}
-Intrahospitalaria: ${v("ad-intrahospitalaria") === "true" ? "SÍ" : "NO"}
-
-CAUSA DE DEFUNCIÓN (CIE-10):
-Causa directa (a): ${v("ad-causa-a")} [${v("ad-codigo-a")}]
-${v("ad-causa-b") ? `Causa antecedente (b): ${v("ad-causa-b")} [${v("ad-codigo-b")}]\n` : ""}${v("ad-causa-c") ? `Causa antecedente (c): ${v("ad-causa-c")} [${v("ad-codigo-c")}]\n` : ""}Causa básica: ${v("ad-causa-basica")} [${v("ad-codigo-basica")}]
-Manera de muerte: ${v("ad-manera")}
-Autopsia: ${v("ad-autopsia") === "true" ? "SÍ" : "NO"}
-
-INFORMANTE:
-Nombre: ${v("ad-informante-nombre")}
-Parentesco: ${v("ad-informante-parentesco")}
-DUI: ${v("ad-informante-dui")}
-
-OBSERVACIONES:
-${v("ad-observaciones") || "Sin observaciones adicionales."}`;
-
-    ta.value = narrativaAlcaldia;
+    const htmlAlcaldia = construirHTMLActaAlcaldia(actaTemp, { acta_id: "BORRADOR" });
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlAlcaldia, "text/html");
+    ta.value = doc.body.innerHTML;
     wrap.style.display = "block";
-    console.log("[ActaDefunción] ✓ Textarea de alcaldía poblado en formato narrativo");
+    console.log("[ActaDefunción] ✓ Textarea de alcaldía poblado");
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -29107,6 +29036,280 @@ ${v("ad-observaciones") || "Sin observaciones adicionales."}`;
   // ═══════════════════════════════════════════════════════════
   // CONSTRUIR HTML DEL INFORME MÉDICO
   // ═══════════════════════════════════════════════════════════
+  function construirHTMLActa(acta, registro) {
+    const fecha = new Date(acta.firmada_at).toLocaleString("es-ES");
+    const medicoData = window.MEDICOS_DATOS?.[window.usuarioActual?.id] 
+                    || window.MEDICOS_DATOS?.["EDUARDO_MAZZINI"];
+    
+    let selloUrl = medicoData?.urlSello || "";
+    if (!selloUrl && window.SUPABASE_URL) {
+      const carpeta = medicoData?.carpeta || "edumazzini";
+      selloUrl = `${window.SUPABASE_URL}/storage/v1/object/public/firmas-medicos/${carpeta}/sello-firma.png`;
+    }
+
+    const secciones = acta.secciones_informe || {};
+    const orden = ["resumen","datos","causa_directa","cadena","contexto","manera","hallazgos","epidemiologia","limitaciones","conclusiones"];
+
+    const limpiarTxt = (txt) => {
+      if (!txt) return "";
+      return String(txt)
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+        .replace(/[\u0080-\u009F]/g, "")
+        .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, "")
+        .replace(/\uFFFD/g, "")
+        .replace(/\b(\w+)(\s*,\s*\1){2,}/gi, "$1")
+        .trim();
+    };
+
+    let seccionesHTML = "";
+    orden.forEach(key => {
+      const sec = secciones[key];
+      if (!sec || !sec.contenido) return;
+      const contenidoLimpio = limpiarTxt(sec.contenido);
+      if (!contenidoLimpio) return;
+      seccionesHTML += `
+        <div class="ad-seccion" style="margin-bottom:16px;page-break-inside:avoid;break-inside:avoid">
+          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">${esc(sec.titulo)}</h3>
+          <div style="font-size:11.5px;line-height:1.65;color:#333;white-space:pre-wrap">${esc(contenidoLimpio)}</div>
+        </div>
+      `;
+    });
+
+    if (acta.narrativa_completa && Object.keys(secciones).length === 0) {
+      seccionesHTML = `
+        <div class="ad-seccion" style="margin-bottom:16px">
+          <div style="font-size:11.5px;line-height:1.65;color:#333;white-space:pre-wrap">${esc(limpiarTxt(acta.narrativa_completa))}</div>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="font-family:Helvetica,Arial,sans-serif;color:#1d1d1f;background:#fff;width:800px">
+        <div class="ad-header" style="background:linear-gradient(135deg,#1a3a5c 0%,#0071e3 100%);color:#fff;padding:24px;text-align:center;margin-bottom:16px">
+          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:2px;opacity:0.85">Ecosistema de Salud EcoRadAi</div>
+          <h1 style="font-size:22px;font-weight:700;margin:8px 0;letter-spacing:-0.3px">ACTA DE DEFUNCIÓN</h1>
+          <div style="font-size:10px;opacity:0.85">Informe clínico interno${acta.estado === 'rectificada' ? ' · RECTIFICADA' : ''}</div>
+        </div>
+
+        <div class="ad-seccion" style="margin-bottom:16px">
+          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">I. DATOS DEL FALLECIDO(A)</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <tr><td style="padding:5px 0;font-weight:600;width:35%">Nombre:</td><td style="padding:5px 0">${esc(acta.paciente_nombre)}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">ID:</td><td style="padding:5px 0">${esc(acta.subject_id)}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Edad / Sexo:</td><td style="padding:5px 0">${acta.paciente_edad || "—"} años · ${esc(acta.paciente_sexo || "—")}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">DUI:</td><td style="padding:5px 0">${esc(acta.paciente_dui || "No registrado")}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Fecha de defunción:</td><td style="padding:5px 0">${esc(acta.fecha_defuncion)}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Hora:</td><td style="padding:5px 0">${esc(acta.hora_defuncion || "—")}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Lugar:</td><td style="padding:5px 0">${esc(acta.lugar_defuncion)}, ${esc(acta.municipio_defuncion)}, ${esc(acta.departamento_defuncion)}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Intrahospitalaria:</td><td style="padding:5px 0">${acta.intrahospitalaria ? "Sí" : "No"}</td></tr>
+          </table>
+        </div>
+
+        <div class="ad-seccion" style="margin-bottom:16px">
+          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">II. CAUSA DE DEFUNCIÓN (CIE-10)</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <tr><td style="padding:5px 0;font-weight:600;width:35%">Causa directa (a):</td><td style="padding:5px 0">${esc(acta.causa_a_completa || acta.causa_a)}</td></tr>
+            ${acta.causa_b_completa ? `<tr><td style="padding:5px 0;font-weight:600">Causa antecedente (b):</td><td style="padding:5px 0">${esc(acta.causa_b_completa)}</td></tr>` : ""}
+            ${acta.causa_c_completa ? `<tr><td style="padding:5px 0;font-weight:600">Causa antecedente (c):</td><td style="padding:5px 0">${esc(acta.causa_c_completa)}</td></tr>` : ""}
+            <tr><td style="padding:5px 0;font-weight:600">Causa básica:</td><td style="padding:5px 0"><strong>${esc(acta.causa_basica_completa || acta.causa_basica)}</strong></td></tr>
+            ${acta.otros_estados ? `<tr><td style="padding:5px 0;font-weight:600">Otros estados:</td><td style="padding:5px 0">${esc(acta.otros_estados)}</td></tr>` : ""}
+            <tr><td style="padding:5px 0;font-weight:600">Manera de muerte:</td><td style="padding:5px 0">${esc(acta.manera_muerte)}</td></tr>
+            <tr><td style="padding:5px 0;font-weight:600">Autopsia:</td><td style="padding:5px 0">${acta.autopsia ? "Sí" : "No"}</td></tr>
+          </table>
+        </div>
+
+        ${seccionesHTML ? `
+          <div style="margin-top:20px;margin-bottom:16px">
+            <h3 style="font-size:12px;color:#0071e3;text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:2px solid #0071e3;padding-bottom:6px;margin-bottom:12px">III. INFORME CLÍNICO COMPLETO</h3>
+          </div>
+          ${seccionesHTML}
+        ` : ""}
+
+        <div class="ad-seccion" style="margin-bottom:16px">
+          <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">IV. DATOS DEL INFORMANTE</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <tr><td style="padding:5px 0;font-weight:600;width:35%">Nombre:</td><td style="padding:5px 0">${esc(acta.informante_nombre)}</td></tr>
+            ${acta.informante_parentesco ? `<tr><td style="padding:5px 0;font-weight:600">Parentesco:</td><td style="padding:5px 0">${esc(acta.informante_parentesco)}</td></tr>` : ""}
+            ${acta.informante_dui ? `<tr><td style="padding:5px 0;font-weight:600">DUI:</td><td style="padding:5px 0">${esc(acta.informante_dui)}</td></tr>` : ""}
+            ${acta.informante_telefono ? `<tr><td style="padding:5px 0;font-weight:600">Teléfono:</td><td style="padding:5px 0">${esc(acta.informante_telefono)}</td></tr>` : ""}
+            ${acta.informante_direccion ? `<tr><td style="padding:5px 0;font-weight:600">Dirección:</td><td style="padding:5px 0">${esc(acta.informante_direccion)}</td></tr>` : ""}
+          </table>
+        </div>
+
+        ${acta.observaciones ? `
+          <div class="ad-seccion" style="margin-bottom:16px">
+            <h3 style="font-size:11px;color:#0071e3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;border-bottom:1.5px solid #e8e8ed;padding-bottom:4px;margin-bottom:8px">V. OBSERVACIONES CLÍNICAS</h3>
+            <div style="font-size:11.5px;line-height:1.65;color:#333;white-space:pre-wrap">${esc(limpiarTxt(acta.observaciones))}</div>
+          </div>
+        ` : ""}
+
+        <div class="ad-firma" style="
+          position: relative !important;
+          z-index: 1 !important;
+          clear: both !important;
+          display: block !important;
+          overflow: hidden !important;
+          margin-top: 80px !important;
+          padding: 40px 20px !important;
+          background: #f8fbff !important;
+          border: 2px solid #1a3a5c !important;
+          border-radius: 8px !important;
+          border-top: 4px solid #0071e3 !important;
+          text-align: center !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        ">
+          ${selloUrl ? `<img src="${selloUrl}" crossorigin="anonymous" style="
+            display: block !important;
+            position: relative !important;
+            float: none !important;
+            max-width: 280px;
+            max-height: 140px;
+            margin: 0 auto 16px auto !important;
+          ">` : ""}
+          
+          <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:0 auto 12px auto"></div>
+          
+          <div style="font-size:14px;font-weight:700;color:#1a3a5c;margin-bottom:3px">${esc(acta.medico_nombre || "Médico")}</div>
+          <div style="font-size:11px;color:#333;margin-bottom:2px">CSSPM: ${esc(acta.medico_csspm || "N/E")}</div>
+          <div style="font-size:11px;color:#666;margin-bottom:8px">${esc(acta.medico_especialidad || "Médico General")}</div>
+          <div style="font-size:10px;color:#86868b">Fecha: ${esc(fecha)}</div>
+          
+          <div style="font-size:8px;color:#999;margin-top:16px;padding-top:10px;border-top:1px solid #d0d8e0;font-family:monospace;word-break:break-all">
+            SHA-256: ${esc((acta.firma_hash || "").substring(0, 64))}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // GENERAR PDF MÉDICO
+  // ═══════════════════════════════════════════════════════════
+  async function generarPDFActaAtomico(acta, registro) {
+    if (typeof html2canvas === "undefined") throw new Error("html2canvas no cargado");
+
+    toast("Generando informe médico...", "info");
+
+    let htmlActa = construirHTMLActa(acta, registro);
+    
+    htmlActa = htmlActa
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+      .replace(/[\u0080-\u009F]/g, "")
+      .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, "")
+      .replace(/\uFFFD/g, "")
+      .replace(/\s{3,}/g, "  ");
+    
+    const contenedor = document.createElement("div");
+    contenedor.style.cssText = "position:fixed;left:-99999px;top:0;width:800px;background:#fff;padding:0;font-family:Helvetica,Arial,sans-serif";
+    contenedor.innerHTML = htmlActa;
+    document.body.appendChild(contenedor);
+
+    contenedor.querySelectorAll("*").forEach(el => {
+      if (el.children.length === 0 && el.textContent) {
+        el.textContent = el.textContent
+          .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+          .replace(/[\u0080-\u009F]/g, "")
+          .replace(/\uFFFD/g, "")
+          .replace(/\b(\w+)(\s*,\s*\1){2,}/gi, "$1");
+      }
+    });
+
+    const imgs = contenedor.querySelectorAll("img");
+    await Promise.all(Array.from(imgs).map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise(r => { img.onload = r; img.onerror = r; setTimeout(r, 5000); });
+    }));
+
+    await new Promise(r => setTimeout(r, 300));
+
+    try {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pw = pdf.internal.pageSize.getWidth();
+      const ph = pdf.internal.pageSize.getHeight();
+      const mg = 10;
+      const cw = pw - 2 * mg;
+      const chMax = ph - 2 * mg;
+      let y = mg;
+
+      const bloques = [];
+      const header = contenedor.querySelector(".ad-header");
+      if (header) bloques.push(header);
+      contenedor.querySelectorAll(".ad-seccion").forEach(s => bloques.push(s));
+      const firma = contenedor.querySelector(".ad-firma");
+      if (firma) bloques.push(firma);
+
+      for (const bloque of bloques) {
+        const rect = bloque.getBoundingClientRect();
+        if (rect.height < 2 || rect.width < 2) continue;
+
+        let canvas;
+        try {
+          canvas = await html2canvas(bloque, {
+            scale: 2, useCORS: true, backgroundColor: "#ffffff",
+            logging: false, windowWidth: 800
+          });
+        } catch (err) { continue; }
+
+        if (!canvas || canvas.width === 0) continue;
+
+        const imgW = cw;
+        const imgH = (canvas.height * imgW) / canvas.width;
+        const imgData = canvas.toDataURL("image/png");
+
+        if (y + imgH <= ph - mg - 5) {
+          pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
+          y += imgH + 3;
+        } else if (imgH <= chMax) {
+          pdf.addPage();
+          y = mg;
+          pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
+          y += imgH + 3;
+        } else {
+          if (y > mg + 1) { pdf.addPage(); y = mg; }
+          const pxPorMm = canvas.width / imgW;
+          const altoPaginaPx = chMax * pxPorMm;
+          let offsetY = 0;
+          let primerCorte = true;
+          while (offsetY < canvas.height) {
+            const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
+            const temp = document.createElement("canvas");
+            temp.width = canvas.width;
+            temp.height = altoCorte;
+            const ctx = temp.getContext("2d");
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, temp.width, temp.height);
+            ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
+            if (!primerCorte) pdf.addPage();
+            pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoCorte / pxPorMm);
+            offsetY += altoCorte;
+            primerCorte = false;
+          }
+          y = mg;
+        }
+      }
+
+      const totalPags = pdf.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPags; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(7);
+        pdf.setTextColor(150);
+        pdf.text("EcoRadAi · Informe Médico · " + new Date().toLocaleDateString("es-ES"), mg, ph - 6);
+        pdf.text("Página " + i + " de " + totalPags, pw - mg, ph - 6, { align: "right" });
+        pdf.text("SHA-256: " + (acta.firma_hash || "").substring(0, 32) + "...", mg, ph - 3);
+        pdf.text("Acta: " + (registro?.acta_id || "—"), pw - mg, ph - 3, { align: "right" });
+      }
+
+      return pdf.output("blob");
+    } finally {
+      document.body.removeChild(contenedor);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // CONSTRUIR HTML DEL ACTA DE ALCALDÍA
+  // ═══════════════════════════════════════════════════════════
   function construirHTMLActaAlcaldia(acta, registro) {
     const e = esc;
     const fechaEmision = new Date(acta.firmada_at).toLocaleDateString("es-ES", {
@@ -29124,50 +29327,11 @@ ${v("ad-observaciones") || "Sin observaciones adicionales."}`;
         .trim();
     };
 
-    // ═══ FIX: Separación inteligente de nombres ═══
-    const nombreCompleto = (acta.paciente_nombre || "").trim();
-    // Busca partículas comunes en español (de, del, la, los, las, y)
-    const particulas = ["de", "del", "la", "las", "los", "y"];
-    const partes = nombreCompleto.split(/\s+/);
-    
-    // Si el nombre es corto (ej. "Pedro de la O" = 4 palabras), lo dividimos por la mitad
-    // Asumiendo que la primera mitad es nombre y la segunda apellido
-    let primerNombre = "—", segundoNombre = "", primerApellido = "—", segundoApellido = "";
-    
-    if (partes.length === 1) {
-      primerNombre = partes[0];
-    } else if (partes.length === 2) {
-      primerNombre = partes[0];
-      primerApellido = partes[1];
-    } else if (partes.length === 3) {
-      // Ej: "Juan Perez Lopez" o "Maria de Lopez"
-      if (particulas.includes(partes[1].toLowerCase())) {
-        primerNombre = partes[0];
-        primerApellido = partes.slice(1).join(" ");
-      } else {
-        primerNombre = partes[0];
-        segundoNombre = partes[1];
-        primerApellido = partes[2];
-      }
-    } else if (partes.length === 4) {
-      // Ej: "Pedro de la O" o "Juan Carlos Perez Lopez"
-      if (particulas.includes(partes[1].toLowerCase()) || particulas.includes(partes[2].toLowerCase())) {
-        // Tiene partículas, lo más probable es que sea Nombre + Apellido compuesto
-        primerNombre = partes[0];
-        primerApellido = partes.slice(1).join(" ");
-      } else {
-        primerNombre = partes[0];
-        segundoNombre = partes[1];
-        primerApellido = partes[2];
-        segundoApellido = partes[3];
-      }
-    } else {
-      // 5+ palabras, asumimos 2 nombres y 2 apellidos
-      primerNombre = partes[0];
-      segundoNombre = partes[1];
-      primerApellido = partes.slice(2, -1).join(" ");
-      segundoApellido = partes[partes.length - 1];
-    }
+    const partesNombre = (acta.paciente_nombre || "").trim().split(/\s+/);
+    const primerNombre = partesNombre[0] || "—";
+    const segundoNombre = partesNombre[1] || "";
+    const primerApellido = partesNombre[2] || partesNombre[1] || "";
+    const segundoApellido = partesNombre[3] || partesNombre[2] || "";
 
     const fechaNac = acta.paciente_fecha_nacimiento || "";
     let fechaNacFmt = "—";
@@ -29182,6 +29346,7 @@ ${v("ad-observaciones") || "Sin observaciones adicionales."}`;
       fechaDefFmt = d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
     }
 
+    // ═══ FIX 4: Casillas grandes y visibles ═══
     const checkbox = (marcado) => `
       <span style="
         display: inline-block;
@@ -29199,10 +29364,8 @@ ${v("ad-observaciones") || "Sin observaciones adicionales."}`;
       ">${marcado ? "✓" : ""}</span>
     `;
 
-    // Corregir la comparación del sexo (M, F, Masculino, Femenino)
-    const sexoStr = (acta.paciente_sexo || "").toLowerCase();
-    const sexoM = sexoStr === "masculino" || sexoStr === "m" || sexoStr === "hombre";
-    const sexoF = sexoStr === "femenino" || sexoStr === "f" || sexoStr === "mujer";
+    const sexoM = acta.paciente_sexo === "Masculino";
+    const sexoF = acta.paciente_sexo === "Femenino";
 
     const maneras = {
       natural: checkbox(acta.manera_muerte === "natural"),
@@ -29211,14 +29374,6 @@ ${v("ad-observaciones") || "Sin observaciones adicionales."}`;
       homicidio: checkbox(acta.manera_muerte === "homicidio"),
       indeterminada: checkbox(acta.manera_muerte === "indeterminada")
     };
-
-    // Corregir estado civil
-    const ec = (acta.estado_civil || "").toLowerCase();
-    const ecSoltero = checkbox(ec.includes("solter"));
-    const ecCasado = checkbox(ec.includes("casad"));
-    const ecAcompanado = checkbox(ec.includes("acompañ") || ec.includes("acompan"));
-    const ecViudo = checkbox(ec.includes("viud"));
-    const ecDivorciado = checkbox(ec.includes("divorciad"));
 
     const selloUrl = window.MEDICOS_DATOS?.[window.usuarioActual?.id]?.urlSello 
                   || window.MEDICOS_DATOS?.["EDUARDO_MAZZINI"]?.urlSello 
@@ -29268,13 +29423,11 @@ ${v("ad-observaciones") || "Sin observaciones adicionales."}`;
               <td style="padding:3px 0"><strong>Nacionalidad:</strong></td>
               <td style="padding:3px 0;border-bottom:1px solid #999">Salvadoreña</td>
               <td style="padding:3px 0"><strong>Estado familiar:</strong></td>
-              <td style="padding:3px 0;border-bottom:1px solid #999">
-                ${ecSoltero} Soltero ${ecCasado} Casado ${ecAcompanado} Acompañado ${ecViudo} Viudo ${ecDivorciado} Divorciado
-              </td>
+              <td style="padding:3px 0;border-bottom:1px solid #999">☐ Soltero ☐ Casado ☐ Acompañado ☐ Viudo ☐ Divorciado</td>
             </tr>
             <tr>
               <td style="padding:3px 0"><strong>Ocupación:</strong></td>
-              <td style="padding:3px 0;border-bottom:1px solid #999" colspan="3">${e(acta.ocupacion || "—")}</td>
+              <td style="padding:3px 0;border-bottom:1px solid #999" colspan="3">—</td>
             </tr>
           </table>
           <div style="margin-top:8px;font-size:10px">
@@ -29437,31 +29590,17 @@ ${v("ad-observaciones") || "Sin observaciones adicionales."}`;
   // ═══════════════════════════════════════════════════════════
   // GENERAR PDF ALCALDÍA
   // ═══════════════════════════════════════════════════════════
-   async function generarPDFActaAlcaldia(acta, registro) {
+  async function generarPDFActaAlcaldia(acta, registro) {
     if (typeof html2canvas === "undefined") throw new Error("html2canvas no cargado");
 
     let htmlAlcaldia;
-    if (acta.informe_alcaldia_editado && acta.informe_alcaldia_editado.trim().length > 10) {
-      // Si el texto no tiene etiquetas HTML, le aplicamos estilo para que respete los saltos de línea
-      const textoFormateado = acta.informe_alcaldia_editado.replace(/\n/g, "<br>");
-      
+    if (acta.informe_alcaldia_editado && acta.informe_alcaldia_editado.trim().length > 50) {
       htmlAlcaldia = `
-        <div style="font-family:Helvetica,Arial,sans-serif;color:#000;background:#fff;width:800px;font-size:12px;line-height:1.6;padding:40px;box-sizing:border-box;">
-          <div style="text-align:center;margin-bottom:30px;">
-            <h1 style="font-size:20px;font-weight:bold;margin:0;">ACTA DE DEFUNCIÓN</h1>
-            <p style="font-size:12px;color:#666;">Documento para Alcaldía</p>
-          </div>
-          <div style="white-space: pre-wrap; font-family: inherit;">${textoFormateado}</div>
-          
-          <div style="margin-top:80px; text-align:center;">
-            ${acta.sello_url ? `<img src="${acta.sello_url}" style="max-width:200px;">` : ""}
-            <div style="border-top:1px solid #000; width:60%; margin:20px auto;"></div>
-            <p style="font-weight:bold; margin:0;">${acta.medico_nombre}</p>
-            <p style="font-size:11px; margin:0;">JVPM: ${acta.medico_csspm}</p>
-          </div>
+        <div style="font-family:Helvetica,Arial,sans-serif;color:#000;background:#fff;width:800px;font-size:11px;line-height:1.5">
+          ${acta.informe_alcaldia_editado}
         </div>
       `;
-      console.log("[PDF Alcaldía] ✓ Usando texto narrativo editado por el médico");
+      console.log("[PDF Alcaldía] ✓ Usando HTML editado por el médico");
     } else {
       htmlAlcaldia = construirHTMLActaAlcaldia(acta, registro);
       console.log("[PDF Alcaldía] ℹ️ Usando HTML generado automáticamente");
@@ -29507,32 +29646,78 @@ ${v("ad-observaciones") || "Sin observaciones adicionales."}`;
       const chMax = ph - 2 * mg;
       let y = mg;
 
-      const canvas = await html2canvas(contenedor, { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false, windowWidth: 800 });
-      const imgW = cw;
-      const imgH = (canvas.height * imgW) / canvas.width;
-      const imgData = canvas.toDataURL("image/png");
-
-      if (imgH <= chMax) {
-        pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
+      const bloques = [];
+      const header = contenedor.querySelector(".alc-header");
+      if (header) bloques.push(header);
+      
+      const secciones = contenedor.querySelectorAll(".alc-seccion");
+      if (secciones.length > 0) {
+        secciones.forEach(s => bloques.push(s));
       } else {
-        const pxPorMm = canvas.width / imgW;
-        const altoPaginaPx = chMax * pxPorMm;
-        let offsetY = 0;
-        let primerCorte = true;
-        while (offsetY < canvas.height) {
-          const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
-          const temp = document.createElement("canvas");
-          temp.width = canvas.width;
-          temp.height = altoCorte;
-          const ctx = temp.getContext("2d");
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, temp.width, temp.height);
-          ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
-          if (!primerCorte) pdf.addPage();
-          pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoCorte / pxPorMm);
-          offsetY += altoCorte;
-          primerCorte = false;
+        bloques.push(contenedor.firstElementChild || contenedor);
+      }
+      
+      const firma = contenedor.querySelector(".alc-firma");
+      if (firma && !bloques.includes(firma)) bloques.push(firma);
+
+      for (const bloque of bloques) {
+        const rect = bloque.getBoundingClientRect();
+        if (rect.height < 2 || rect.width < 2) continue;
+
+        let canvas;
+        try {
+          canvas = await html2canvas(bloque, {
+            scale: 2, useCORS: true, backgroundColor: "#ffffff",
+            logging: false, windowWidth: 800
+          });
+        } catch (err) { continue; }
+
+        if (!canvas || canvas.width === 0) continue;
+
+        const imgW = cw;
+        const imgH = (canvas.height * imgW) / canvas.width;
+        const imgData = canvas.toDataURL("image/png");
+
+        if (y + imgH <= ph - mg - 5) {
+          pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
+          y += imgH + 3;
+        } else if (imgH <= chMax) {
+          pdf.addPage();
+          y = mg;
+          pdf.addImage(imgData, "PNG", mg, y, imgW, imgH);
+          y += imgH + 3;
+        } else {
+          if (y > mg + 1) { pdf.addPage(); y = mg; }
+          const pxPorMm = canvas.width / imgW;
+          const altoPaginaPx = chMax * pxPorMm;
+          let offsetY = 0;
+          let primerCorte = true;
+          while (offsetY < canvas.height) {
+            const altoCorte = Math.min(altoPaginaPx, canvas.height - offsetY);
+            const temp = document.createElement("canvas");
+            temp.width = canvas.width;
+            temp.height = altoCorte;
+            const ctx = temp.getContext("2d");
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, temp.width, temp.height);
+            ctx.drawImage(canvas, 0, offsetY, canvas.width, altoCorte, 0, 0, canvas.width, altoCorte);
+            if (!primerCorte) pdf.addPage();
+            pdf.addImage(temp.toDataURL("image/png"), "PNG", mg, mg, imgW, altoCorte / pxPorMm);
+            offsetY += altoCorte;
+            primerCorte = false;
+          }
+          y = mg;
         }
+      }
+
+      const totalPags = pdf.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPags; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(7);
+        pdf.setTextColor(150);
+        pdf.text("EcoRadAi · Acta para Alcaldía · " + new Date().toLocaleDateString("es-ES"), mg, ph - 6);
+        pdf.text("Página " + i + " de " + totalPags, pw - mg, ph - 6, { align: "right" });
+        pdf.text("Acta: " + (registro?.acta_id || "—"), pw - mg, ph - 3, { align: "right" });
       }
 
       return pdf.output("blob");
