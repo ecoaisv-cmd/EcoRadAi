@@ -6014,14 +6014,20 @@ async function obtenerArtifactsPorCasoDB(caseId) {
    PORTAL DEL PACIENTE v24.6 — FINAL
    Carga tamizajes Y consultas, con soporte para duplicados
    ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   PORTAL DEL PACIENTE v24.9 — CARGA COMPLETA
+   (Tamizajes + Consultas + Procedimientos + Suscripción)
+   ═══════════════════════════════════════════════════════════ */
 async function cargarPortalPaciente() {
   if (!usuarioActual || usuarioActual.rol !== "paciente") return;
 
-  const contenedor = document.getElementById("portal-casos-lista");
-  if (!contenedor) {
-    console.error("[Portal] No existe #portal-casos-lista");
-    return;
+  // 1. Cargar el estado de la suscripción (el recuadro azul)
+  if (typeof window.cargarEstadoSuscripcion === "function") {
+    window.cargarEstadoSuscripcion();
   }
+
+  const contenedor = document.getElementById("portal-casos-lista");
+  if (!contenedor) return;
 
   contenedor.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando tus informes...</p></div>';
 
@@ -6032,11 +6038,9 @@ async function cargarPortalPaciente() {
       return;
     }
 
-    console.log("[Portal v24.7] Cargando para:", subjectId);
+    console.log("[Portal v24.9] Cargando para:", subjectId);
 
-    // ═══════════════════════════════════════════════════════════
-    // 1. TAMIZAJES
-    // ═══════════════════════════════════════════════════════════
+    // ─── 1. TAMIZAJES ───
     const { data: casosRaw } = await window.supabaseClient
       .from("cases")
       .select("case_id, subject_id, payload, created_at")
@@ -6044,9 +6048,7 @@ async function cargarPortalPaciente() {
       .order("created_at", { ascending: false });
     const casos = casosRaw || [];
 
-    // ═══════════════════════════════════════════════════════════
-    // 2. CONSULTAS FIRMADAS
-    // ═══════════════════════════════════════════════════════════
+    // ─── 2. CONSULTAS ───
     const { data: consultasRaw } = await window.supabaseClient
       .from("consultas")
       .select("consulta_id, case_id, subject_id, fecha_consulta, tipo, estado, motivo_consulta, cie10_principal, nivel_riesgo, complejidad, medico_nombre, created_at")
@@ -6055,9 +6057,7 @@ async function cargarPortalPaciente() {
       .order("created_at", { ascending: false });
     const consultas = consultasRaw || [];
 
-    // ═══════════════════════════════════════════════════════════
-    // 3. PROCEDIMIENTOS  ← NUEVO v24.7
-    // ═══════════════════════════════════════════════════════════
+    // ─── 3. PROCEDIMIENTOS ───
     const { data: procedimientosRaw } = await window.supabaseClient
       .from("procedimientos_realizados")
       .select("procedimiento_realizado_id, case_id, subject_id, procedimiento_id, fecha_procedimiento, estado, medico_nombre, operador_nombre, complejidad_final, created_at")
@@ -6066,7 +6066,7 @@ async function cargarPortalPaciente() {
       .order("created_at", { ascending: false });
     const procedimientos = procedimientosRaw || [];
 
-    console.log("[Portal v24.7] Tamizajes:", casos.length, "· Consultas:", consultas.length, "· Procedimientos:", procedimientos.length);
+    console.log("[Portal v24.9] Tamizajes:", casos.length, "· Consultas:", consultas.length, "· Procedimientos:", procedimientos.length);
 
     const total = casos.length + consultas.length + procedimientos.length;
     if (total === 0) {
@@ -6074,162 +6074,129 @@ async function cargarPortalPaciente() {
         <div class="empty-state">
           <div class="icon">📭</div>
           <p>No tienes informes disponibles todavía.</p>
-          <p style="font-size:11px;color:var(--text-tertiary);margin-top:8px">
-            Si ya te realizaron un tamizaje, consulta o procedimiento, contacta a tu médico.
-          </p>
         </div>
       `;
       return;
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // 4. CARGAR ARTIFACTS en un solo query batch
-    // ═══════════════════════════════════════════════════════════
+    // ─── 4. CARGAR ARTIFACTS (BATCH) ───
     const todosCaseIds = [
       ...casos.map(c => c.case_id),
       ...consultas.map(c => c.case_id),
       ...procedimientos.map(p => p.case_id)
     ].filter(Boolean);
 
-    const { data: arts } = await window.supabaseClient
+    const { data: arts, error: errArts } = await window.supabaseClient
       .from("artifacts")
-      .select("case_id, tipo")
+      .select("case_id, tipo, artifact_id")
       .in("case_id", todosCaseIds);
 
+    if (errArts) console.warn("[Portal v24.9] Error cargando artifacts:", errArts);
+
+    // ─── 5. CONSTRUIR MAPA BLINDADO ───
     const artifactsMap = {};
     (arts || []).forEach(a => {
-      if (!artifactsMap[a.case_id]) artifactsMap[a.case_id] = [];
-      if (!artifactsMap[a.case_id].includes(a.tipo)) {
-        artifactsMap[a.case_id].push(a.tipo);
+      if (!a) return;
+      if (a.case_id) {
+        if (!artifactsMap[a.case_id]) artifactsMap[a.case_id] = [];
+        if (!artifactsMap[a.case_id].includes(a.tipo)) artifactsMap[a.case_id].push(a.tipo);
+      }
+      if (!a.case_id && a.artifact_id) {
+        const cid = a.artifact_id.split(":")[0];
+        if (cid) {
+          if (!artifactsMap[cid]) artifactsMap[cid] = [];
+          if (!artifactsMap[cid].includes(a.tipo)) artifactsMap[cid].push(a.tipo);
+        }
       }
     });
 
-    // ═══════════════════════════════════════════════════════════
-    // 5. UNIFICAR EVENTOS
-    // ═══════════════════════════════════════════════════════════
+    // Asegurar arrays vacíos para no fallar
+    todosCaseIds.forEach(cid => { if (cid && !artifactsMap[cid]) artifactsMap[cid] = []; });
+
+    // ─── 6. FALLBACK EXTRA (por si el case_id no coincide) ───
+    const sinArtifacts = todosCaseIds.filter(cid => cid && artifactsMap[cid].length === 0);
+    if (sinArtifacts.length > 0) {
+      for (const cid of sinArtifacts) {
+        try {
+          const { data: extraA } = await window.supabaseClient.from("artifacts").select("case_id, tipo").eq("case_id", cid);
+          if (extraA && extraA.length > 0) {
+            artifactsMap[cid] = extraA.map(a => a.tipo);
+            continue;
+          }
+          const { data: extraB } = await window.supabaseClient.from("artifacts").select("case_id, tipo").like("artifact_id", cid + ":%");
+          if (extraB && extraB.length > 0) {
+            artifactsMap[cid] = extraB.map(a => a.tipo);
+          }
+        } catch (e) {}
+      }
+    }
+
+    console.log("[Portal v24.9] Mapa final:", artifactsMap);
+
+    // ─── 7. UNIFICAR EVENTOS ───
     const eventos = [
       ...casos.map(c => ({
-        kind: "tamizaje",
-        id: c.case_id,
+        kind: "tamizaje", id: c.case_id, caseId: c.case_id,
         fecha: c.payload?.encounter?.fecha || c.created_at?.slice(0, 10) || "—",
         timestamp: new Date(c.created_at || 0).getTime(),
         nombreTamizaje: TAMIZAJES_REGISTRY.obtener(c.payload?.encounter?.estudio)?.meta?.nombre || "Tamizaje",
         nivel: normalizarNivel(c.payload?.riesgo_global?.nivel || "MODERADO"),
-        imagenes: c.payload?.acquisition?.imagenes || [],
-        caseId: c.case_id
+        imagenes: c.payload?.acquisition?.imagenes || []
       })),
-
       ...consultas.map(c => ({
-        kind: "consulta",
-        id: c.consulta_id,
-        caseId: c.case_id,
+        kind: "consulta", id: c.consulta_id, caseId: c.case_id,
         fecha: c.fecha_consulta || c.created_at?.slice(0, 10) || "—",
         timestamp: new Date(c.created_at || 0).getTime(),
         nombreTamizaje: `Consulta — ${(c.tipo || "").replace(/_/g, " ")}`,
         nivel: normalizarNivel(c.nivel_riesgo || "MODERADO"),
-        motivo: c.motivo_consulta,
-        cie10: c.cie10_principal,
-        medico: c.medico_nombre,
-        complejidad: c.complejidad,
-        caseId: c.case_id
+        motivo: c.motivo_consulta, cie10: c.cie10_principal,
+        medico: c.medico_nombre, complejidad: c.complejidad
       })),
-
       ...procedimientos.map(p => ({
-        kind: "procedimiento",
-        id: p.procedimiento_realizado_id,
-        caseId: p.case_id,
+        kind: "procedimiento", id: p.procedimiento_realizado_id, caseId: p.case_id,
         fecha: p.fecha_procedimiento || p.created_at?.slice(0, 10) || "—",
         timestamp: new Date(p.created_at || 0).getTime(),
         nombreTamizaje: `Procedimiento — ${(p.procedimiento_id || "").replace(/_/g, " ")}`,
-        nivel: "BAJO",
-        medico: p.medico_nombre,
-        operador: p.operador_nombre,
-        complejidad: p.complejidad_final,
-        estadoProc: p.estado,
-        caseId: p.case_id
+        nivel: "BAJO", medico: p.medico_nombre, operador: p.operador_nombre,
+        complejidad: p.complejidad_final, estadoProc: p.estado
       }))
     ].sort((a, b) => b.timestamp - a.timestamp);
 
-    // ═══════════════════════════════════════════════════════════
-    // 6. RENDERIZAR
-    // ═══════════════════════════════════════════════════════════
+    // ─── 8. RENDERIZAR ───
     contenedor.innerHTML = eventos.map(e => {
-      const nc = e.nivel === "MUY ALTO" ? "muy-alto"
-               : e.nivel === "ALTO" ? "alto"
-               : e.nivel === "MODERADO" ? "moderado"
-               : "bajo";
-
-      const icono = e.kind === "tamizaje" ? "🩺"
-                  : e.kind === "consulta" ? "📋"
-                  : "🩹";
-
-      const colorBorde = e.kind === "tamizaje" ? "var(--accent)"
-                       : e.kind === "consulta" ? "var(--positive)"
-                       : "#d4a017";
-
+      const nc = e.nivel === "MUY ALTO" ? "muy-alto" : e.nivel === "ALTO" ? "alto" : e.nivel === "MODERADO" ? "moderado" : "bajo";
+      const icono = e.kind === "tamizaje" ? "🩺" : e.kind === "consulta" ? "📋" : "🩹";
+      const colorBorde = e.kind === "tamizaje" ? "var(--accent)" : e.kind === "consulta" ? "var(--positive)" : "#d4a017";
+      
       const tipos = artifactsMap[e.caseId] || [];
       const botones = [];
 
+      // Tamizaje
       if (e.kind === "tamizaje") {
-        if (tipos.includes("informeMedico")) {
-          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'informeMedico')">🩺 Informe médico</button>`);
-        }
-        if (tipos.includes("lite")) {
-          botones.push(`<button class="btn btn-success btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'lite')">📄 Informe lite</button>`);
-        }
-        if (tipos.includes("receta")) {
-          botones.push(`<button class="btn btn-corp btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'receta')">💊 Receta</button>`);
-        }
-        if (tipos.includes("imagenes") || e.imagenes.length > 0) {
-          botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verImagenes('${e.caseId}')">🖼️ Imágenes</button>`);
-        }
+        if (tipos.includes("informeMedico")) botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'informeMedico')">🩺 Informe médico</button>`);
+        if (tipos.includes("lite")) botones.push(`<button class="btn btn-success btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'lite')">📄 Informe lite</button>`);
+        if (tipos.includes("receta")) botones.push(`<button class="btn btn-corp btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'receta')">💊 Receta</button>`);
+        if (tipos.includes("imagenes") || e.imagenes.length > 0) botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verImagenes('${e.caseId}')">🖼️ Imágenes</button>`);
+      }
+      
+      // Consulta
+      if (e.kind === "consulta") {
+        if (tipos.includes("notaClinica") || tipos.includes("nota_clinica")) botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipos.includes("notaClinica") ? "notaClinica" : "nota_clinica"}')">📋 Nota clínica</button>`);
+        if (tipos.includes("receta")) botones.push(`<button class="btn btn-corp btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'receta')">💊 Receta</button>`);
+        if (tipos.includes("orden_laboratorio") || tipos.includes("ordenesLab")) botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipos.includes("orden_laboratorio") ? "orden_laboratorio" : "ordenesLab"}')">🔬 Lab</button>`);
+        if (tipos.includes("orden_imagen") || tipos.includes("ordenesImagen")) botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipos.includes("orden_imagen") ? "orden_imagen" : "ordenesImagen"}')">🖼️ Imagen</button>`);
+        if (tipos.includes("referencia")) botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'referencia')">📤 Referencia</button>`);
+        if (tipos.includes("constancia_incapacidad") || tipos.includes("constanciaIncapacidad")) botones.push(`<button class="btn btn-danger btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipos.includes("constancia_incapacidad") ? "constancia_incapacidad" : "constanciaIncapacidad"}')">📝 Incapacidad</button>`);
+        if (tipos.includes("constancia_acompanamiento") || tipos.includes("constanciaAcompanamiento")) botones.push(`<button class="btn btn-danger btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipos.includes("constancia_acompanamiento") ? "constancia_acompanamiento" : "constanciaAcompanamiento"}')">👨‍👩‍👧 Acompañamiento</button>`);
       }
 
-      else if (e.kind === "consulta") {
-        if (tipos.includes("notaClinica") || tipos.includes("nota_clinica")) {
-          const tipoReal = tipos.includes("notaClinica") ? "notaClinica" : "nota_clinica";
-          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipoReal}')">📋 Nota clínica</button>`);
-        }
-        if (tipos.includes("receta")) {
-          botones.push(`<button class="btn btn-corp btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'receta')">💊 Receta</button>`);
-        }
-        if (tipos.includes("orden_laboratorio") || tipos.includes("ordenesLab")) {
-          const tipoReal = tipos.includes("orden_laboratorio") ? "orden_laboratorio" : "ordenesLab";
-          botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipoReal}')">🔬 Lab</button>`);
-        }
-        if (tipos.includes("orden_imagen") || tipos.includes("ordenesImagen")) {
-          const tipoReal = tipos.includes("orden_imagen") ? "orden_imagen" : "ordenesImagen";
-          botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipoReal}')">🖼️ Imagen</button>`);
-        }
-        if (tipos.includes("referencia")) {
-          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'referencia')">📤 Referencia</button>`);
-        }
-        if (tipos.includes("constancia_incapacidad") || tipos.includes("constanciaIncapacidad")) {
-          const tipoReal = tipos.includes("constancia_incapacidad") ? "constancia_incapacidad" : "constanciaIncapacidad";
-          botones.push(`<button class="btn btn-danger btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipoReal}')">📝 Incapacidad</button>`);
-        }
-        if (tipos.includes("constancia_acompanamiento") || tipos.includes("constanciaAcompanamiento")) {
-          const tipoReal = tipos.includes("constancia_acompanamiento") ? "constancia_acompanamiento" : "constanciaAcompanamiento";
-          botones.push(`<button class="btn btn-danger btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', '${tipoReal}')">👨‍👩‍👧 Acompañamiento</button>`);
-        }
-      }
-
-      else if (e.kind === "procedimiento") {
-        if (tipos.includes("nota_procedimiento")) {
-          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'nota_procedimiento')">🩹 Nota procedimiento</button>`);
-        }
-        if (tipos.includes("receta")) {
-          botones.push(`<button class="btn btn-corp btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'receta')">💊 Receta</button>`);
-        }
-        if (tipos.includes("orden_laboratorio")) {
-          botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'orden_laboratorio')">🔬 Lab</button>`);
-        }
-        if (tipos.includes("consentimiento")) {
-          botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'consentimiento')">✍️ Consentimiento</button>`);
-        }
-        if (tipos.includes("indicaciones_paciente")) {
-          botones.push(`<button class="btn btn-success btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'indicaciones_paciente')">📄 Indicaciones</button>`);
-        }
+      // Procedimiento
+      if (e.kind === "procedimiento") {
+        if (tipos.includes("nota_procedimiento")) botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'nota_procedimiento')">🩹 Nota procedimiento</button>`);
+        if (tipos.includes("receta")) botones.push(`<button class="btn btn-corp btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'receta')">💊 Receta</button>`);
+        if (tipos.includes("orden_laboratorio")) botones.push(`<button class="btn btn-warning btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'orden_laboratorio')">🔬 Lab</button>`);
+        if (tipos.includes("consentimiento")) botones.push(`<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'consentimiento')">✍️ Consentimiento</button>`);
+        if (tipos.includes("indicaciones_paciente")) botones.push(`<button class="btn btn-success btn-sm" style="font-size:11px" onclick="verArtefacto('${e.caseId}', 'indicaciones_paciente')">📄 Indicaciones</button>`);
       }
 
       return `
@@ -6267,17 +6234,9 @@ async function cargarPortalPaciente() {
       `;
     }).join("");
 
-    console.log("[Portal v24.7] ✅ Renderizado completo:", total, "eventos");
-
   } catch (e) {
-    console.error("[Portal v24.7] Error:", e);
-    contenedor.innerHTML = `
-      <div class="empty-state">
-        <div class="icon">⚠️</div>
-        <p>Error al cargar tus informes.</p>
-        <p style="font-size:10px;color:var(--text-tertiary);margin-top:6px">${escapeHtml(e.message)}</p>
-      </div>
-    `;
+    console.error("[Portal v24.9] Error:", e);
+    contenedor.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error al cargar tus informes.</p></div>`;
   }
 }
 
