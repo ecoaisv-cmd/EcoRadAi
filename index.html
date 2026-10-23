@@ -5913,15 +5913,24 @@ async function guardarCasoDB(caso) {
 
     if (errCaso) throw errCaso;
 
+     // ═══════════════════════════════════════════════════════
+    // 4) AUDIT LOG (no bloqueante)
     // ═══════════════════════════════════════════════════════
-    // 4) AUDIT LOG
-    // ═══════════════════════════════════════════════════════
-          await window.supabaseClient.rpc("admin_log_accion", {
-        p_accion: "admin_crear_usuario",
-        p_entidad: "profiles",
-        p_entidad_id: authUserId,
-        p_detalle: { email, nombre, rol, telefono, paciente_id }
+    try {
+      await window.supabaseClient.rpc("admin_log_accion", {
+        p_accion: "guardar_caso",
+        p_entidad: "cases",
+        p_entidad_id: caso.case_id,
+        p_detalle: {
+          subject_id: caso.subject?.subject_id,
+          estudio: caso.encounter?.estudio,
+          nivel_riesgo: caso.riesgo_global?.nivel,
+          operador: window.usuarioActual?.nombre || null
+        }
       });
+    } catch (auditErr) {
+      console.warn("[audit log] No crítico:", auditErr?.message);
+    }
 
     console.log("[Supabase] ✓ Caso guardado:", caso.case_id, "→ paciente:", caso.subject.subject_id);
     return true;
