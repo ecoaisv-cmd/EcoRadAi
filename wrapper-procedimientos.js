@@ -1241,7 +1241,34 @@ Sin markdown.`;
       const esOperador = window.usuarioActual?.rol === "operador";
       const requiereMedico = PROC.procedimiento.requiere_medico && esOperador;
       const medicoSeleccionado = $id("proc-medico-id")?.value || null;
+      // Dentro de procGuardarProcedimiento, antes del payload:
+const esOperador = window.usuarioActual?.rol === "operador";
+const requiereMedico = PROC.procedimiento.requiere_medico && esOperador;
+const medicoSeleccionado = $id("proc-medico-id")?.value || null;
 
+// ═══ NUEVO: Determinar quién firma ═══
+let firmanteId = window.usuarioActual?.id;
+let firmanteNombre = window.usuarioActual?.nombre;
+
+if (requiereMedico && medicoSeleccionado) {
+  // Si requiere médico y el operador seleccionó uno, ese médico es el firmante
+  const datosMedico = window.MEDICOS_DATOS?.[medicoSeleccionado];
+  firmanteId = medicoSeleccionado;
+  firmanteNombre = datosMedico?.nombre || "Médico Validador";
+} else if (esOperador) {
+  // Si es operador y no requiere médico, el operador firma
+  firmanteId = window.usuarioActual?.id;
+  firmanteNombre = window.usuarioActual?.nombre;
+}
+
+// Guardar en el objeto PROC para usarlo en los PDFs
+PROC.firmante = {
+  id: firmanteId,
+  nombre: firmanteNombre,
+  rol: requiereMedico ? "Médico Validador" : (esOperador ? "Operador de Salud" : "Médico Tratante"),
+  // Buscar si tiene sello registrado
+  datosSello: window.MEDICOS_DATOS?.[firmanteId] || null
+};
       if (requiereMedico && !medicoSeleccionado) throw new Error("Selecciona el médico");
 
       const materialTotal = PROC.materialesUsados.reduce((s, m) => s + (m.subtotal || 0), 0);
@@ -1484,11 +1511,21 @@ Sin markdown.`;
               ${PROC.materialesUsados.map(m => `<tr style="border-bottom:1px solid #eee"><td style="padding:4px">${esc(m.nombre)}</td><td style="padding:4px;text-align:center">×${m.cantidad}</td><td style="padding:4px;text-align:right">$${(m.subtotal || 0).toFixed(2)}</td></tr>`).join("")}
             </table>
           ` : ""}
-          <div style="margin-top:20px;padding:14px;background:#f0f7ff;border-left:4px solid #0071e3;border-radius:0 8px 8px 0">
-            <div style="font-size:11px;font-weight:700;color:#0051a3;margin-bottom:6px">RESPONSABLE</div>
-            <div style="font-size:12px;font-weight:700;color:#1a3a5c">${esc(p.operador_nombre || "—")}</div>
-            <div style="font-size:10px;color:#666;margin-top:2px">Case: ${esc(r.case_id)}</div>
-          </div>
+         <div style="margin-top:20px;padding:14px;background:#f0f7ff;border-left:4px solid #0071e3;border-radius:0 8px 8px 0">
+  <div style="font-size:11px;font-weight:700;color:#0051a3;margin-bottom:6px">RESPONSABLE DEL PROCEDIMIENTO</div>
+  <div style="font-size:12px;font-weight:700;color:#1a3a5c">${esc(p.operador_nombre || "—")}</div>
+  <div style="font-size:10px;color:#666;margin-top:2px">Case: ${esc(r.case_id)}</div>
+</div>
+
+<!-- NUEVO: Bloque de firma profesional con sello -->
+<div style="margin-top:30px; page-break-inside:avoid;">
+  ${renderBloqueFirma({
+    nombre: PROC.firmante?.nombre || "Profesional de Salud",
+    csspm: PROC.firmante?.datosSello?.csspm || "N/E",
+    especialidad: PROC.firmante?.rol || "Profesional Responsable",
+    medico_id: PROC.firmante?.id
+  }, fecha)}
+</div>
         </div>
       </div>
     `;
@@ -1526,6 +1563,14 @@ Sin markdown.`;
             </tbody>
           </table>
         </div>
+        <div style="margin-top:30px; page-break-inside:avoid;">
+  ${renderBloqueFirma({
+    nombre: PROC.firmante?.nombre || "Profesional de Salud",
+    csspm: PROC.firmante?.datosSello?.csspm || "N/E",
+    especialidad: PROC.firmante?.rol || "Profesional Responsable",
+    medico_id: PROC.firmante?.id
+  }, fecha)}
+</div>
       </div>
     `;
   }
