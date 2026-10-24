@@ -1,14 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════
-   WRAPPER PROCEDIMIENTOS v2.3 — DEFINITIVO
-   
-   CORRECCIONES v2.3:
-   - IIFE correctamente cerrado (fix SyntaxError crítico)
-   - Tab inyectada antes de pacientes/informes
-   - MAX_INTENTOS ampliado a 80 (20s)
-   - Logs claros para diagnóstico
-   - Historial en su propio IIFE independiente
-   - Datos de ejecución persistidos entre pasos
-   - IA generadora de nota + receta + labs
+   WRAPPER PROCEDIMIENTOS v2.4 — CON FIRMA Y SELLO PROFESIONAL
    ═══════════════════════════════════════════════════════════════════ */
 
 "use strict";
@@ -18,7 +9,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 (function() {
-  console.log("[Proc v2.3] Iniciando wrapper del wizard...");
+  console.log("[Proc v2.4] Iniciando wrapper del wizard...");
 
   // ═══════════════════════════════════════════════════════════════
   // ESTADO
@@ -44,7 +35,8 @@
     recetaIA: null,
     labsIA: null,
     contextoPlan: null,
-    datosEjecucion: null
+    datosEjecucion: null,
+    firmante: null // NUEVO: Guarda los datos de quién firma
   };
 
   window.PROCEDIMIENTOS = PROC;
@@ -57,7 +49,7 @@
       paciente: PROC.paciente?.subject_id,
       paso: PROC.pasoActual,
       caseId: PROC.caseId,
-      datosEjecucion: PROC.datosEjecucion,
+      firmante: PROC.firmante,
       receta: PROC.recetaMedicamentos.length,
       labs: PROC.laboratoriosSolicitados.length
     }),
@@ -72,7 +64,7 @@
     },
     forzarInyeccion: () => {
       const ok = inyectarHTML();
-      console.log("[Proc v2.3] Inyección forzada:", ok);
+      console.log("[Proc v2.4] Inyección forzada:", ok);
       return ok;
     },
     verCatalogo: () => console.table(Object.values(PROC.catalogo))
@@ -87,7 +79,7 @@
     return d.innerHTML;
   };
   const toast = window.showStatus || function(msg, tipo) {
-    console.log("[Proc v2.3]", tipo || "info", msg);
+    console.log("[Proc v2.4]", tipo || "info", msg);
   };
   function $id(id) { return document.getElementById(id); }
   function debounce(fn, ms) {
@@ -231,21 +223,21 @@ Sin markdown.`;
       if (error) throw error;
       PROC.catalogo = {};
       (data || []).forEach(p => { PROC.catalogo[p.procedimiento_id] = p; });
-      console.log(`[Proc v2.3] ✓ Catálogo: ${data?.length || 0} procedimientos`);
+      console.log(`[Proc v2.4] ✓ Catálogo: ${data?.length || 0} procedimientos`);
       return true;
     } catch (e) {
-      console.error("[Proc v2.3] Error catálogo:", e);
+      console.error("[Proc v2.4] Error catálogo:", e);
       return false;
     }
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // INYECCIÓN HTML — CON LOGS CLAROS
+  // INYECCIÓN HTML
   // ═══════════════════════════════════════════════════════════════
   function inyectarHTML() {
     const tabs = $id("tabs-principales");
     if (!tabs) {
-      console.warn("[Proc v2.3] ⚠️ #tabs-principales no existe aún");
+      console.warn("[Proc v2.4] ⚠️ #tabs-principales no existe aún");
       return false;
     }
 
@@ -258,7 +250,6 @@ Sin markdown.`;
       tab.innerHTML = "🩹 Procedimientos";
       tab.onclick = () => window.cambiarTab("procedimientos");
 
-      // Insertar SIEMPRE antes de pacientes/informes si existen
       const refTab = tabs.querySelector('[data-tab="pacientes"]')
                   || tabs.querySelector('[data-tab="informes"]')
                   || tabs.querySelector('[data-tab="consulta"]');
@@ -268,9 +259,7 @@ Sin markdown.`;
       } else {
         tabs.appendChild(tab);
       }
-      console.log("[Proc v2.3] ✓ Tab 'procedimientos' inyectada");
-    } else {
-      console.log("[Proc v2.3] ℹ️ Tab 'procedimientos' ya existía");
+      console.log("[Proc v2.4] ✓ Tab 'procedimientos' inyectada");
     }
 
     // 2. Inyectar SECCIÓN
@@ -281,22 +270,17 @@ Sin markdown.`;
       sec.id = "sec-procedimientos";
       sec.innerHTML = `<div id="proc-wizard-container"></div>`;
       container.appendChild(sec);
-      console.log("[Proc v2.3] ✓ Sección #sec-procedimientos inyectada");
-    } else {
-      console.log("[Proc v2.3] ℹ️ Sección #sec-procedimientos ya existía");
+      console.log("[Proc v2.4] ✓ Sección #sec-procedimientos inyectada");
     }
 
     return true;
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // WRAPPER cambiarTab
+  // WRAPPERS DE NAVEGACIÓN
   // ═══════════════════════════════════════════════════════════════
   function instalarWrapperCambiarTab() {
-    if (typeof window.cambiarTab !== "function") {
-      console.warn("[Proc v2.3] ⚠️ window.cambiarTab no existe");
-      return false;
-    }
+    if (typeof window.cambiarTab !== "function") return false;
     if (window.cambiarTab._procWrap) return true;
 
     const _orig = window.cambiarTab;
@@ -309,26 +293,17 @@ Sin markdown.`;
             document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
             sec.classList.add("active");
             renderWizard();
-          } else {
-            console.warn("[Proc v2.3] ⚠️ #sec-procedimientos no existe al cambiar tab");
           }
         }, 100);
       }
       return result;
     };
     window.cambiarTab._procWrap = true;
-    console.log("[Proc v2.3] ✓ Wrapper cambiarTab instalado");
     return true;
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // WRAPPER ajustarUIPorRol — PROTEGE LA TAB
-  // ═══════════════════════════════════════════════════════════════
   function instalarWrapperAjustarUI() {
-    if (typeof window.ajustarUIPorRol !== "function") {
-      console.warn("[Proc v2.3] ⚠️ window.ajustarUIPorRol no existe");
-      return false;
-    }
+    if (typeof window.ajustarUIPorRol !== "function") return false;
     if (window.ajustarUIPorRol._procWrap) return true;
 
     const _orig = window.ajustarUIPorRol;
@@ -358,7 +333,6 @@ Sin markdown.`;
       return result;
     };
     window.ajustarUIPorRol._procWrap = true;
-    console.log("[Proc v2.3] ✓ Wrapper ajustarUIPorRol instalado");
     return true;
   }
 
@@ -367,10 +341,7 @@ Sin markdown.`;
   // ═══════════════════════════════════════════════════════════════
   function renderWizard() {
     const cont = $id("proc-wizard-container");
-    if (!cont) {
-      console.warn("[Proc v2.3] ⚠️ #proc-wizard-container no existe");
-      return;
-    }
+    if (!cont) return;
     if (!PROC.paciente) PROC.pasoActual = 1;
     if (!PROC.procedimiento) PROC.pasoActual = Math.min(PROC.pasoActual, 2);
 
@@ -712,7 +683,7 @@ Sin markdown.`;
   }
 
   // ─────────────────────────────────────────────────────────────
-  // PASO 4 — EJECUCIÓN (con persistencia)
+  // PASO 4 — EJECUCIÓN
   // ─────────────────────────────────────────────────────────────
   function renderPasoEjecucion(cont) {
     const p = PROC.procedimiento;
@@ -770,7 +741,6 @@ Sin markdown.`;
       seguimiento: $id("proc-seguimiento")?.value?.trim() || null
     };
     
-    console.log("[Proc v2.3] ✓ Datos ejecución guardados");
     PROC.pasoActual = 5;
     renderWizard();
   };
@@ -1241,35 +1211,28 @@ Sin markdown.`;
       const esOperador = window.usuarioActual?.rol === "operador";
       const requiereMedico = PROC.procedimiento.requiere_medico && esOperador;
       const medicoSeleccionado = $id("proc-medico-id")?.value || null;
-      // Dentro de procGuardarProcedimiento, antes del payload:
-const esOperador = window.usuarioActual?.rol === "operador";
-const requiereMedico = PROC.procedimiento.requiere_medico && esOperador;
-const medicoSeleccionado = $id("proc-medico-id")?.value || null;
 
-// ═══ NUEVO: Determinar quién firma ═══
-let firmanteId = window.usuarioActual?.id;
-let firmanteNombre = window.usuarioActual?.nombre;
-
-if (requiereMedico && medicoSeleccionado) {
-  // Si requiere médico y el operador seleccionó uno, ese médico es el firmante
-  const datosMedico = window.MEDICOS_DATOS?.[medicoSeleccionado];
-  firmanteId = medicoSeleccionado;
-  firmanteNombre = datosMedico?.nombre || "Médico Validador";
-} else if (esOperador) {
-  // Si es operador y no requiere médico, el operador firma
-  firmanteId = window.usuarioActual?.id;
-  firmanteNombre = window.usuarioActual?.nombre;
-}
-
-// Guardar en el objeto PROC para usarlo en los PDFs
-PROC.firmante = {
-  id: firmanteId,
-  nombre: firmanteNombre,
-  rol: requiereMedico ? "Médico Validador" : (esOperador ? "Operador de Salud" : "Médico Tratante"),
-  // Buscar si tiene sello registrado
-  datosSello: window.MEDICOS_DATOS?.[firmanteId] || null
-};
       if (requiereMedico && !medicoSeleccionado) throw new Error("Selecciona el médico");
+
+      // ═══ NUEVO: Determinar quién firma ═══
+      let firmanteId = window.usuarioActual?.id;
+      let firmanteNombre = window.usuarioActual?.nombre;
+
+      if (requiereMedico && medicoSeleccionado) {
+        const datosMedico = window.MEDICOS_DATOS?.[medicoSeleccionado];
+        firmanteId = medicoSeleccionado;
+        firmanteNombre = datosMedico?.nombre || "Médico Validador";
+      } else if (esOperador) {
+        firmanteId = window.usuarioActual?.id;
+        firmanteNombre = window.usuarioActual?.nombre;
+      }
+
+      PROC.firmante = {
+        id: firmanteId,
+        nombre: firmanteNombre,
+        rol: requiereMedico ? "Médico Validador" : (esOperador ? "Operador de Salud" : "Médico Tratante"),
+        datosSello: window.MEDICOS_DATOS?.[firmanteId] || null
+      };
 
       const materialTotal = PROC.materialesUsados.reduce((s, m) => s + (m.subtotal || 0), 0);
       const empresaId = PROC.paciente.empresa_id;
@@ -1334,6 +1297,7 @@ PROC.firmante = {
         } : null,
         operador_id: window.usuarioActual?.id,
         operador_nombre: window.usuarioActual?.nombre,
+        firmante: PROC.firmante, // Guardamos al firmante en el JSON
         paciente: {
           subject_id: PROC.paciente.subject_id,
           nombre: PROC.paciente.nombre,
@@ -1384,8 +1348,6 @@ PROC.firmante = {
         payload,
         created_by: window.usuarioActual?.id
       };
-
-      console.log("[Proc v2.3] Insertando:", insertData);
 
       const { data: insertado, error: errIns } = await window.supabaseClient
         .from("procedimientos_realizados")
@@ -1511,21 +1473,21 @@ PROC.firmante = {
               ${PROC.materialesUsados.map(m => `<tr style="border-bottom:1px solid #eee"><td style="padding:4px">${esc(m.nombre)}</td><td style="padding:4px;text-align:center">×${m.cantidad}</td><td style="padding:4px;text-align:right">$${(m.subtotal || 0).toFixed(2)}</td></tr>`).join("")}
             </table>
           ` : ""}
-         <div style="margin-top:20px;padding:14px;background:#f0f7ff;border-left:4px solid #0071e3;border-radius:0 8px 8px 0">
-  <div style="font-size:11px;font-weight:700;color:#0051a3;margin-bottom:6px">RESPONSABLE DEL PROCEDIMIENTO</div>
-  <div style="font-size:12px;font-weight:700;color:#1a3a5c">${esc(p.operador_nombre || "—")}</div>
-  <div style="font-size:10px;color:#666;margin-top:2px">Case: ${esc(r.case_id)}</div>
-</div>
+          <div style="margin-top:20px;padding:14px;background:#f0f7ff;border-left:4px solid #0071e3;border-radius:0 8px 8px 0">
+            <div style="font-size:11px;font-weight:700;color:#0051a3;margin-bottom:6px">RESPONSABLE DEL PROCEDIMIENTO</div>
+            <div style="font-size:12px;font-weight:700;color:#1a3a5c">${esc(p.operador_nombre || "—")}</div>
+            <div style="font-size:10px;color:#666;margin-top:2px">Case: ${esc(r.case_id)}</div>
+          </div>
 
-<!-- NUEVO: Bloque de firma profesional con sello -->
-<div style="margin-top:30px; page-break-inside:avoid;">
-  ${renderBloqueFirma({
-    nombre: PROC.firmante?.nombre || "Profesional de Salud",
-    csspm: PROC.firmante?.datosSello?.csspm || "N/E",
-    especialidad: PROC.firmante?.rol || "Profesional Responsable",
-    medico_id: PROC.firmante?.id
-  }, fecha)}
-</div>
+          <!-- NUEVO: Bloque de firma profesional con sello -->
+          <div style="margin-top:30px; page-break-inside:avoid;">
+            ${renderBloqueFirma({
+              nombre: PROC.firmante?.nombre || "Profesional de Salud",
+              csspm: PROC.firmante?.datosSello?.csspm || "N/E",
+              especialidad: PROC.firmante?.rol || "Profesional Responsable",
+              medico_id: PROC.firmante?.id
+            }, fecha)}
+          </div>
         </div>
       </div>
     `;
@@ -1562,15 +1524,17 @@ PROC.firmante = {
               </tr>`).join("")}
             </tbody>
           </table>
+          
+          <!-- FIRMA DEL PROFESIONAL -->
+          <div style="margin-top:30px; page-break-inside:avoid;">
+            ${renderBloqueFirma({
+              nombre: PROC.firmante?.nombre || "Profesional de Salud",
+              csspm: PROC.firmante?.datosSello?.csspm || "N/E",
+              especialidad: PROC.firmante?.rol || "Profesional Responsable",
+              medico_id: PROC.firmante?.id
+            }, fecha)}
+          </div>
         </div>
-        <div style="margin-top:30px; page-break-inside:avoid;">
-  ${renderBloqueFirma({
-    nombre: PROC.firmante?.nombre || "Profesional de Salud",
-    csspm: PROC.firmante?.datosSello?.csspm || "N/E",
-    especialidad: PROC.firmante?.rol || "Profesional Responsable",
-    medico_id: PROC.firmante?.id
-  }, fecha)}
-</div>
       </div>
     `;
   }
@@ -1613,12 +1577,22 @@ PROC.firmante = {
           <div style="background:#f0f7ff;padding:12px;border-radius:8px;margin-bottom:14px">
             <div style="font-size:13px;font-weight:700;color:#1a3a5c">${esc(p.procedimiento_nombre)}</div>
           </div>
-          <div style="text-align:center;padding:20px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px">
+          <div style="text-align:center;padding:20px;background:#f8fbff;border:2px solid #1a3a5c;border-radius:8px;margin-bottom:20px">
             <img src="${PROC.consentimientoFirma}" style="max-width:100%;max-height:120px;margin-bottom:8px">
             <div style="border-top:1.5px solid #1a3a5c;width:70%;margin:8px auto"></div>
             <div style="font-size:12px;font-weight:700;color:#1a3a5c">${esc(p.paciente.nombre)}</div>
             <div style="font-size:10px;color:#666">DUI: ${esc(p.paciente.dui || "—")}</div>
             <div style="font-size:10px;color:#999;margin-top:6px">Firmado: ${esc(fecha)}</div>
+          </div>
+          
+          <!-- FIRMA DEL PROFESIONAL -->
+          <div style="margin-top:30px; page-break-inside:avoid;">
+            ${renderBloqueFirma({
+              nombre: PROC.firmante?.nombre || "Profesional de Salud",
+              csspm: PROC.firmante?.datosSello?.csspm || "N/E",
+              especialidad: PROC.firmante?.rol || "Profesional Responsable",
+              medico_id: PROC.firmante?.id
+            }, fecha)}
           </div>
         </div>
       </div>
@@ -1769,7 +1743,7 @@ PROC.firmante = {
       recetaMedicamentos: [], laboratoriosSolicitados: [],
       caseId: null, procedimientoRealizadoId: null,
       docsGenerados: null, notaIA: null, notaEditada: null,
-      recetaIA: null, labsIA: null, datosEjecucion: null
+      recetaIA: null, labsIA: null, datosEjecucion: null, firmante: null
     });
     renderWizard();
   };
@@ -1801,7 +1775,7 @@ PROC.firmante = {
     }
     const rol = window.usuarioActual.rol;
     if (!["operador", "medico", "admin"].includes(rol)) {
-      console.log("[Proc v2.3] Rol no aplicable:", rol);
+      console.log("[Proc v2.4] Rol no aplicable:", rol);
       return;
     }
 
@@ -1812,13 +1786,13 @@ PROC.firmante = {
 
     if (okHTML && okTab && okUI && okCat) {
       PROC.inicializado = true;
-      console.log("[Proc v2.3] ✓ Inicializado. Catálogo:", Object.keys(PROC.catalogo).length);
+      console.log("[Proc v2.4] ✓ Inicializado. Catálogo:", Object.keys(PROC.catalogo).length);
       return;
     }
     if (PROC.intentos < PROC.MAX_INTENTOS) {
       setTimeout(inicializar, 250);
     } else {
-      console.error("[Proc v2.3] ❌ Timeout tras", PROC.MAX_INTENTOS, "intentos. Estado:", {
+      console.error("[Proc v2.4] ❌ Timeout tras", PROC.MAX_INTENTOS, "intentos. Estado:", {
         okHTML, okTab, okUI, okCat,
         usuarioActual: window.usuarioActual?.rol,
         supabaseClient: !!window.supabaseClient
@@ -1837,9 +1811,9 @@ PROC.firmante = {
     setTimeout(inicializar, 500);
   });
 
-  console.log("[Proc v2.3] ✓ Wrapper del wizard cargado. Diagnóstico: __PROC.estado()");
+  console.log("[Proc v2.4] ✓ Wrapper del wizard cargado. Diagnóstico: __PROC.estado()");
 
-})();  /* ← CIERRE DEL IIFE v2.3 */
+})();  /* ← CIERRE DEL IIFE v2.4 */
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1849,7 +1823,7 @@ PROC.firmante = {
 (function() {
   "use strict";
 
-  console.log("[Proc Historial v2.3] Iniciando...");
+  console.log("[Proc Historial v2.4] Iniciando...");
 
   const PH = {
     inicializado: false,
@@ -1877,7 +1851,7 @@ PROC.firmante = {
     return d.innerHTML;
   };
   const toast = window.showStatus || function(msg, tipo) {
-    console.log("[Proc Historial v2.3]", tipo || "info", msg);
+    console.log("[Proc Historial v2.4]", tipo || "info", msg);
   };
   function $id(id) { return document.getElementById(id); }
   function debounce(fn, ms) {
@@ -1895,7 +1869,7 @@ PROC.firmante = {
   function inyectarSeccionHistorial(forzar) {
     const secInformes = $id("sec-informes");
     if (!secInformes) {
-      if (forzar) console.warn("[Proc Historial v2.3] #sec-informes no existe aún");
+      if (forzar) console.warn("[Proc Historial v2.4] #sec-informes no existe aún");
       return false;
     }
 
@@ -1951,7 +1925,7 @@ PROC.firmante = {
     `;
 
     card.appendChild(wrap);
-    console.log("[Proc Historial v2.3] ✓ Sección inyectada en #sec-informes");
+    console.log("[Proc Historial v2.4] ✓ Sección inyectada en #sec-informes");
     return true;
   }
 
@@ -1961,7 +1935,7 @@ PROC.firmante = {
   window.procHistorialCargar = async function() {
     const cont = $id("proc-hist-lista");
     if (!cont) {
-      console.warn("[Proc Historial v2.3] #proc-hist-lista no existe");
+      console.warn("[Proc Historial v2.4] #proc-hist-lista no existe");
       return;
     }
     if (!window.supabaseClient) {
@@ -2216,7 +2190,7 @@ PROC.firmante = {
         return r;
       };
       window.cambiarTab._procHistHook = true;
-      console.log("[Proc Historial v2.3] ✓ Hook cambiarTab instalado");
+      console.log("[Proc Historial v2.4] ✓ Hook cambiarTab instalado");
     }
 
     if (typeof window.renderCasosGuardados === "function" && !window.renderCasosGuardados._procHistHook) {
@@ -2230,7 +2204,7 @@ PROC.firmante = {
         return r;
       };
       window.renderCasosGuardados._procHistHook = true;
-      console.log("[Proc Historial v2.3] ✓ Hook renderCasosGuardados instalado");
+      console.log("[Proc Historial v2.4] ✓ Hook renderCasosGuardados instalado");
     }
   }
 
@@ -2253,7 +2227,7 @@ PROC.firmante = {
 
     if (okSec) {
       PH.inicializado = true;
-      console.log("[Proc Historial v2.3] ✓ Inicializado para rol:", rol);
+      console.log("[Proc Historial v2.4] ✓ Inicializado para rol:", rol);
       const tabActiva = document.querySelector("#tabs-principales .tab.active");
       if (tabActiva?.dataset.tab === "informes") {
         window.procHistorialCargar();
@@ -2264,7 +2238,7 @@ PROC.firmante = {
     if (PH.intentos < PH.MAX_INTENTOS) {
       setTimeout(intentarInicializar, 300);
     } else {
-      console.warn("[Proc Historial v2.3] ⚠️ Timeout tras", PH.MAX_INTENTOS, "intentos");
+      console.warn("[Proc Historial v2.4] ⚠️ Timeout tras", PH.MAX_INTENTOS, "intentos");
     }
   }
 
@@ -2279,6 +2253,6 @@ PROC.firmante = {
     setTimeout(intentarInicializar, 800);
   });
 
-  console.log("[Proc Historial v2.3] ✓ Módulo cargado. Diagnóstico: __PROC_HISTORIAL.estado()");
+  console.log("[Proc Historial v2.4] ✓ Módulo cargado. Diagnóstico: __PROC_HISTORIAL.estado()");
 
-})();  /* ← CIERRE DEL IIFE v2.3 */
+})();  /* ← CIERRE DEL IIFE v2.4 */
