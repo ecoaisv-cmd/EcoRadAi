@@ -30716,5 +30716,152 @@ ${v("ad-observaciones") || "Sin observaciones adicionales."}`;
      WRAPPER PROCEDIMIENTOS v2.0 — IA + Receta + Labs
      ═══════════════════════════════════════════════════════ -->
 <script src="wrapper-procedimientos.js"></script>
+<!-- ═══════════════════════════════════════════════════════════════════
+     FIX DEFINITIVO: Corregir contexto_id en medico:decision-interconsultas
+     ─────────────────────────────────────────────────────────────────
+     PROBLEMA: La UI emite "SAV-RAIZ-CONS-..." pero la consolidadora
+     emitió "SAV-CONSULTA-CONS-...". El coordinador no encuentra el
+     contexto y rechaza la decisión silenciosamente.
+     
+     SOLUCIÓN: Interceptar SAVIA.propagar() y normalizar el contexto_id
+     de "medico:decision-interconsultas" para que coincida con el que
+     emitió la consolidadora.
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  "use strict";
+
+  console.log("[Fix ContextoID] Instalando normalizador de contexto...");
+
+  // ═══════════════════════════════════════════════════════════
+  // MAPA: contexto_id incorrecto → contexto_id correcto
+  // Se construye dinámicamente rastreando las SAVIAs emitidas
+  // ═══════════════════════════════════════════════════════════
+  const contextosEmitidos = {
+    consulta: new Map(),  // case_id → contexto_id correcto
+    tamizaje: new Map()
+  };
+
+  function registrarContextoEmitido(evento) {
+    if (!evento || !evento.tipo) return;
+    if (!evento.payload) return;
+
+    const { tipo, payload } = evento;
+    const case_id = payload.case_id;
+
+    if (!case_id) return;
+
+    if (tipo === "savia:consulta:contexto-unificado") {
+      contextosEmitidos.consulta.set(case_id, payload.contexto_id);
+      console.log(`[Fix ContextoID] ✓ Registrado consulta: ${case_id} → ${payload.contexto_id}`);
+    }
+    if (tipo === "savia:tamizaje:contexto-unificado") {
+      contextosEmitidos.tamizaje.set(case_id, payload.contexto_id);
+      console.log(`[Fix ContextoID] ✓ Registrado tamizaje: ${case_id} → ${payload.contexto_id}`);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // CORREGIR contexto_id en medico:decision-interconsultas
+  // ═══════════════════════════════════════════════════════════
+  function corregirDecisionInterconsultas(evento) {
+    if (!evento || evento.tipo !== "medico:decision-interconsultas") return;
+    if (!evento.payload) return;
+
+    const case_id = evento.payload.case_id;
+    if (!case_id) return;
+
+    const contextoActual = evento.payload.contexto_id || evento.contexto_id;
+    const contextoCorrecto = 
+      contextosEmitidos.consulta.get(case_id) || 
+      contextosEmitidos.tamizaje.get(case_id);
+
+    if (!contextoCorrecto) {
+      console.warn(`[Fix ContextoID] No hay contexto registrado para case_id: ${case_id}`);
+      return;
+    }
+
+    if (contextoActual === contextoCorrecto) {
+      console.log(`[Fix ContextoID] ✓ contexto_id ya correcto: ${contextoActual}`);
+      return;
+    }
+
+    console.log(
+      `%c[Fix ContextoID] 🔧 CORRIGIENDO contexto_id`,
+      "background:#ff9500;color:white;padding:4px 8px;font-weight:bold;border-radius:4px"
+    );
+    console.log(`  ANTES:   ${contextoActual}`);
+    console.log(`  DESPUÉS: ${contextoCorrecto}`);
+
+    // Corregir en el payload
+    evento.payload.contexto_id = contextoCorrecto;
+    // Corregir también en el nivel superior del evento (por si el coordinador lo lee de ahí)
+    if (evento.contexto_id) {
+      evento.contexto_id = contextoCorrecto;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // INSTALAR INTERCEPTOR EN SAVIA.propagar()
+  // ═══════════════════════════════════════════════════════════
+  function instalar() {
+    if (!window.SAVIA) {
+      setTimeout(instalar, 250);
+      return;
+    }
+
+    if (window._fixContextoIDInstalado) {
+      console.log("[Fix ContextoID] Ya estaba instalado");
+      return;
+    }
+
+    const _propagarOriginal = window.SAVIA.propagar;
+    if (typeof _propagarOriginal !== "function") {
+      console.warn("[Fix ContextoID] savia.propagar no es función");
+      return;
+    }
+
+    window.SAVIA.propagar = function(evento) {
+      // 1. Rastrear contextos emitidos (para tener el mapeo)
+      try {
+        registrarContextoEmitido(evento);
+      } catch (e) { /* silent */ }
+
+      // 2. Corregir decisiones de interconsultas
+      try {
+        corregirDecisionInterconsultas(evento);
+      } catch (e) { /* silent */ }
+
+      // 3. Llamar al original
+      return _propagarOriginal.apply(this, arguments);
+    };
+
+    window._fixContextoIDInstalado = true;
+    console.log("[Fix ContextoID] ✅ Instalado correctamente");
+  }
+
+  // Intentar instalar al cargar y reintentar cada 500ms
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(instalar, 500));
+  } else {
+    setTimeout(instalar, 500);
+  }
+  setTimeout(instalar, 2000);
+  setTimeout(instalar, 4000);
+
+  // Exponer para diagnóstico
+  window.__FIX_CONTEXTO_ID = {
+    estado: () => ({
+      instalado: !!window._fixContextoIDInstalado,
+      contextosRegistrados: {
+        consulta: contextosEmitidos.consulta.size,
+        tamizaje: contextosEmitidos.tamizaje.size
+      },
+      mapaConsulta: [...contextosEmitidos.consulta.entries()],
+      mapaTamizaje: [...contextosEmitidos.tamizaje.entries()]
+    })
+  };
+})();
+</script>
 </body>
 </html>
