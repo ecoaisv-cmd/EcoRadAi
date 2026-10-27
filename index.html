@@ -12943,29 +12943,135 @@ window.ejecutarAnalisisConsulta = async function() {
   if (!s.tipoConsulta) { showStatus("Falta tipo de consulta", "error"); return; }
 
   // ═══════════════════════════════════════════════════════════════
-  // WRAPPER ÁRBOL v25.0 — Garantizar caseId + Gatillo SAVIA 2
+  // FIX v25.0: PASO 1 — Emitir aportes S, O, A ANTES del gatillo
+  // Esto garantiza que la consolidadora tenga los datos cuando consolide
   // ═══════════════════════════════════════════════════════════════
   try {
-    // Garantizar caseId antes del gatillo
     if (!s.caseId && typeof guardarConsultaBorrador === "function") {
-      console.log("[Wrapper Árbol] caseId no existe, guardando borrador...");
+      console.log("[Fix v25.0] Generando caseId primero...");
       await guardarConsultaBorrador();
     }
 
-    // Emitir gatillo de consolidación
     if (window.kernel && s.caseId) {
-      console.log("[Wrapper Árbol] 🎯 Emitiendo gatillo consolidación Consulta:", s.caseId);
+      // ─── Aporte 1: Paciente (para que subject no sea null) ───
+      if (s.paciente) {
+        window.kernel.emit("savia:aporte-paciente", {
+          _case_id: s.caseId,
+          case_id: s.caseId,
+          subject_id: s.paciente.subject_id,
+          nombre: s.paciente.nombre,
+          edad: s.paciente.edad,
+          sexo: s.paciente.sexo,
+          dui: s.paciente.dui,
+          fecha_nacimiento: s.paciente.fecha_nacimiento,
+          departamento: s.paciente.departamento,
+          municipio: s.paciente.municipio,
+          zona_geografica: s.paciente.zona_geografica,
+          empresa: s.paciente.empresa,
+          email: s.paciente.email,
+          telefono: s.paciente.telefono,
+          timestamp: new Date().toISOString()
+        });
+        console.log("[Fix v25.0] 📤 Aporte paciente emitido");
+      }
+
+      // ─── Aporte 2: Subjetivo (S) ───
+      const revisionSistemas = {};
+      (window.CONSULTA_SISTEMAS || []).forEach(sys => {
+        const val = document.getElementById("cons-sys-" + sys.id)?.value?.trim();
+        if (val) revisionSistemas[sys.id] = val;
+      });
+
+      const antecedentes = {};
+      (window.CONSULTA_ANTECEDENTES || []).forEach(a => {
+        const val = document.getElementById("cons-ant-" + a.id)?.value?.trim();
+        if (val) antecedentes[a.id] = val;
+      });
+
+      window.kernel.emit("savia:aporte-subjetivo", {
+        _case_id: s.caseId,
+        case_id: s.caseId,
+        subjetivo: {
+          motivo_consulta: document.getElementById("cons-motivo")?.value?.trim() || "",
+          enfermedad_actual: document.getElementById("cons-enfermedad-actual")?.value?.trim() || "",
+          eva_dolor: parseInt(document.getElementById("cons-eva")?.value) || null,
+          evolucion: document.getElementById("cons-evolucion")?.value?.trim() || "",
+          revision_sistemas: revisionSistemas,
+          antecedentes: antecedentes,
+          alergias: document.getElementById("cons-alergias")?.value?.trim() || "",
+          medicamentos: document.getElementById("cons-medicamentos")?.value?.trim() || "",
+          habitos: {
+            tabaco: document.getElementById("cons-habito-tabaco")?.value?.trim() || "",
+            alcohol: document.getElementById("cons-habito-alcohol")?.value?.trim() || "",
+            ejercicio: document.getElementById("cons-habito-ejercicio")?.value?.trim() || "",
+            sueno: document.getElementById("cons-habito-sueno")?.value?.trim() || ""
+          }
+        },
+        timestamp: new Date().toISOString()
+      });
+      console.log("[Fix v25.0] 📤 Aporte subjetivo emitido");
+
+      // ─── Aporte 3: Examen físico (O) ───
+      const examenFisico = {};
+      (window.CONSULTA_EXAMEN_FISICO || []).forEach(e => {
+        const val = document.getElementById("cons-ef-" + e.id)?.value?.trim();
+        if (val) examenFisico[e.id] = val;
+      });
+
+      window.kernel.emit("savia:aporte-examen-fisico", {
+        _case_id: s.caseId,
+        case_id: s.caseId,
+        examen_fisico: examenFisico,
+        timestamp: new Date().toISOString()
+      });
+      console.log("[Fix v25.0] 📤 Aporte examen físico emitido");
+
+      // ─── Aporte 4: Signos vitales (O) ───
+      window.kernel.emit("savia:aporte-clinica-consulta", {
+        _case_id: s.caseId,
+        case_id: s.caseId,
+        signos_vitales: {
+          presion_sistolica_mmhg: parseFloat(document.getElementById("cons-vit-ta_sistolica")?.value) || null,
+          presion_diastolica_mmhg: parseFloat(document.getElementById("cons-vit-ta_diastolica")?.value) || null,
+          frecuencia_cardiaca_lpm: parseFloat(document.getElementById("cons-vit-fc")?.value) || null,
+          frecuencia_respiratoria_rpm: parseFloat(document.getElementById("cons-vit-fr")?.value) || null,
+          temperatura: parseFloat(document.getElementById("cons-vit-temperatura")?.value) || null,
+          saturacion_o2_pct: parseFloat(document.getElementById("cons-vit-sato2")?.value) || null,
+          peso_kg: parseFloat(document.getElementById("cons-vit-peso_kg")?.value) || null,
+          talla_cm: parseFloat(document.getElementById("cons-vit-talla_cm")?.value) || null,
+          imc: parseFloat(document.getElementById("cons-vit-imc_calc")?.value) || null
+        },
+        timestamp: new Date().toISOString()
+      });
+      console.log("[Fix v25.0] 📤 Aporte signos vitales emitido");
+
+      // ─── Pequeño delay para que los aportes lleguen ───
+      await new Promise(r => setTimeout(r, 150));
+      console.log("[Fix v25.0] ✓ Aportes S, O, A emitidos antes del gatillo");
+    }
+  } catch (e) {
+    console.warn("[Fix v25.0] Error emitiendo aportes previos:", e);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // FIX v25.0: PASO 2 — Emitir gatillo de consolidación
+  // Ahora los aportes ya están en la consolidadora
+  // ═══════════════════════════════════════════════════════════════
+  try {
+    if (window.kernel && s.caseId) {
+      console.log("[Fix v25.0] 🎯 Emitiendo gatillo consolidación Consulta:", s.caseId);
       window.kernel.emit("savia:consulta:solicitar-consolidacion", {
         case_id: s.caseId,
         raw: s
       });
     }
   } catch (e) {
-    console.warn("[Wrapper Árbol] Error gatillo consulta:", e);
+    console.warn("[Fix v25.0] Error gatillo consulta:", e);
   }
-  // ═══════════════════════════════════════════════════════════════
 
-  // ─── CÓDIGO ORIGINAL (no tocar) ───
+  // ═══════════════════════════════════════════════════════════════
+  // PASO 3 — CÓDIGO ORIGINAL (llamar a Kimi)
+  // ═══════════════════════════════════════════════════════════════
   const btn = document.getElementById("btn-cons-ia");
   const original = btn ? btn.textContent : "Ejecutar análisis con IA";
   if (btn) {
@@ -12992,17 +13098,13 @@ window.ejecutarAnalisisConsulta = async function() {
     if (contNarr) contNarr.textContent = narrativa;
     if (resCard) resCard.style.display = "block";
 
-    if (json) {
-      autoPoblarDesdeJSON(json);
-    }
+    if (json) autoPoblarDesdeJSON(json);
 
     if (s.diagnosticos.length === 0) {
       agregarDiagnostico();
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // WRAPPER ÁRBOL — Emitir aporte-diagnosticos tras Kimi
-    // ═══════════════════════════════════════════════════════════════
+    // ─── Aporte 5: Diagnósticos (A) — después de Kimi ───
     try {
       if (window.kernel && s.caseId) {
         window.kernel.emit("savia:aporte-diagnosticos", {
@@ -13012,10 +13114,14 @@ window.ejecutarAnalisisConsulta = async function() {
           diagnostico_diferencial: json?.diagnostico_diferencial || [],
           nivel_riesgo: document.getElementById("cons-nivel-riesgo")?.value || "MODERADO",
           impresion_clinica: document.getElementById("cons-impresion-final")?.value || "",
-          banderas_rojas: json?.banderas_rojas || []
+          banderas_rojas: json?.banderas_rojas || [],
+          timestamp: new Date().toISOString()
         });
+        console.log("[Fix v25.0] 📤 Aporte diagnósticos emitido");
       }
-    } catch (e) { /* silencioso */ }
+    } catch (e) {
+      console.warn("[Fix v25.0] Error aporte diagnósticos:", e);
+    }
 
     showStatus("✓ Análisis completado", "success");
   } catch (e) {
@@ -13533,15 +13639,30 @@ function autoPoblarDesdeJSON(json) {
   // ═══════════════════════════════════════════════════════════════
   if (typeof window.sugerirInterconsultasDesdeConsulta === "function") {
     try {
+      // FIX v25.0: usar contexto_id correcto según módulo activo
+      // Antes se usaba "SAV-RAIZ-{caseId}" (esquema viejo del monolito)
+      // Ahora: consolidadora nueva emite "SAV-CONSULTA-{caseId}" o "SAV-TAMIZAJE-{caseId}"
+      let contextoIdCorrecto = null;
+      if (s.caseId) {
+        if (s.paciente) {
+          // Es consulta
+          contextoIdCorrecto = "SAV-CONSULTA-" + s.caseId;
+        } else {
+          // Es tamizaje
+          contextoIdCorrecto = "SAV-TAMIZAJE-" + s.caseId;
+        }
+      }
+
+      console.log("[Fix v25.0] contextoId corregido:", contextoIdCorrecto);
+
       window.sugerirInterconsultasDesdeConsulta(json, {
         caseId: s.caseId || null,
-        contextoId: s.caseId ? "SAV-RAIZ-" + s.caseId : null
+        contextoId: contextoIdCorrecto
       });
     } catch (e) {
       console.warn("[FaseD] No se pudo disparar sugerirInterconsultasDesdeConsulta:", e);
     }
   }
-}
 /* ═══════════════════════════════════════════════════════════
    DIAGNÓSTICOS
    ═══════════════════════════════════════════════════════════ */
@@ -22241,15 +22362,27 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
         ? jsonAnalisis.interconsultas_sugeridas
         : [];
 
-      const s = window._consultaState || {};
+            const s = window._consultaState || {};
       const caseId = meta.caseId
         || s.caseId
         || (window.casoActual && window.casoActual.case_id)
         || null;
 
       ESTADO_D.caseId = caseId;
-      ESTADO_D.contextoId = meta.contextoId
-        || (caseId ? `SAV-RAIZ-${caseId}` : null);
+
+      // FIX v25.0: fallback correcto según módulo
+      // Antes: `SAV-RAIZ-${caseId}` (esquema viejo)
+      // Ahora: `SAV-CONSULTA-${caseId}` o `SAV-TAMIZAJE-${caseId}`
+      if (meta.contextoId) {
+        ESTADO_D.contextoId = meta.contextoId;
+      } else if (caseId) {
+        // Detectar módulo activo
+        const esConsulta = !!(s.paciente);
+        const origen = esConsulta ? "CONSULTA" : "TAMIZAJE";
+        ESTADO_D.contextoId = `SAV-${origen}-${caseId}`;
+      } else {
+        ESTADO_D.contextoId = null;
+      }
 
       console.log("[FaseD] Sugerencias recibidas:", lista.length, "| caseId:", caseId, "| contexto:", ESTADO_D.contextoId);
 
@@ -22278,17 +22411,30 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
       return;
     }
 
-    const seleccionadas = Array.from(ESTADO_D.seleccionadas);
+        const seleccionadas = Array.from(ESTADO_D.seleccionadas);
     if (seleccionadas.length === 0) {
       alert("Selecciona al menos una interconsulta.");
       return;
     }
 
+    // FIX v25.0: reconstruir contextoId si falta
+    // Antes: alert y salida si no hay contextoId
+    // Ahora: reconstruir desde caseId si es posible
     if (!ESTADO_D.contextoId) {
-      alert("No hay contexto_id. Ejecuta primero el análisis con IA.");
-      return;
+      const s = window._consultaState || {};
+      if (s.caseId) {
+        const esConsulta = !!(s.paciente);
+        const origen = esConsulta ? "CONSULTA" : "TAMIZAJE";
+        ESTADO_D.contextoId = `SAV-${origen}-${s.caseId}`;
+        ESTADO_D.caseId = s.caseId;
+        console.log("[Fix v25.0] contextoId reconstruido desde caseId:", ESTADO_D.contextoId);
+      } else {
+        alert("No hay contexto_id ni caseId. Ejecuta primero el análisis con IA.");
+        return;
+      }
     }
 
+    console.log("[Fix v25.0] Emitiendo decisión con contexto_id:", ESTADO_D.contextoId);
     const savia = obtenerSavia();
     if (!savia) {
       alert("SAVIA no está disponible. Revisa la consola para el diagnóstico.");
