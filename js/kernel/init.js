@@ -1,6 +1,8 @@
 /**
- * BOOTSTRAP — Inicialización del kernel y agentes.
- * v1.2 — Sprint 3 Fase A
+ * ═══════════════════════════════════════════════════════════════════
+ * BOOTSTRAP — Inicialización del kernel y agentes
+ * Versión: 2.0.0 — Sprint 3 Fase F (Árbol de Agentes v25.0)
+ * ═══════════════════════════════════════════════════════════════════
  */
 
 import kernel from "./kernel.js";
@@ -8,7 +10,7 @@ import SAVIA from "./savia.js";
 import MEMORIA from "./memoria.js";
 import contexto from "./contexto.js";
 
-// Adapters del Sprint 1
+// ─── Adapters del Sprint 1 ───
 import { agenteTamizaje } from "../adapters/tamizaje-adapter.js";
 import { agenteConsulta } from "../adapters/consulta-adapter.js";
 import { agenteSuscripciones } from "../adapters/suscripciones-adapter.js";
@@ -16,33 +18,31 @@ import { agenteEpisodios } from "../adapters/episodios-adapter.js";
 import { agenteEspecialidad } from "../adapters/especialidad-adapter.js";
 import { agentePortal } from "../adapters/portal-adapter.js";
 
-// Agentes de RAÍZ (Sprint 2)
+// ─── Agentes de RAÍZ (Sprint 2) ───
 import { agentePaciente } from "../agentes/raiz/paciente.js";
 import { agenteClinica } from "../agentes/raiz/clinica.js";
 import { agenteLaboratorio } from "../agentes/raiz/laboratorio.js";
 import { agenteImagen } from "../agentes/raiz/imagen.js";
 import { agenteTrabajoSocial } from "../agentes/raiz/trabajo-social.js";
 
-// NUEVO Sprint 3 Fase A: Consolidador de SAVIA
-import { agenteSaviaConsolidadora } from "../agentes/raiz/savia-consolidadora.js";
-// Motor unificado de interconsultas (Sprint 3 Fase B)
+// ═══════════════════════════════════════════════════════════════════
+// SPRINT 3 FASE F — Las 2 consolidadoras + guardián
+// ═══════════════════════════════════════════════════════════════════
+import { agenteConsolidadoraTamizaje } from "../agentes/raiz/savia-consolidadora-tamizaje.js";
+import { agenteConsolidadoraConsulta } from "../agentes/raiz/savia-consolidadora-consulta.js";
+import { agenteGuardian } from "../agentes/raiz/guardian.js";
+
+// ─── Motor de interconsultas ───
 import "../agentes/tronco/_motor-interconsultas.js";
-// Agentes maestros del TRONCO (Sprint 3 Fase C)
+
+// ─── Agentes maestros del TRONCO ───
 import { agenteCoordinador } from "../agentes/tronco/coordinador.js";
 import { agenteInvestigador } from "../agentes/tronco/investigador.js";
 import { agenteAdministrador } from "../agentes/tronco/administrador.js";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SPRINT 3 FASE E — 30 ESPECIALISTAS
-// ═══════════════════════════════════════════════════════════════════════════
-// Cada especialista:
-//   - Escucha savia:solicitar-analisis filtrado por su key
-//   - Llama a Kimi con PROMPTS_INTERCONSULTA[key]
-//   - Emite especialista:respuesta al coordinador
-//   - Se suscribe a SAVIA en su init()
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ─── Imports ───
+// ═══════════════════════════════════════════════════════════════════
+// SPRINT 3 FASE E — 30 especialistas
+// ═══════════════════════════════════════════════════════════════════
 import { agenteEspecialistaNutricionista }          from "../agentes/tronco/especialistas/nutricionista.js";
 import { agenteEspecialistaFisico }                 from "../agentes/tronco/especialistas/fisico.js";
 import { agenteEspecialistaPsicologo }              from "../agentes/tronco/especialistas/psicologo.js";
@@ -74,42 +74,21 @@ import { agenteEspecialistaUrologo }                from "../agentes/tronco/espe
 import { agenteEspecialistaOncologo }               from "../agentes/tronco/especialistas/oncologo.js";
 import { agenteEspecialistaOftalmologo }            from "../agentes/tronco/especialistas/oftalmologo.js";
 
-// ─── Array de especialistas ───
 const especialistasFaseE = [
-  agenteEspecialistaNutricionista,
-  agenteEspecialistaFisico,
-  agenteEspecialistaPsicologo,
-  agenteEspecialistaCardiologo,
-  agenteEspecialistaEndocrinologo,
-  agenteEspecialistaNefrologo,
-  agenteEspecialistaHepatologo,
-  agenteEspecialistaGinecologo,
-  agenteEspecialistaMastologo,
-  agenteEspecialistaPediatra,
-  agenteEspecialistaInternista,
-  agenteEspecialistaRadiologo,
-  agenteEspecialistaNeurologo,
-  agenteEspecialistaNeurologoPediatrico,
-  agenteEspecialistaPsiquiatraInfantil,
-  agenteEspecialistaFonoaudiologo,
-  agenteEspecialistaTerapistaOcupacional,
-  agenteEspecialistaNeuropsicologo,
-  agenteEspecialistaPsiquiatra,
-  agenteEspecialistaNeumologo,
-  agenteEspecialistaAlergologo,
-  agenteEspecialistaTerapistaRespiratorio,
-  agenteEspecialistaTraumatologo,
-  agenteEspecialistaReumatologo,
-  agenteEspecialistaFisioterapeuta,
-  agenteEspecialistaDermatologo,
-  agenteEspecialistaOcupacional,
-  agenteEspecialistaUrologo,
-  agenteEspecialistaOncologo,
-  agenteEspecialistaOftalmologo
+  agenteEspecialistaNutricionista, agenteEspecialistaFisico, agenteEspecialistaPsicologo,
+  agenteEspecialistaCardiologo, agenteEspecialistaEndocrinologo, agenteEspecialistaNefrologo,
+  agenteEspecialistaHepatologo, agenteEspecialistaGinecologo, agenteEspecialistaMastologo,
+  agenteEspecialistaPediatra, agenteEspecialistaInternista, agenteEspecialistaRadiologo,
+  agenteEspecialistaNeurologo, agenteEspecialistaNeurologoPediatrico, agenteEspecialistaPsiquiatraInfantil,
+  agenteEspecialistaFonoaudiologo, agenteEspecialistaTerapistaOcupacional, agenteEspecialistaNeuropsicologo,
+  agenteEspecialistaPsiquiatra, agenteEspecialistaNeumologo, agenteEspecialistaAlergologo,
+  agenteEspecialistaTerapistaRespiratorio, agenteEspecialistaTraumatologo, agenteEspecialistaReumatologo,
+  agenteEspecialistaFisioterapeuta, agenteEspecialistaDermatologo, agenteEspecialistaOcupacional,
+  agenteEspecialistaUrologo, agenteEspecialistaOncologo, agenteEspecialistaOftalmologo
 ];
 
-// ─── Registro masivo ───
-console.log(`[Kernel] Registrando ${especialistasFaseE.length} especialistas (Fase E)...`);
+// ─── Registro masivo de especialistas ───
+console.log(`[Kernel] Registrando ${especialistasFaseE.length} especialistas...`);
 let especialistasRegistrados = 0;
 for (const esp of especialistasFaseE) {
   try {
@@ -121,27 +100,19 @@ for (const esp of especialistasFaseE) {
 }
 console.log(`[Kernel] ✓ ${especialistasRegistrados}/${especialistasFaseE.length} especialistas registrados`);
 
-// ─── Resumen final del kernel ───
-const health = kernel.health ? kernel.health() : null;
-if (health) {
-  console.log("%c[Kernel] ═══════════════════════════════════════════════", "color:#0071e3;font-weight:bold");
-  console.log("%c[Kernel] Estado final del Sprint 3:", "color:#0071e3;font-weight:bold");
-  console.log(`  Agentes registrados: ${health.agentes_registrados}`);
-  console.log(`  Agentes activos:     ${health.agentes_activos}`);
-  console.log(`  Por capa:`, health.por_capa || {});
-  console.log("%c[Kernel] ═══════════════════════════════════════════════", "color:#0071e3;font-weight:bold");
-}
-
+// ═══════════════════════════════════════════════════════════════════
+// BOOTSTRAP
+// ═══════════════════════════════════════════════════════════════════
 async function bootstrap() {
   console.log("═══════════════════════════════════════════════════");
-  console.log("🚀 KERNEL — Inicializando sistema de agentes v1.2");
+  console.log("🚀 KERNEL v2.0.0 — Árbol de Agentes v25.0");
   console.log("═══════════════════════════════════════════════════");
-  
-  // ─── ESPERAR A SUPABASE ───
-  console.log("[Kernel] Esperando a que Supabase esté listo...");
+
+  // ─── Esperar Supabase ───
+  console.log("[Kernel] Esperando Supabase...");
   let intentos = 0;
   const MAX_INTENTOS = 100;
-  
+
   while (!window.supabaseClient && intentos < MAX_INTENTOS) {
     await new Promise(r => setTimeout(r, 200));
     intentos++;
@@ -149,18 +120,18 @@ async function bootstrap() {
       console.log(`[Kernel] Esperando Supabase... (${intentos * 200}ms)`);
     }
   }
-  
+
   if (!window.supabaseClient) {
-    console.warn("[Kernel] Supabase no disponible tras 20s, modo degradado");
+    console.warn("[Kernel] ⚠️ Supabase no disponible tras 20s");
   } else {
     console.log("[Kernel] ✓ Supabase disponible tras", intentos * 200, "ms");
   }
-  
-  // ─── ESPERAR AL USUARIO ───
-  console.log("[Kernel] Esperando a que el usuario esté autenticado...");
+
+  // ─── Esperar usuario ───
+  console.log("[Kernel] Esperando usuario autenticado...");
   let intentosUser = 0;
   const MAX_INTENTOS_USER = 150;
-  
+
   while (!window.usuarioActual && intentosUser < MAX_INTENTOS_USER) {
     await new Promise(r => setTimeout(r, 200));
     intentosUser++;
@@ -168,17 +139,17 @@ async function bootstrap() {
       console.log(`[Kernel] Esperando usuario... (${intentosUser * 200}ms)`);
     }
   }
-  
+
   if (!window.usuarioActual) {
-    console.warn("[Kernel] Usuario no autenticado tras 30s. Registrando solo agentes públicos.");
+    console.warn("[Kernel] ⚠️ Usuario no autenticado tras 30s");
   } else {
-    console.log("[Kernel] ✓ Usuario autenticado:", window.usuarioActual.email, "| Rol:", window.usuarioActual.rol);
+    console.log("[Kernel] ✓ Usuario:", window.usuarioActual.email, "| Rol:", window.usuarioActual.rol);
   }
-  
-  // ─── INIT KERNEL ───
+
+  // ─── Init kernel ───
   await kernel.init();
-  
-  // ─── SERVICIOS ───
+
+  // ─── Servicios ───
   kernel.registrarServicio("ia", {
     async llamarKimi(prompt) {
       if (typeof window.llamarKimiConsulta === "function") {
@@ -187,17 +158,17 @@ async function bootstrap() {
       throw new Error("Servicio IA no disponible");
     }
   });
-  
+
   kernel.registrarServicio("pdf", {
     descargar: (tipo) => window.descargarPDF?.(tipo),
     descargarLite: () => window.descargarPDFLite?.()
   });
-  
+
   kernel.registrarServicio("firma", {
     generarHash: (t) => window.generarHash?.(t)
   });
-  
-  // ─── ENTIDADES ───
+
+  // ─── Entidades ───
   kernel.registrarEntidad("paciente", {
     async buscar(query) {
       if (!window.supabaseClient) return null;
@@ -210,7 +181,7 @@ async function bootstrap() {
       return data;
     }
   });
-  
+
   kernel.registrarEntidad("medico", {
     async obtener(id) {
       if (!window.supabaseClient) return null;
@@ -219,7 +190,7 @@ async function bootstrap() {
       return data;
     }
   });
-  
+
   kernel.registrarEntidad("empresa", {
     async listar() {
       if (!window.supabaseClient) return [];
@@ -228,38 +199,41 @@ async function bootstrap() {
       return data || [];
     }
   });
-  
-  // ─── REGISTRAR ADAPTERS (Sprint 1) ───
-  console.log("[Kernel] Registrando adapters del Sprint 1...");
+
+  // ─── Adaptadores ───
+  console.log("[Kernel] Registrando adapters...");
   await kernel.registrar(agenteTamizaje);
   await kernel.registrar(agenteConsulta);
   await kernel.registrar(agenteSuscripciones);
   await kernel.registrar(agenteEpisodios);
   await kernel.registrar(agenteEspecialidad);
   await kernel.registrar(agentePortal);
-  
-  // ─── REGISTRAR AGENTES DE RAÍZ (Sprint 2 + 3A) ───
-  console.log("[Kernel] Registrando agentes de RAÍZ...");
+
+  // ─── Agentes RAÍZ ───
+  console.log("[Kernel] Registrando agentes RAÍZ (8)...");
   await kernel.registrar(agentePaciente);
   await kernel.registrar(agenteClinica);
   await kernel.registrar(agenteLaboratorio);
   await kernel.registrar(agenteImagen);
   await kernel.registrar(agenteTrabajoSocial);
-  await kernel.registrar(agenteSaviaConsolidadora);
-console.log("[Kernel] ✓ 6 agentes de RAÍZ registrados");
-  
-// ─── REGISTRAR AGENTES MAESTROS DEL TRONCO (Sprint 3 Fase C) ───
-console.log("[Kernel] Registrando agentes maestros del TRONCO...");
-await kernel.registrar(agenteCoordinador);
-await kernel.registrar(agenteInvestigador);
-await kernel.registrar(agenteAdministrador);
-console.log("[Kernel] ✓ 3 agentes maestros del TRONCO registrados");
 
-  
-  // ─── ACTIVAR TODOS ───
+  // ═══ FASE F: los 3 nuevos ═══
+  await kernel.registrar(agenteConsolidadoraTamizaje);
+  await kernel.registrar(agenteConsolidadoraConsulta);
+  await kernel.registrar(agenteGuardian);
+
+  console.log("[Kernel] ✓ 8 agentes RAÍZ registrados (5 base + 2 consolidadoras + guardián)");
+
+  // ─── Agentes TRONCO maestros ───
+  console.log("[Kernel] Registrando agentes TRONCO maestros...");
+  await kernel.registrar(agenteCoordinador);
+  await kernel.registrar(agenteInvestigador);
+  await kernel.registrar(agenteAdministrador);
+
+  // ─── Activar todos ───
   await kernel.activarTodos();
-  
-  // ─── LOG FINAL ───
+
+  // ─── Log final ───
   const stats = kernel.stats();
   console.log("═══════════════════════════════════════════════════");
   console.log("✅ KERNEL listo");
@@ -268,8 +242,8 @@ console.log("[Kernel] ✓ 3 agentes maestros del TRONCO registrados");
   console.log("   Servicios:", stats.servicios);
   console.log("   Entidades:", stats.entidades);
   console.log("═══════════════════════════════════════════════════");
-  
-  // ─── API GLOBAL ───
+
+  // ─── API global ───
   window.EcoRadAi = {
     kernel,
     savia: SAVIA,
@@ -287,7 +261,7 @@ console.log("[Kernel] ✓ 3 agentes maestros del TRONCO registrados");
           tronco: agentes.filter(a => a.capa === "tronco").length,
           fruto: agentes.filter(a => a.capa === "fruto").length
         },
-        version: "v23.4-sprint3a"
+        version: "v25.0-faseF"
       };
     },
 
@@ -305,7 +279,7 @@ console.log("[Kernel] ✓ 3 agentes maestros del TRONCO registrados");
     suscriptoresDe: (tipo) => SAVIA.suscriptoresDe(tipo),
     historialDeContexto: (contexto_id) => SAVIA.historialDeContexto(contexto_id)
   };
-  
+
   console.log("[Kernel] API global: window.EcoRadAi");
   console.log("[Kernel] Prueba: window.EcoRadAi.health()");
 }
