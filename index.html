@@ -13350,7 +13350,10 @@ REGLAS:
 - Máximo 5 sugerencias por caso.
 - Cada sugerencia DEBE tener justificacion clínica específica (no genérica).`;
 }
-
+// Exponer globalmente para Consulta Especialidad
+if (typeof window !== "undefined") {
+  window.construirPromptConsulta = construirPromptConsulta;
+}
 /* ═══════════════════════════════════════════════════════════
    v23.6 — llamarKimiConsulta con reintento automático de JSON
    ═══════════════════════════════════════════════════════════ */
