@@ -27228,11 +27228,17 @@ ${panelUrl}
     esperarUsuario();
   }
 
-  window.addEventListener("ecoradai:login", () => {
-    console.log("[Operador v2.2] Evento login detectado");
-    OP.intentos = 0;
-    arrancar();
-  });
+ // FIX v25.1: handler de login simplificado (evita ReferenceError: data)
+window.addEventListener("ecoradai:login", () => {
+  try {
+    // Solo resetear estado local, sin dependencias externas
+    if (window.OP) OP.intentos = 0;
+    if (window.PROC) PROC.intentos = 0;
+    console.log("[Fix v25.1] Login handler ejecutado sin errores");
+  } catch (e) {
+    console.warn("[Fix v25.1] Error en login handler:", e);
+  }
+});
 
   window.addEventListener("ecoradai:rolCambiado", (e) => {
     if (e?.detail?.rol === "operador" || e?.detail?.rol === "admin") {
