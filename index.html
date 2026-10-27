@@ -13143,6 +13143,7 @@ window.ejecutarAnalisisConsulta = async function() {
     }
   }
 };
+
 function construirPromptConsulta() {
   const s = window._consultaState;
   const p = s.paciente;
@@ -13349,7 +13350,10 @@ REGLAS:
 - Máximo 5 sugerencias por caso.
 - Cada sugerencia DEBE tener justificacion clínica específica (no genérica).`;
 }
-
+// Exponer globalmente para Consulta Especialidad
+if (typeof window !== "undefined") {
+  window.construirPromptConsulta = construirPromptConsulta;
+}
 /* ═══════════════════════════════════════════════════════════
    v23.6 — llamarKimiConsulta con reintento automático de JSON
    ═══════════════════════════════════════════════════════════ */
@@ -13632,6 +13636,7 @@ function autoPoblarDesdeJSON(json) {
   if (json.complejidad_sugerida) {
     s.complejidadCalculada = json.complejidad_sugerida;
   }
+
   // ═══════════════════════════════════════════════════════════════
   // SPRINT 3 FASE D — Disparar UI de interconsultas sugeridas
   // ═══════════════════════════════════════════════════════════════
@@ -22433,7 +22438,6 @@ console.log("[Notificaciones] ✓ Módulo del PASO 7 cargado y auto-inicializand
     }
 
     console.log("[Fix v25.0] Emitiendo decisión con contexto_id:", ESTADO_D.contextoId);
-
     const savia = obtenerSavia();
     if (!savia) {
       alert("SAVIA no está disponible. Revisa la consola para el diagnóstico.");
