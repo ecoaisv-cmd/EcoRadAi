@@ -22780,6 +22780,651 @@ console.log("[Header] ✓ Módulo de menú de usuario cargado");
 </script>
 <script type="module" src="js/kernel/init.js"></script>
 <!-- ═══════════════════════════════════════════════════════════════════
+     BOOTSTRAP DE RESPALDO DEL KERNEL v1.0.0
+     ─────────────────────────────────────────────────────────────────
+     Se activa SOLO si js/kernel/init.js falla (503, 404, error módulo).
+     Reconstruye el kernel mínimo necesario para interconsultas.
+     
+     Es idempotente: si el kernel oficial funciona, no hace nada.
+     Es 100% aditivo: NO modifica el monolito.
+     Es reversible: solo borra este <script> para eliminarlo.
+     
+     Requiere: runInterconsulta + PROMPTS_INTERCONSULTA + ESPECIALISTAS
+     (todos ya existen en el monolito).
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  "use strict";
+
+  const PREFIX = "[Bootstrap-Kernel]";
+  const log = (msg, color) => console.log(`%c${PREFIX} ${msg}`, `color:${color || "#0071e3"};font-weight:bold;padding:2px 4px`);
+  const logOK = (msg) => log("✓ " + msg, "#34c759");
+  const logWarn = (msg) => log("⚠ " + msg, "#ff9500");
+  const logErr = (msg) => log("✗ " + msg, "#ff3b30");
+  const logInfo = (msg) => log("ℹ " + msg, "#0071e3");
+
+  // ═══════════════════════════════════════════════════════════
+  // UTILIDAD: ¿El kernel oficial ya está funcional?
+  // ═══════════════════════════════════════════════════════════
+  function kernelFuncional() {
+    return (
+      window.kernel &&
+      window.kernel.agentes instanceof Map &&
+      window.kernel.agentes.size >= 10 &&
+      window.SAVIA &&
+      window.SAVIA.suscripciones instanceof Map &&
+      typeof window.SAVIA.emitirContexto === "function"
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // CREAR KERNEL MÍNIMO
+  // ═══════════════════════════════════════════════════════════
+  function crearKernel() {
+    if (window.kernel && window.kernel.agentes instanceof Map) {
+      logInfo("Kernel ya existe, se reutiliza");
+      return window.kernel;
+    }
+
+    window.kernel = {
+      agentes: new Map(),
+      entidades: new Map(),
+      servicios: new Map(),
+      activos: [],
+      _listeners: new Map(),
+      _inicializado: false,
+      _version: "bootstrap-1.0.0",
+
+      async init() {
+        this._inicializado = true;
+        logOK("kernel.init() ejecutado");
+        return true;
+      },
+
+      async registrar(id, agente) {
+        if (!id || !agente) return null;
+        this.agentes.set(id, agente);
+        if (typeof agente.init === "function") {
+          try { await agente.init(); } catch (e) { logErr("init " + id + ": " + e.message); }
+        }
+        return agente;
+      },
+
+      obtener(id) {
+        return this.agentes.get(id) || this.entidades.get(id) || null;
+      },
+
+      emit(tipo, payload) {
+        if (window.SAVIA && typeof window.SAVIA.propagar === "function") {
+          return window.SAVIA.propagar({
+            tipo,
+            de: "kernel-bootstrap",
+            timestamp: new Date().toISOString(),
+            payload
+          });
+        }
+        return Promise.resolve([]);
+      },
+
+      on(tipo, fn) {
+        if (!this._listeners.has(tipo)) this._listeners.set(tipo, []);
+        this._listeners.get(tipo).push(fn);
+        return () => this.off(tipo, fn);
+      },
+
+      off(tipo, fn) {
+        const arr = this._listeners.get(tipo) || [];
+        const i = arr.indexOf(fn);
+        if (i >= 0) arr.splice(i, 1);
+      },
+
+      health() {
+        return {
+          version: this._version,
+          inicializado: this._inicializado,
+          agentes: this.agentes.size,
+          entidades: this.entidades.size,
+          servicios: this.servicios.size
+        };
+      }
+    };
+
+    logOK("window.kernel creado");
+    return window.kernel;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // CREAR SAVIA MÍNIMA
+  // ═══════════════════════════════════════════════════════════
+  function crearSavia() {
+    if (window.SAVIA && window.SAVIA.suscripciones instanceof Map) {
+      logInfo("SAVIA ya existe, se reutiliza");
+      return window.SAVIA;
+    }
+
+    window.SAVIA = {
+      suscripciones: new Map(),
+      historial: [],
+      metricas: { eventos_totales: 0, por_tipo: {} },
+      contextoActual: null,
+      _version: "bootstrap-1.0.0",
+
+      suscribir(id, tipos, callback) {
+        if (!id) return false;
+        const tiposArr = Array.isArray(tipos) ? tipos : [tipos];
+        this.suscripciones.set(id, {
+          tipos: tiposArr,
+          callback: typeof callback === "function" ? callback : null,
+          suscrito_at: new Date().toISOString()
+        });
+        logOK(`suscripción ${id} → ${tiposArr.length} tipo(s)`);
+        return true;
+      },
+
+      desuscribir(id) {
+        const existia = this.suscripciones.delete(id);
+        if (existia) logInfo(`desuscrito: ${id}`);
+        return existia;
+      },
+
+      propagar(evento) {
+        if (!evento || !evento.tipo) return Promise.resolve([]);
+
+        // Historial
+        this.historial.push({
+          tipo: evento.tipo,
+          de: evento.de,
+          contexto_id: evento.contexto_id,
+          para: evento.para,
+          timestamp: evento.timestamp || new Date().toISOString(),
+          payload_keys: evento.payload ? Object.keys(evento.payload) : []
+        });
+        if (this.historial.length > 500) {
+          this.historial = this.historial.slice(-500);
+        }
+
+        // Métricas
+        this.metricas.eventos_totales++;
+        this.metricas.por_tipo[evento.tipo] = (this.metricas.por_tipo[evento.tipo] || 0) + 1;
+
+        // Invocar suscriptores
+        const respuestas = [];
+        this.suscripciones.forEach((sub, id) => {
+          const tipos = sub.tipos || [];
+          const matchea = tipos.includes(evento.tipo) || tipos.includes("*");
+          if (!matchea) return;
+
+          // Filtrar por destinatario si se especifica
+          if (evento.para) {
+            const destinos = evento.para.split(",").map(s => s.trim());
+            if (!destinos.includes(id)) return;
+          }
+
+          try {
+            if (typeof sub.callback === "function") {
+              const r = sub.callback(evento);
+              if (r && typeof r.then === "function") {
+                respuestas.push({ id, promise: r.catch(e => ({ error: e.message })) });
+              } else {
+                respuestas.push({ id, resultado: r });
+              }
+            }
+          } catch (e) {
+            logErr(`suscriptor ${id}: ${e.message}`);
+          }
+        });
+
+        return Promise.all(
+          respuestas.map(r => r.promise || Promise.resolve(r))
+        );
+      },
+
+      async emitirContexto(contextoId, tipo, payload, meta) {
+        return this.propagar({
+          tipo,
+          de: (meta && meta.de) || "savia-bootstrap",
+          contexto_id: contextoId,
+          timestamp: new Date().toISOString(),
+          payload: payload || {},
+          para: meta && meta.para
+        });
+      },
+
+      enviar(evento) {
+        return this.propagar(evento);
+      },
+
+      async historialDeContexto(ctx) {
+        return this.historial.filter(h => h.contexto_id === ctx);
+      },
+
+      suscriptoresDe(tipo) {
+        const subs = [];
+        this.suscripciones.forEach((sub, id) => {
+          if (sub.tipos && (sub.tipos.includes(tipo) || sub.tipos.includes("*"))) {
+            subs.push(id);
+          }
+        });
+        return subs;
+      },
+
+      health() {
+        return {
+          version: this._version,
+          suscripciones: this.suscripciones.size,
+          eventos: this.metricas.eventos_totales,
+          historial: this.historial.length
+        };
+      }
+    };
+
+    logOK("window.SAVIA creada");
+    return window.SAVIA;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // CREAR COORDINADOR FUNCIONAL
+  // ═══════════════════════════════════════════════════════════
+  function crearCoordinador() {
+    if (window.kernel.agentes.has("agente-coordinador")) {
+      logInfo("Coordinador ya existe");
+      return window.kernel.agentes.get("agente-coordinador");
+    }
+
+    const coord = {
+      id: "agente-coordinador",
+      nombre: "Coordinador Clínico",
+      capa: "tronco",
+      tipo: "tronco",
+      version: "bootstrap-1.0.0",
+      activo: true,
+
+      suscripciones: [
+        "savia:raiz:contexto-unificado",
+        "medico:decision-interconsultas",
+        "especialista:respuesta"
+      ],
+
+      contextosActivos: new Map(),
+      _stats: { informes: 0, planes: 0, interconsultas: 0, errores: 0 },
+
+      async init() {
+        window.SAVIA.suscribir(this.id, this.suscripciones, (ev) => this.recibir(ev));
+        logOK("Coordinador suscrito a SAVIA");
+        return true;
+      },
+
+      async recibir(evento) {
+        const tipo = evento && evento.tipo;
+        if (!tipo) return null;
+
+        try {
+          if (tipo === "savia:raiz:contexto-unificado") {
+            return await this._procesarSaviaRaiz(evento.payload);
+          }
+          if (tipo === "medico:decision-interconsultas") {
+            return await this._procesarDecision(evento.payload, evento.contexto_id);
+          }
+          return null;
+        } catch (e) {
+          this._stats.errores++;
+          logErr(`Coordinador ${tipo}: ${e.message}`);
+          console.error(e);
+          return null;
+        }
+      },
+
+      async _procesarSaviaRaiz(savia) {
+        if (!savia || !savia.contexto_id) return null;
+        this.contextosActivos.set(savia.contexto_id, {
+          savia,
+          case_id: savia.case_id,
+          subject_id: savia.subject && savia.subject.subject_id,
+          creado_at: new Date().toISOString()
+        });
+        this._stats.informes++;
+        logOK(`SAVIA RAÍZ registrada: ${savia.contexto_id}`);
+        return { registrado: true };
+      },
+
+      async _procesarDecision(payload, ctxDelEvento) {
+        const ctx = (payload && payload.contexto_id) || ctxDelEvento;
+        if (!ctx) { logWarn("Decisión sin contexto"); return null; }
+
+        logOK(`Decisión recibida: ${ctx}`);
+
+        let lista = [];
+        if (payload && Array.isArray(payload.interconsultas_autorizadas)) {
+          lista = payload.interconsultas_autorizadas;
+        } else if (payload && Array.isArray(payload.interconsultas)) {
+          lista = payload.interconsultas;
+        }
+
+        if (lista.length === 0) {
+          logWarn("Sin interconsultas autorizadas");
+          return { ejecutadas: 0, motivo: "sin_interconsultas" };
+        }
+
+        logOK(`Ejecutando ${lista.length} interconsulta(s)`);
+
+        const caso = this._construirCaso();
+        const resultados = [];
+
+        for (const ic of lista) {
+          const key = typeof ic === "string" ? ic : (ic.especialista || ic);
+          if (!key) continue;
+
+          logInfo(`→ Ejecutando ${key}...`);
+
+          try {
+            if (typeof window.runInterconsulta !== "function") {
+              throw new Error("runInterconsulta no disponible en window");
+            }
+
+            const res = await window.runInterconsulta(caso, key);
+
+            resultados.push({
+              especialista: key,
+              resultado: res,
+              exito: true,
+              ejecutada_at: new Date().toISOString()
+            });
+
+            this._stats.interconsultas++;
+            logOK(`${key} completado`);
+
+            // Emitir respuesta individual
+            await window.SAVIA.emitirContexto(ctx, "especialista:respuesta", {
+              contexto_id: ctx,
+              especialista: key,
+              resultado: res,
+              exito: true
+            }, { de: "agente-coordinador" });
+
+          } catch (e) {
+            logErr(`${key} falló: ${e.message}`);
+            resultados.push({
+              especialista: key,
+              error: e.message,
+              exito: false,
+              ejecutada_at: new Date().toISOString()
+            });
+            this._stats.errores++;
+          }
+        }
+
+        // Guardar en _consultaState para el informe final
+        if (window._consultaState) {
+          window._consultaState.interconsultasEjecutadas =
+            (window._consultaState.interconsultasEjecutadas || []).concat(
+              resultados.filter(r => r.exito).map(r => r.resultado)
+            );
+        }
+
+        const ok = resultados.filter(r => r.exito).length;
+        const fail = resultados.filter(r => !r.exito).length;
+
+        // Emitir plan integrado
+        await window.SAVIA.emitirContexto(ctx, "savia:tronco:plan-integrado", {
+          contexto_id: ctx,
+          case_id: payload && payload.case_id,
+          plan: { interconsultas: resultados },
+          exitosas: ok,
+          fallidas: fail,
+          total: resultados.length,
+          completado_at: new Date().toISOString()
+        }, { de: "agente-coordinador" });
+
+        this._stats.planes++;
+        logOK(`Plan integrado emitido (${ok} OK, ${fail} fallidas)`);
+
+        this.contextosActivos.delete(ctx);
+
+        // Actualizar UI del panel si existe
+        try {
+          const panelCard = document.getElementById("consulta-ic-plan-card");
+          const panelCont = document.getElementById("consulta-ic-plan-content");
+          if (panelCard && panelCont && resultados.length > 0) {
+            panelCont.innerHTML = resultados.map(r => {
+              if (!r.exito) {
+                return `<div style="padding:10px;background:#fff3f3;border-radius:8px;margin-bottom:8px;font-size:11px;color:#7a1a1a">
+                  <strong>${r.especialista}:</strong> Error — ${r.error}
+                </div>`;
+              }
+              return `<div style="padding:12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:10px;border-left:3px solid var(--positive)">
+                <div style="font-size:12px;font-weight:700;color:var(--corp);margin-bottom:6px;text-transform:capitalize">
+                  ${r.especialista.replace(/_/g, " ")}
+                </div>
+                <pre style="font-size:10px;white-space:pre-wrap;margin:0;line-height:1.5">${JSON.stringify(r.resultado, null, 2).substring(0, 800)}${JSON.stringify(r.resultado).length > 800 ? "..." : ""}</pre>
+              </div>`;
+            }).join("");
+            panelCard.style.display = "";
+          }
+        } catch (e) { /* silent */ }
+
+        return { ejecutadas: resultados.length, exitosas: ok, fallidas: fail };
+      },
+
+      _construirCaso() {
+        const s = window._consultaState || {};
+        const caso = {
+          subject: s.paciente || {},
+          encounter: {
+            estudio: s.tipoConsulta || "consulta",
+            fecha: new Date().toLocaleDateString("es-ES")
+          },
+          labs: {},
+          clinica: {},
+          findings: (s.iaJSON && s.iaJSON.diagnostico_diferencial) || [],
+          metrics: [],
+          plan_base: {
+            diagnostico_diferencial: (s.iaJSON && s.iaJSON.diagnostico_diferencial) || [],
+            farmacologico: s.farmacologico || [],
+            no_farmacologico: s.noFarmacologico || []
+          }
+        };
+
+        // Recolectar labs del DOM
+        try {
+          if (window.LABS_REGISTRY && window.LABS_REGISTRY._items) {
+            window.LABS_REGISTRY._items.forEach(l => {
+              const el = document.getElementById("cons-" + l.id);
+              if (el && el.value) {
+                const k = l.id.replace(/^lab-/, "").replace(/-/g, "_");
+                const n = parseFloat(el.value);
+                caso.labs[k] = isNaN(n) ? el.value : n;
+              }
+            });
+          }
+        } catch (e) {}
+
+        // Recolectar signos vitales
+        try {
+          if (Array.isArray(window.CONSULTA_VITALES)) {
+            caso.clinica.signos_vitales = {};
+            window.CONSULTA_VITALES.forEach(v => {
+              const el = document.getElementById("cons-vit-" + v.id);
+              if (el && el.value) {
+                const n = parseFloat(el.value);
+                if (!isNaN(n)) caso.clinica.signos_vitales[v.id] = n;
+              }
+            });
+          }
+        } catch (e) {}
+
+        // Impresión clínica
+        const imp = document.getElementById("cons-impresion-final");
+        if (imp && imp.value) caso.clinica.impresion_clinica = imp.value;
+
+        return caso;
+      },
+
+      getEstado() {
+        return {
+          id: this.id,
+          version: this.version,
+          ...this._stats,
+          contextos: this.contextosActivos.size
+        };
+      },
+
+      listarContextos() {
+        return [...this.contextosActivos.entries()].map(([id, c]) => ({
+          contexto_id: id,
+          case_id: c.case_id,
+          subject_id: c.subject_id,
+          creado_at: c.creado_at
+        }));
+      }
+    };
+
+    window.kernel.agentes.set("agente-coordinador", coord);
+    logOK("Coordinador registrado en kernel.agentes");
+    return coord;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // BOOTSTRAP COMPLETO
+  // ═══════════════════════════════════════════════════════════
+  async function ejecutarBootstrap() {
+    logInfo("Iniciando bootstrap de respaldo...");
+
+    // Esperar a que el monolito esté listo
+    let intentos = 0;
+    while (typeof window.runInterconsulta !== "function" && intentos < 40) {
+      await new Promise(r => setTimeout(r, 250));
+      intentos++;
+    }
+
+    if (typeof window.runInterconsulta !== "function") {
+      logErr("Monolito no listo (runInterconsulta no existe)");
+      return false;
+    }
+    logOK(`Monolito listo (${intentos * 250}ms de espera)`);
+
+    // 1. Crear kernel
+    const kernel = crearKernel();
+    await kernel.init();
+
+    // 2. Crear SAVIA
+    crearSavia();
+
+    // 3. Registrar entidades
+    window.kernel.entidades.set("savia", window.SAVIA);
+    window.kernel.entidades.set("kernel", window.kernel);
+    logOK("Entidades registradas (savia, kernel)");
+
+    // 4. Crear coordinador
+    const coord = crearCoordinador();
+    if (coord && typeof coord.init === "function") {
+      if (!window.SAVIA.suscripciones.has(coord.id)) {
+        await coord.init();
+      }
+    }
+
+    // 5. Marcar inicializado
+    window.kernel._inicializado = true;
+
+    // 6. Resumen
+    console.log("");
+    console.log("%c═══════════════════════════════════════════════════════════", "color:#34c759;font-weight:bold");
+    console.log("%c  BOOTSTRAP COMPLETADO", "background:#34c759;color:white;padding:8px 16px;border-radius:4px;font-weight:bold;font-size:14px");
+    console.log("%c═══════════════════════════════════════════════════════════", "color:#34c759;font-weight:bold");
+    console.log("");
+    console.log("  Kernel:", {
+      agentes: window.kernel.agentes.size,
+      entidades: window.kernel.entidades.size,
+      inicializado: window.kernel._inicializado
+    });
+    console.log("  SAVIA:", {
+      suscripciones: window.SAVIA.suscripciones.size,
+      historial: window.SAVIA.historial.length
+    });
+    console.log("  Coordinador:", window.kernel.agentes.has("agente-coordinador"));
+    console.log("  Suscriptores 'medico:decision-interconsultas':",
+      window.SAVIA.suscriptoresDe("medico:decision-interconsultas").length);
+    console.log("");
+    console.log("%c✅ FLUJO DE INTERCONSULTAS DESBLOQUEADO", "color:#34c759;font-weight:bold;font-size:13px");
+    console.log("");
+    console.log("  Prueba ahora:");
+    console.log("  1. Consulta → paciente → llena S/O/A");
+    console.log("  2. Ejecuta análisis con IA");
+    console.log("  3. Marca interconsultas → clic en 'Ejecutar interconsultas autorizadas'");
+    console.log("");
+    console.log("%c  Diagnóstico: __BOOTSTRAP_KERNEL.estado()", "color:#0071e3;font-weight:bold");
+    console.log("");
+
+    return true;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // API PÚBLICA DE DIAGNÓSTICO
+  // ═══════════════════════════════════════════════════════════
+  window.__BOOTSTRAP_KERNEL = {
+    estado: () => ({
+      activo: window.kernel && window.kernel._version === "bootstrap-1.0.0",
+      kernel: window.kernel && window.kernel.health ? window.kernel.health() : null,
+      savia: window.SAVIA && window.SAVIA.health ? window.SAVIA.health() : null,
+      coordinador: window.kernel && window.kernel.agentes ? window.kernel.agentes.has("agente-coordinador") : false,
+      suscriptores_decision: window.SAVIA && window.SAVIA.suscriptoresDe ? window.SAVIA.suscriptoresDe("medico:decision-interconsultas").length : 0
+    }),
+    ejecutar: ejecutarBootstrap,
+    verHistorial: () => {
+      console.table(window.SAVIA && window.SAVIA.historial ? window.SAVIA.historial : []);
+    },
+    verSuscripciones: () => {
+      if (!window.SAVIA || !window.SAVIA.suscripciones) return [];
+      return [...window.SAVIA.suscripciones.entries()].map(([id, s]) => ({
+        id,
+        tipos: s.tipos,
+        tiene_callback: typeof s.callback === "function"
+      }));
+    },
+    testEmision: async () => {
+      const ctx = "TEST-BOOTSTRAP-" + Date.now();
+      logInfo(`Test emitiendo a ${ctx}...`);
+      const r = await window.SAVIA.emitirContexto(ctx, "medico:decision-interconsultas", {
+        contexto_id: ctx,
+        case_id: "TEST-CASE",
+        interconsultas_autorizadas: [
+          { especialista: "nutricionista", prioridad: "media", justificacion: "test" }
+        ],
+        medico_id: window.usuarioActual && window.usuarioActual.id
+      }, { de: "test-bootstrap" });
+      logOK(`Test completado. Respuestas: ${r.length}`);
+      return r;
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // AUTO-INICIALIZACIÓN
+  // ═══════════════════════════════════════════════════════════
+
+  // Caso 1: kernel oficial ya funciona (raro por el 503)
+  if (kernelFuncional()) {
+    logOK(`Kernel oficial funcional (${window.kernel.agentes.size} agentes). Bootstrap no necesario.`);
+    return;
+  }
+
+  // Caso 2: kernel oficial falló. Activar bootstrap tras 3s
+  logWarn("Kernel oficial NO funcional. Bootstrap en 3 segundos...");
+
+  setTimeout(async () => {
+    if (kernelFuncional()) {
+      logOK("init.js cargó tarde. Bootstrap cancelado.");
+      return;
+    }
+    try {
+      await ejecutarBootstrap();
+    } catch (e) {
+      logErr("Bootstrap falló: " + e.message);
+      console.error(e);
+    }
+  }, 3000);
+
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════════════════
      WRAPPER PORTAL OPERADOR v2.0 — DEFINITIVO
      Adaptado a la BD real:
        · obtener_info_plan_paciente (nueva)
