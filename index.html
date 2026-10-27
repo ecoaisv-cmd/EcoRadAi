@@ -8837,6 +8837,21 @@ async function generarInformeBase() {
     try { recalcularTodasLasEscalas(); } catch (e) {}
 
     await guardarCasoDB(casoActual);
+        // ═══════════════════════════════════════════════════════════════
+    // WRAPPER ÁRBOL v25.0 — Gatillo de consolidación SAVIA 1
+    // ═══════════════════════════════════════════════════════════════
+    try {
+      if (window.kernel && casoActual?.case_id) {
+        console.log("[Wrapper Árbol] 🎯 Emitiendo gatillo consolidación Tamizaje:", casoActual.case_id);
+        window.kernel.emit("savia:tamizaje:solicitar-consolidacion", {
+          case_id: casoActual.case_id,
+          raw: casoActual
+        });
+      }
+    } catch (e) {
+      console.warn("[Wrapper Árbol] Error gatillo tamizaje:", e);
+    }
+    // ═══════════════════════════════════════════════════════════════
 
     // ═══════════════════════════════════════════════════════════
     // CONSUMIR CUOTA DE TAMIZAJE (Módulo Suscripciones)
@@ -8964,8 +8979,41 @@ for (const [k, h] of Object.entries(art)) {
     const seq = getStepSequence();
     const ir = seq.indexOf("sec-reporte");
     if (ir >= 0) goTo(ir);
-  } catch (err) { console.error("[generarInformeFinal]", err); showStatus("Error: " + err.message, "error"); }
-  finally { if (btn) { btn.disabled = false; btn.textContent = ot; } }
+    } catch (err) { 
+    console.error("[generarInformeFinal]", err); 
+    showStatus("Error: " + err.message, "error"); 
+  }
+  finally { 
+    if (btn) { 
+      btn.disabled = false; 
+      btn.textContent = ot; 
+    } 
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // WRAPPER ÁRBOL v25.0 — Emitir informe-kimi al guardián (Tamizaje)
+  // ═══════════════════════════════════════════════════════════════
+  try {
+    const caso = window._casoActual || casoActual;
+    if (caso?.subject?.subject_id && window.kernel) {
+      console.log("[Wrapper Árbol] 🩸 Enviando informe a guardián (tamizaje):", caso.case_id);
+      window.kernel.emit("savia:tronco:informe-kimi", {
+        case_id: caso.case_id,
+        subject_id: caso.subject.subject_id,
+        origen: "tamizaje",
+        diagnostico: caso.diagnostico_diferencial || [],
+        plan: caso.plan || {},
+        riesgo: caso.riesgo_global || { nivel: "MODERADO" },
+        narrativa: caso.narrativa_completa,
+        json_estructurado: caso.plan,
+        datos: caso,
+        interconsultas_ejecutadas: caso.interconsultas_ejecutadas || []
+      });
+    }
+  } catch (e) {
+    console.warn("[Wrapper Árbol] Error guardián tamizaje:", e);
+  }
+  // ═══════════════════════════════════════════════════════════════
 }
 
 function cambiarTab(tab) {
@@ -12893,45 +12941,82 @@ window.ejecutarAnalisisConsulta = async function() {
   const s = window._consultaState;
   if (!s.paciente) { showStatus("Falta paciente", "error"); return; }
   if (!s.tipoConsulta) { showStatus("Falta tipo de consulta", "error"); return; }
-  
+
+  // ═══════════════════════════════════════════════════════════════
+  // WRAPPER ÁRBOL v25.0 — Garantizar caseId + Gatillo SAVIA 2
+  // ═══════════════════════════════════════════════════════════════
+  try {
+    // Garantizar caseId antes del gatillo
+    if (!s.caseId && typeof guardarConsultaBorrador === "function") {
+      console.log("[Wrapper Árbol] caseId no existe, guardando borrador...");
+      await guardarConsultaBorrador();
+    }
+
+    // Emitir gatillo de consolidación
+    if (window.kernel && s.caseId) {
+      console.log("[Wrapper Árbol] 🎯 Emitiendo gatillo consolidación Consulta:", s.caseId);
+      window.kernel.emit("savia:consulta:solicitar-consolidacion", {
+        case_id: s.caseId,
+        raw: s
+      });
+    }
+  } catch (e) {
+    console.warn("[Wrapper Árbol] Error gatillo consulta:", e);
+  }
+  // ═══════════════════════════════════════════════════════════════
+
+  // ─── CÓDIGO ORIGINAL (no tocar) ───
   const btn = document.getElementById("btn-cons-ia");
   const original = btn ? btn.textContent : "Ejecutar análisis con IA";
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Analizando con IA...';
   }
-  
+
   const errCard = document.getElementById("consulta-ia-error");
   const resCard = document.getElementById("consulta-ia-resultado");
   if (errCard) errCard.style.display = "none";
   if (resCard) resCard.style.display = "none";
-  
+
   try {
     const prompt = construirPromptConsulta();
     const respuesta = await llamarKimiConsulta(prompt);
-    
-    // Separar narrativa y JSON
+
     const narrativa = separarNarrativaConsulta(respuesta);
     const json = extraerJSONConsulta(respuesta);
-    
+
     s.iaRespuesta = narrativa;
     s.iaJSON = json;
-    
-    // Renderizar narrativa
+
     const contNarr = document.getElementById("cons-ia-narrativa");
     if (contNarr) contNarr.textContent = narrativa;
     if (resCard) resCard.style.display = "block";
-    
-    // Auto-poblar desde el JSON
+
     if (json) {
       autoPoblarDesdeJSON(json);
     }
-    
-    // Si no hay diagnósticos, añadir uno vacío
+
     if (s.diagnosticos.length === 0) {
       agregarDiagnostico();
     }
-    
+
+    // ═══════════════════════════════════════════════════════════════
+    // WRAPPER ÁRBOL — Emitir aporte-diagnosticos tras Kimi
+    // ═══════════════════════════════════════════════════════════════
+    try {
+      if (window.kernel && s.caseId) {
+        window.kernel.emit("savia:aporte-diagnosticos", {
+          _case_id: s.caseId,
+          case_id: s.caseId,
+          diagnosticos: s.diagnosticos || [],
+          diagnostico_diferencial: json?.diagnostico_diferencial || [],
+          nivel_riesgo: document.getElementById("cons-nivel-riesgo")?.value || "MODERADO",
+          impresion_clinica: document.getElementById("cons-impresion-final")?.value || "",
+          banderas_rojas: json?.banderas_rojas || []
+        });
+      }
+    } catch (e) { /* silencioso */ }
+
     showStatus("✓ Análisis completado", "success");
   } catch (e) {
     console.error("[ejecutarAnalisisConsulta]", e);
@@ -14427,6 +14512,37 @@ window.firmarYGenerarConsulta = async function() {
     // ─────────────────────────────────────────────
     mostrarDocumentosGenerados(docs);
     showStatus("✓ Consulta firmada y documentos generados", "success");
+     // ═══════════════════════════════════════════════════════════════
+    // WRAPPER ÁRBOL v25.0 — Emitir informe-kimi al guardián (Consulta)
+    // ═══════════════════════════════════════════════════════════════
+    try {
+      if (window.kernel && s.paciente?.subject_id && s.caseId) {
+        console.log("[Wrapper Árbol] 🩸 Enviando informe a guardián (consulta):", s.caseId);
+        window.kernel.emit("savia:tronco:informe-kimi", {
+          case_id: s.caseId,
+          subject_id: s.paciente.subject_id,
+          origen: "consulta",
+          diagnostico: s.diagnosticos || [],
+          plan: {
+            farmacologico: s.farmacologico || [],
+            no_farmacologico: s.noFarmacologico || []
+          },
+          riesgo: { nivel: document.getElementById("cons-nivel-riesgo")?.value || "MODERADO" },
+          narrativa: s.iaRespuesta,
+          json_estructurado: s.iaJSON,
+          datos: {
+            subjetivo: s.iaRespuesta ? { motivo: "ver narrativa" } : {},
+            signos_vitales: {},
+            diagnosticos: s.diagnosticos || [],
+            labs: {}
+          },
+          interconsultas_ejecutadas: []
+        });
+      }
+    } catch (e) {
+      console.warn("[Wrapper Árbol] Error guardián consulta:", e);
+    }
+    // ═══════════════════════════════════════════════════════════════
     
   } catch (e) {
     console.error("[firmarYGenerarConsulta] ERROR:", e);
