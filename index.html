@@ -12811,6 +12811,99 @@ function calcularIMCConsulta() {
   }
 }
 
+// ═══ FIX v1.0 — Cálculos locales de consulta (TFG, HOMA, Framingham) ═══
+// El módulo consulta no tenía estas funciones (solo tenía calcularIMCConsulta).
+// Estas versiones leen de los inputs "cons-*" de la consulta.
+
+function calcularTFGConsulta() {
+  const creEl = document.getElementById("cons-lab-creatinina");
+  const tfgEl = document.getElementById("cons-lab-tfg");
+  if (!creEl || !tfgEl) return;
+
+  const cr = parseFloat(creEl.value);
+  const ed = window._getEdadPaciente();
+  const sx = window._getSexoPaciente();
+
+  if (cr && ed && sx) {
+    const k = sx === "Femenino" ? 0.7 : 0.9;
+    const a = sx === "Femenino" ? -0.241 : -0.302;
+    const mn = Math.min(cr / k, 1);
+    const mx = Math.max(cr / k, 1);
+    let t = 142 * Math.pow(mn, a) * Math.pow(mx, -1.2) * Math.pow(0.9938, ed);
+    if (sx === "Femenino") t *= 1.012;
+    tfgEl.value = t.toFixed(0);
+    const inp = tfgEl.closest(".lab-input");
+    if (inp) {
+      inp.classList.remove("warning", "danger");
+      if (t < 60) inp.classList.add("warning");
+      if (t < 30) inp.classList.add("danger");
+    }
+    console.log("[Consulta] ✓ TFG calculada:", t.toFixed(0), "mL/min");
+  } else {
+    tfgEl.value = "";
+    console.log("[Consulta] TFG: datos incompletos", { cr, ed, sx });
+  }
+}
+
+function calcularHOMAConsulta() {
+  const gluEl = document.getElementById("cons-lab-glucosa");
+  const insEl = document.getElementById("cons-lab-insulina");
+  const homaEl = document.getElementById("cons-lab-homa");
+  if (!gluEl || !insEl || !homaEl) return;
+
+  const gv = parseFloat(gluEl.value);
+  const iv = parseFloat(insEl.value);
+
+  if (gv && iv) {
+    const h = (gv * iv) / 405;
+    homaEl.value = h.toFixed(2);
+    const inp = homaEl.closest(".lab-input");
+    if (inp) {
+      inp.classList.remove("warning", "danger");
+      if (h >= 2.5) inp.classList.add("warning");
+      if (h >= 4) inp.classList.add("danger");
+    }
+    console.log("[Consulta] ✓ HOMA-IR calculado:", h.toFixed(2));
+  } else {
+    homaEl.value = "";
+  }
+}
+
+function calcularFraminghamConsulta() {
+  const pasEl = document.getElementById("cons-cl-pas");
+  const ctEl = document.getElementById("cons-lab-ct");
+  const hdlEl = document.getElementById("cons-lab-hdl");
+  const tabEl = document.getElementById("cons-cl-tabaco");
+  const framEl = document.getElementById("cons-cl-framingham");
+  if (!framEl) return;
+
+  const ed = window._getEdadPaciente();
+  const sx = window._getSexoPaciente();
+  const pv = parseFloat(pasEl?.value);
+  const ctv = parseFloat(ctEl?.value);
+  const hv = parseFloat(hdlEl?.value);
+  const fm = parseFloat(tabEl?.value) > 0;
+
+  if (!ed || !sx || !pv || !ctv || !hv) { framEl.value = ""; return; }
+
+  let sc = 0;
+  if (ed >= 50) sc += 2;
+  if (ed >= 60) sc += 2;
+  if (sx === "Masculino") sc += 1;
+  if (pv >= 140) sc += 2;
+  if (pv >= 160) sc += 2;
+  if (ctv >= 240) sc += 2;
+  if (hv < 40) sc += 1;
+  if (fm) sc += 2;
+
+  framEl.value = Math.min(sc * 1.5, 30).toFixed(1) + "%";
+  console.log("[Consulta] ✓ Framingham calculado:", framEl.value);
+}
+
+// Exponer globalmente para uso desde renderLabsConsulta
+window.calcularTFGConsulta = calcularTFGConsulta;
+window.calcularHOMAConsulta = calcularHOMAConsulta;
+window.calcularFraminghamConsulta = calcularFraminghamConsulta;
 function renderExamenFisico() {
   const c = document.getElementById("consulta-examen-fisico");
   if (!c) return;
@@ -12870,6 +12963,36 @@ function renderLabsConsulta() {
   if (btn) {
     btn.addEventListener("click", parsearLabsConsulta);
   }
+    // ✅ FIX v1.0 — Listeners para cálculos automáticos en consulta
+  const creEl = document.getElementById("cons-lab-creatinina");
+  if (creEl && !creEl._calcListener) {
+    creEl._calcListener = true;
+    creEl.addEventListener("input", () => calcularTFGConsulta());
+  }
+
+  const gluEl = document.getElementById("cons-lab-glucosa");
+  if (gluEl && !gluEl._calcListener) {
+    gluEl._calcListener = true;
+    gluEl.addEventListener("input", () => calcularHOMAConsulta());
+  }
+
+  const insEl = document.getElementById("cons-lab-insulina");
+  if (insEl && !insEl._calcListener) {
+    insEl._calcListener = true;
+    insEl.addEventListener("input", () => calcularHOMAConsulta());
+  }
+
+  const ctEl = document.getElementById("cons-lab-ct");
+  if (ctEl && !ctEl._calcListener) {
+    ctEl._calcListener = true;
+    ctEl.addEventListener("input", () => calcularFraminghamConsulta());
+  }
+
+  const hdlEl = document.getElementById("cons-lab-hdl");
+  if (hdlEl && !hdlEl._calcListener) {
+    hdlEl._calcListener = true;
+    hdlEl.addEventListener("input", () => calcularFraminghamConsulta());
+  }
 }
 
 async function parsearLabsConsulta() {
@@ -12917,6 +13040,7 @@ async function parsearLabsConsulta() {
       btn.disabled = false;
       btn.textContent = original;
     }
+
   }
 }
 
