@@ -30863,5 +30863,591 @@ ${v("ad-observaciones") || "Sin observaciones adicionales."}`;
   };
 })();
 </script>
+<!-- ═══════════════════════════════════════════════════════════════════
+     WRAPPER CONSULTA SOAP v1.0
+     - Ver/editar prompt antes de enviar a Kimi
+     - Editar informe + JSON antes de autopoblar
+     - Usa texto editado al firmar
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+(function() {
+  console.log("[ConsultaEdit v1.0] Iniciando wrapper...");
+
+  const CE = {
+    inicializado: false,
+    intentos: 0,
+    MAX_INTENTOS: 40,
+    promptEditado: null,
+    narrativaEditada: null,
+    jsonEditado: null,
+    modoEdicion: false
+  };
+
+  window.CONSULTA_EDIT = CE;
+  window.__CONSULTA_EDIT = {
+    estado: () => ({
+      inicializado: CE.inicializado,
+      promptEditado: !!CE.promptEditado,
+      narrativaEditada: !!CE.narrativaEditada,
+      jsonEditado: !!CE.jsonEditado,
+      modoEdicion: CE.modoEdicion
+    }),
+    verPromptActual: () => {
+      if (typeof window.construirPromptConsulta !== "function") return null;
+      try { return window.construirPromptConsulta(); } catch (e) { return null; }
+    },
+    forzarEdicion: () => abrirModalEdicionInforme(),
+    limpiar: () => {
+      CE.promptEditado = null;
+      CE.narrativaEditada = null;
+      CE.jsonEditado = null;
+      CE.modoEdicion = false;
+    }
+  };
+
+  const esc = window.escapeHtml || function(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  };
+  const toast = window.showStatus || function(msg, tipo) {
+    console.log("[ConsultaEdit]", tipo || "info", msg);
+  };
+  function $id(id) { return document.getElementById(id); }
+
+  // ═══════════════════════════════════════════════════════════
+  // MODAL 1: VER/EDITAR PROMPT ANTES DE ENVIAR
+  // ═══════════════════════════════════════════════════════════
+  function abrirModalPromptEditable(promptTexto, onConfirmar, onCancelar) {
+    document.getElementById("modal-prompt-consulta")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "modal-prompt-consulta";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(6px);z-index:99999;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:30px";
+
+    overlay.innerHTML = `
+      <div style="background:var(--bg);border-radius:16px;max-width:900px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4);max-height:92vh;overflow-y:auto">
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div>
+            <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">🤖 Prompt a enviar a Kimi</h3>
+            <p style="font-size:11px;color:var(--text-secondary);margin-top:2px">Revisa, edita si quieres y luego envía</p>
+          </div>
+          <button onclick="document.getElementById('modal-prompt-consulta').remove()"
+                  style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+        </div>
+
+        <div style="background:#f0f7ff;border-left:3px solid var(--accent);border-radius:0 6px 6px 0;padding:10px 12px;margin-bottom:12px;font-size:11px;color:var(--accent-dark);line-height:1.5">
+          <strong>ℹ️ Información:</strong>
+          <span id="prompt-info-longitud">${promptTexto.length} caracteres</span>
+          · Tokens estimados: <span id="prompt-info-tokens">${Math.ceil(promptTexto.length / 4)}</span>
+          · Costo: <span id="prompt-info-costo">$${(Math.ceil(promptTexto.length / 4) / 1000000 * 0.95).toFixed(4)}</span>
+        </div>
+
+        <div class="form-group">
+          <label style="font-size:11px;font-weight:600">Contenido del prompt (editable)</label>
+          <textarea id="prompt-consulta-edit" style="
+            width:100%;
+            min-height:450px;
+            font-family:var(--font-mono);
+            font-size:11px;
+            line-height:1.5;
+            padding:12px;
+            border:2px solid var(--accent);
+            border-radius:8px;
+            background:#ffffff !important;
+            color:#1d1d1f !important;
+            resize:vertical;
+          "></textarea>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="btn btn-secondary" id="btn-prompt-cancelar" style="flex:1;font-size:12px">
+            ❌ Cancelar
+          </button>
+          <button class="btn btn-secondary" id="btn-prompt-restaurar" style="flex:1;font-size:12px">
+            ↺ Restaurar original
+          </button>
+          <button class="btn btn-primary" id="btn-prompt-enviar" style="flex:1;font-size:12px">
+            🚀 Enviar a Kimi
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const ta = $id("prompt-consulta-edit");
+    if (ta) {
+      ta.value = promptTexto;
+
+      // Actualizar stats en vivo
+      ta.addEventListener("input", () => {
+        const len = ta.value.length;
+        const toks = Math.ceil(len / 4);
+        const costo = (toks / 1000000 * 0.95).toFixed(4);
+        const lEl = $id("prompt-info-longitud");
+        const tEl = $id("prompt-info-tokens");
+        const cEl = $id("prompt-info-costo");
+        if (lEl) lEl.textContent = len + " caracteres";
+        if (tEl) tEl.textContent = toks;
+        if (cEl) cEl.textContent = "$" + costo;
+      });
+    }
+
+    $id("btn-prompt-cancelar").onclick = () => {
+      overlay.remove();
+      if (onCancelar) onCancelar();
+    };
+
+    $id("btn-prompt-restaurar").onclick = () => {
+      if (ta) ta.value = promptTexto;
+      if (confirm("¿Restaurar prompt original?")) toast("Prompt restaurado", "info");
+    };
+
+    $id("btn-prompt-enviar").onclick = () => {
+      const textoFinal = ta ? ta.value.trim() : "";
+      if (!textoFinal || textoFinal.length < 50) {
+        alert("El prompt es demasiado corto");
+        return;
+      }
+      overlay.remove();
+      if (onConfirmar) onConfirmar(textoFinal);
+    };
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        overlay.remove();
+        if (onCancelar) onCancelar();
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // MODAL 2: EDITAR INFORME + JSON ANTES DE AUTOPOBLAR
+  // ═══════════════════════════════════════════════════════════
+  function abrirModalEdicionInforme() {
+    const s = window._consultaState;
+    if (!s || !s.iaRespuesta) {
+      toast("No hay informe para editar", "warning");
+      return;
+    }
+
+    const narrativaActual = CE.narrativaEditada || s.iaRespuesta || "";
+    const jsonActual = CE.jsonEditado || s.iaJSON || null;
+    const jsonTexto = jsonActual ? JSON.stringify(jsonActual, null, 2) : "{}";
+
+    document.getElementById("modal-editar-informe")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "modal-editar-informe";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);z-index:99999;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center;padding-top:20px";
+
+    overlay.innerHTML = `
+      <div style="background:var(--bg);border-radius:16px;max-width:1000px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4);max-height:95vh;overflow-y:auto">
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div>
+            <h3 style="font-size:16px;font-weight:700;color:var(--corp);margin:0">✏️ Editar informe de Kimi</h3>
+            <p style="font-size:11px;color:var(--text-secondary);margin-top:2px">
+              Modifica la narrativa y el JSON antes de autopoblar los campos
+            </p>
+          </div>
+          <button onclick="document.getElementById('modal-editar-informe').remove()"
+                  style="background:var(--bg-tertiary);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">×</button>
+        </div>
+
+        <!-- Tabs internas -->
+        <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:0">
+          <button id="tab-narrativa" onclick="window._consultaEditCambiarTab('narrativa')"
+                  style="padding:8px 14px;background:var(--accent);color:white;border:none;border-radius:8px 8px 0 0;font-size:12px;font-weight:600;cursor:pointer">
+            📝 Narrativa
+          </button>
+          <button id="tab-json" onclick="window._consultaEditCambiarTab('json')"
+                  style="padding:8px 14px;background:var(--bg-secondary);color:var(--text-secondary);border:none;border-radius:8px 8px 0 0;font-size:12px;font-weight:600;cursor:pointer">
+            🔧 JSON Estructurado
+          </button>
+        </div>
+
+        <!-- Panel Narrativa -->
+        <div id="panel-narrativa">
+          <div style="background:#f0fff4;border-left:3px solid var(--positive);border-radius:0 6px 6px 0;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#1a4a2a;line-height:1.5">
+            <strong>ℹ️ La narrativa es el texto completo del informe.</strong> Se usa para generar la nota clínica y el informe del paciente.
+          </div>
+          <textarea id="narrativa-edit" style="
+            width:100%;
+            min-height:500px;
+            font-family:var(--font-sans);
+            font-size:12px;
+            line-height:1.6;
+            padding:14px;
+            border:2px solid var(--positive);
+            border-radius:8px;
+            background:#ffffff !important;
+            color:#1d1d1f !important;
+            resize:vertical;
+          "></textarea>
+        </div>
+
+        <!-- Panel JSON -->
+        <div id="panel-json" style="display:none">
+          <div style="background:#fff9e6;border-left:3px solid var(--warning);border-radius:0 6px 6px 0;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#8a6a00;line-height:1.5">
+            <strong>⚠️ JSON estructurado.</strong> Contiene diagnósticos, plan farmacológico, no farmacológico, órdenes y seguimiento.
+            Debe ser JSON válido.
+          </div>
+          <div id="json-error-msg" style="display:none;background:#fff3f3;border-left:3px solid #ff3b30;border-radius:0 6px 6px 0;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#7a1a1a"></div>
+          <textarea id="json-edit" style="
+            width:100%;
+            min-height:500px;
+            font-family:var(--font-mono);
+            font-size:11px;
+            line-height:1.5;
+            padding:14px;
+            border:2px solid var(--warning);
+            border-radius:8px;
+            background:#ffffff !important;
+            color:#1d1d1f !important;
+            resize:vertical;
+          "></textarea>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="btn btn-secondary" id="btn-editar-cancelar" style="flex:1;font-size:12px">
+            ❌ Cancelar
+          </button>
+          <button class="btn btn-warning" id="btn-editar-validar" style="flex:1;font-size:12px">
+            ✓ Validar JSON
+          </button>
+          <button class="btn btn-success" id="btn-editar-guardar" style="flex:1;font-size:12px">
+            💾 Guardar y autopoblar
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const taNarr = $id("narrativa-edit");
+    const taJson = $id("json-edit");
+    if (taNarr) taNarr.value = narrativaActual;
+    if (taJson) taJson.value = jsonTexto;
+
+    // Cambio de tab interno
+    window._consultaEditCambiarTab = function(tab) {
+      const tn = $id("tab-narrativa");
+      const tj = $id("tab-json");
+      const pn = $id("panel-narrativa");
+      const pj = $id("panel-json");
+
+      if (tab === "narrativa") {
+        if (tn) { tn.style.background = "var(--accent)"; tn.style.color = "white"; }
+        if (tj) { tj.style.background = "var(--bg-secondary)"; tj.style.color = "var(--text-secondary)"; }
+        if (pn) pn.style.display = "block";
+        if (pj) pj.style.display = "none";
+      } else {
+        if (tn) { tn.style.background = "var(--bg-secondary)"; tn.style.color = "var(--text-secondary)"; }
+        if (tj) { tj.style.background = "var(--accent)"; tj.style.color = "white"; }
+        if (pn) pn.style.display = "none";
+        if (pj) pj.style.display = "block";
+      }
+    };
+
+    // Validar JSON
+    $id("btn-editar-validar").onclick = () => {
+      const errBox = $id("json-error-msg");
+      if (errBox) errBox.style.display = "none";
+      try {
+        const parsed = JSON.parse(taJson.value);
+        if (errBox) {
+          errBox.textContent = "✅ JSON válido — " + Object.keys(parsed).length + " campos";
+          errBox.style.background = "#f0fff4";
+          errBox.style.borderLeftColor = "#34c759";
+          errBox.style.color = "#1a4a2a";
+          errBox.style.display = "block";
+        }
+      } catch (e) {
+        if (errBox) {
+          errBox.textContent = "❌ JSON inválido: " + e.message;
+          errBox.style.background = "#fff3f3";
+          errBox.style.borderLeftColor = "#ff3b30";
+          errBox.style.color = "#7a1a1a";
+          errBox.style.display = "block";
+        }
+      }
+    };
+
+    // Cancelar
+    $id("btn-editar-cancelar").onclick = () => {
+      overlay.remove();
+    };
+
+    // Guardar
+    $id("btn-editar-guardar").onclick = () => {
+      const narrFinal = taNarr.value.trim();
+      let jsonFinal = null;
+
+      if (!narrFinal) {
+        alert("La narrativa no puede estar vacía");
+        return;
+      }
+
+      try {
+        jsonFinal = JSON.parse(taJson.value);
+      } catch (e) {
+        alert("JSON inválido: " + e.message);
+        window._consultaEditCambiarTab("json");
+        return;
+      }
+
+      // Guardar cambios
+      CE.narrativaEditada = narrFinal;
+      CE.jsonEditado = jsonFinal;
+      CE.modoEdicion = true;
+
+      // Actualizar estado global
+      const s = window._consultaState;
+      s.iaRespuesta = narrFinal;
+      s.iaJSON = jsonFinal;
+
+      // Actualizar panel narrativo en el DOM
+      const contNarr = $id("cons-ia-narrativa");
+      if (contNarr) contNarr.textContent = narrFinal;
+
+      // Re-autopoblar con el JSON editado
+      if (typeof window.autoPoblarDesdeJSON === "function") {
+        try { window.autoPoblarDesdeJSON(jsonFinal); } catch (e) { console.warn(e); }
+      }
+
+      // Re-disparar interconsultas con JSON editado
+      if (typeof window.sugerirInterconsultasDesdeConsulta === "function") {
+        try {
+          window.sugerirInterconsultasDesdeConsulta(jsonFinal, {
+            caseId: s.caseId || null
+          });
+        } catch (e) { console.warn(e); }
+      }
+
+      overlay.remove();
+      toast("✓ Informe editado y campos actualizados", "success");
+    };
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+  }
+
+  window.abrirModalEdicionInforme = abrirModalEdicionInforme;
+
+  // ═══════════════════════════════════════════════════════════
+  // WRAPPER: ejecutarAnalisisConsulta
+  // Intercepta la ejecución para mostrar prompt editable
+  // ═══════════════════════════════════════════════════════════
+  function instalarWrapperEjecutarAnalisis() {
+    if (typeof window.ejecutarAnalisisConsulta !== "function") return false;
+    if (window.ejecutarAnalisisConsulta._consultaEdit) return true;
+
+    const _original = window.ejecutarAnalisisConsulta;
+
+    const _conEdicion = async function() {
+      const s = window._consultaState;
+
+      // Validaciones previas
+      if (!s?.paciente) { toast("Falta paciente", "error"); return; }
+      if (!s?.tipoConsulta) { toast("Falta tipo de consulta", "error"); return; }
+
+      // Construir prompt
+      let promptOriginal;
+      try {
+        promptOriginal = window.construirPromptConsulta();
+      } catch (e) {
+        toast("Error construyendo prompt: " + e.message, "error");
+        return;
+      }
+
+      if (!promptOriginal || promptOriginal.length < 50) {
+        toast("El prompt es demasiado corto. Llena primero S y O.", "error");
+        return;
+      }
+
+      // Mostrar modal de confirmación con el prompt
+      abrirModalPromptEditable(
+        promptOriginal,
+        // onConfirmar
+        async (promptEditado) => {
+          console.log("[ConsultaEdit] Prompt confirmado:", promptEditado.length, "caracteres");
+          console.log("[ConsultaEdit] Modificado:", promptEditado !== promptOriginal);
+
+          // Ejecutar el análisis con el prompt editado
+          await ejecutarConPromptEditado(promptEditado);
+        },
+        // onCancelar
+        () => {
+          console.log("[ConsultaEdit] Análisis cancelado por el usuario");
+        }
+      );
+    };
+
+    _conEdicion._consultaEdit = true;
+    _conEdicion._original = _original;
+    window.ejecutarAnalisisConsulta = _conEdicion;
+    console.log("[ConsultaEdit] ✓ ejecutarAnalisisConsulta envuelto");
+    return true;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // EJECUTAR CON PROMPT EDITADO
+  // Replica la lógica de ejecutarAnalisisConsulta pero con prompt custom
+  // ═══════════════════════════════════════════════════════════
+  async function ejecutarConPromptEditado(promptEditado) {
+    const s = window._consultaState;
+    const btn = $id("btn-cons-ia");
+    const original = btn ? btn.textContent : "Ejecutar análisis con IA";
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Analizando con IA...';
+    }
+
+    const errCard = $id("consulta-ia-error");
+    const resCard = $id("consulta-ia-resultado");
+    if (errCard) errCard.style.display = "none";
+    if (resCard) resCard.style.display = "none";
+
+    try {
+      // Llamar a Kimi con el prompt editado
+      const respuesta = await window.llamarKimiConsulta(promptEditado);
+
+      const narrativa = separarNarrativaConsulta(respuesta);
+      const json = extraerJSONConsulta(respuesta);
+
+      // Guardar en estado
+      s.iaRespuesta = narrativa;
+      s.iaJSON = json;
+      CE.promptEditado = promptEditado;
+      CE.narrativaEditada = null;
+      CE.jsonEditado = null;
+      CE.modoEdicion = false;
+
+      // Mostrar en el panel
+      const contNarr = $id("cons-ia-narrativa");
+      if (contNarr) contNarr.textContent = narrativa;
+      if (resCard) resCard.style.display = "block";
+
+      // Autopoblar campos
+      if (json) {
+        window.autoPoblarDesdeJSON(json);
+      }
+
+      // Diagnóstico inicial
+      if (s.diagnosticos.length === 0) {
+        if (typeof window.agregarDiagnostico === "function") window.agregarDiagnostico();
+      }
+
+      // Añadir botón "Editar informe" al panel de resultado
+      const panelResultado = $id("consulta-ia-resultado");
+      if (panelResultado) {
+        const editBtnExistente = $id("btn-editar-informe-kimi");
+        if (!editBtnExistente) {
+          const editBtn = document.createElement("button");
+          editBtn.id = "btn-editar-informe-kimi";
+          editBtn.className = "btn btn-warning";
+          editBtn.style.cssText = "margin-top:10px;width:100%;font-size:12px";
+          editBtn.innerHTML = "✏️ Editar informe antes de continuar";
+          editBtn.onclick = abrirModalEdicionInforme;
+          panelResultado.appendChild(editBtn);
+        }
+      }
+
+      toast("✓ Análisis completado. Puedes editar el informe.", "success");
+
+    } catch (e) {
+      console.error("[ejecutarConPromptEditado]", e);
+      if (errCard) {
+        errCard.innerHTML = `
+          <div style="background:#fff3f3;border-left:4px solid var(--danger);border-radius:0 6px 6px 0;padding:12px">
+            <p style="font-size:12px;color:#7a1a1a;margin-bottom:8px"><strong>Error:</strong> ${esc(e.message)}</p>
+            <button class="btn btn-warning btn-sm" onclick="ejecutarAnalisisConsulta()">🔄 Reintentar</button>
+          </div>
+        `;
+        errCard.style.display = "block";
+      }
+      toast("Error: " + e.message, "error");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // WRAPPER: firmarYGenerarConsulta
+  // Asegura que se use el texto editado al firmar
+  // ═══════════════════════════════════════════════════════════
+  function instalarWrapperFirmar() {
+    if (typeof window.firmarYGenerarConsulta !== "function") return false;
+    if (window.firmarYGenerarConsulta._consultaEdit) return true;
+
+    const _original = window.firmarYGenerarConsulta;
+
+    const _conEdicion = async function() {
+      const s = window._consultaState;
+
+      // Si hay ediciones pendientes, asegurarse de que están en el estado
+      if (CE.narrativaEditada && s) {
+        s.iaRespuesta = CE.narrativaEditada;
+        console.log("[ConsultaEdit] ✓ Usando narrativa editada al firmar");
+      }
+      if (CE.jsonEditado && s) {
+        s.iaJSON = CE.jsonEditado;
+        console.log("[ConsultaEdit] ✓ Usando JSON editado al firmar");
+      }
+
+      const result = await _original.apply(this, arguments);
+      return result;
+    };
+
+    _conEdicion._consultaEdit = true;
+    _conEdicion._original = _original;
+    window.firmarYGenerarConsulta = _conEdicion;
+    console.log("[ConsultaEdit] ✓ firmarYGenerarConsulta envuelto");
+    return true;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // INICIALIZACIÓN
+  // ═══════════════════════════════════════════════════════════
+  function inicializar() {
+    CE.intentos++;
+    const okA = instalarWrapperEjecutarAnalisis();
+    const okF = instalarWrapperFirmar();
+
+    if (okA && okF) {
+      CE.inicializado = true;
+      console.log("[ConsultaEdit v1.0] ✓ Inicializado en intento " + CE.intentos);
+      return;
+    }
+    if (CE.intentos < CE.MAX_INTENTOS) {
+      setTimeout(inicializar, 250);
+    } else {
+      console.warn("[ConsultaEdit v1.0] Timeout. Diagnóstico:", {
+        ejecutarAnalisis: typeof window.ejecutarAnalisisConsulta,
+        firmarYGenerar: typeof window.firmarYGenerarConsulta
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(inicializar, 800));
+  } else {
+    setTimeout(inicializar, 800);
+  }
+
+  console.log("[ConsultaEdit v1.0] Wrapper cargado");
+  console.log("[ConsultaEdit v1.0] Diagnóstico: __CONSULTA_EDIT.estado()");
+})();
+</script>
 </body>
 </html>
