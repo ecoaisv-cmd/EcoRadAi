@@ -12821,8 +12821,22 @@ function calcularTFGConsulta() {
   if (!creEl || !tfgEl) return;
 
   const cr = parseFloat(creEl.value);
-  const ed = window._getEdadPaciente();
-  const sx = window._getSexoPaciente();
+
+  // ✅ Leer edad y sexo DIRECTAMENTE de _consultaState (consulta) o _casoActual (tamizaje)
+  let ed = null;
+  let sx = "";
+
+  if (typeof window._consultaState !== "undefined" && window._consultaState?.paciente) {
+    ed = parseInt(window._consultaState.paciente.edad) || null;
+    sx = window._consultaState.paciente.sexo || "";
+  }
+  if ((!ed || !sx) && typeof window._casoActual !== "undefined" && window._casoActual?.subject) {
+    if (!ed) ed = parseInt(window._casoActual.subject.edad) || null;
+    if (!sx) sx = window._casoActual.subject.sexo || "";
+  }
+  // Fallback a helpers (captura)
+  if (!ed) ed = window._getEdadPaciente();
+  if (!sx) sx = window._getSexoPaciente();
 
   if (cr && ed && sx) {
     const k = sx === "Femenino" ? 0.7 : 0.9;
