@@ -6542,17 +6542,17 @@ async function verImagenes(caseId) {
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
             ${norm.map((img, i) => `
               <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer"
-                   onclick="ampliarImagen('${caseId}',${i})">
-                <div style="aspect-ratio:4/3;overflow:hidden;background:#000">
-                  <img src="${img.src}" loading="lazy"
-                       style="width:100%;height:100%;object-fit:cover;display:block"
-                       onerror="this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-size:11px&quot;>⚠️ No carga</div>'">
-                </div>
-                <div style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--corp);text-align:center;border-top:1px solid var(--border)">
-                  ${escapeHtml(img.tag)}
-                </div>
-              </div>
-            `).join("")}
+              onclick="ampliarImagen('${caseId}',${i})">
+         <div style="aspect-ratio:4/3;overflow:hidden;background:#000">
+         <img src="${img.src}" loading="lazy"
+           style="width:100%;height:100%;object-fit:cover;display:block"
+           onerror="this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-size:11px&quot;>⚠️ No carga</div>'">
+        </div>
+        <div style="padding:6px 8px;font-size:10px;color:var(--text-secondary);text-align:center;font-family:var(--font-mono)">
+       Vista ${i + 1}
+       </div>
+      </div>
+      `).join("")}
           </div>
         </div>
       </div>
@@ -9326,17 +9326,167 @@ function handleFiles(files) {
     reader.readAsDataURL(file);
   });
 }
+/* ═══════════════════════════════════════════════════════════
+   v24.10 — renderGallery() con edición de etiquetas por rol
+   Solo admin y médico pueden editar las etiquetas.
+   ═══════════════════════════════════════════════════════════ */
 function renderGallery() {
   const g = document.getElementById("gallery");
   if (!g) return;
+
+  const t = TAMIZAJES_REGISTRY.obtener(estudioActual);
+  const etiquetasDisponibles = t?.captura?.etiquetas_imagenes || [];
+
+  // ═══ ¿Puede editar? Solo admin o médico ═══
+  const rol = window.usuarioActual?.rol;
+  const puedeEditar = (rol === "admin" || rol === "medico");
+
   g.innerHTML = capturedImages.map((src, i) => {
     const kb = Math.round((src.length * 3 / 4) / 1024);
-    return `<div class="gallery-item"><img src="${src}"><span class="tag">${capturedImageTags[i] || "Vista"}</span><button class="del" onclick="removeImage(${i})">×</button><span class="size">${kb} KB</span></div>`;
+    const tagActual = capturedImageTags[i] || "";
+
+    // ═══ HTML de la etiqueta según permisos ═══
+    const etiquetaHTML = puedeEditar
+      ? `
+        <div style="position:absolute;bottom:0;left:0;right:0;padding:4px;background:rgba(0,0,0,0.75)">
+          <input
+            type="text"
+            list="lista-etiquetas-${i}"
+            value="${escapeHtml(tagActual)}"
+            placeholder="Etiqueta…"
+            onchange="actualizarEtiquetaImagen(${i}, this.value)"
+            style="
+              width:100%;
+              padding:3px 6px;
+              font-size:9px;
+              border:1px solid rgba(255,255,255,0.3);
+              border-radius:4px;
+              background:rgba(255,255,255,0.95);
+              color:#1d1d1f;
+              box-sizing:border-box;
+            ">
+          <datalist id="lista-etiquetas-${i}">
+            ${etiquetasDisponibles.map(e => `<option value="${escapeHtml(e)}">`).join("")}
+          </datalist>
+        </div>
+      `
+      : `
+        <div style="position:absolute;bottom:0;left:0;right:0;padding:3px 6px;background:rgba(0,0,0,0.75);text-align:center">
+          <span style="font-size:9px;color:#fff;font-weight:600">${escapeHtml(tagActual) || "Vista " + (i + 1)}</span>
+        </div>
+      `;
+
+    return `
+      <div class="gallery-item">
+        <img src="${src}">
+        <button class="del" onclick="removeImage(${i})">×</button>
+        <span class="size">${kb} KB</span>
+        ${etiquetaHTML}
+      </div>
+    `;
   }).join("");
+
   const hint = document.getElementById("imagenes-hint");
-  const t = TAMIZAJES_REGISTRY.obtener(estudioActual);
-  if (hint && t) hint.textContent = `Sube de ${t.captura.imagenes_min || 0} a ${t.captura.imagenes_max || 6} imágenes · Actualmente: ${capturedImages.length}`;
+  if (hint && t) {
+    const extra = puedeEditar ? " · Edita la etiqueta debajo de cada imagen" : "";
+    hint.textContent = `Sube de ${t.captura.imagenes_min || 0} a ${t.captura.imagenes_max || 6} imágenes · Actualmente: ${capturedImages.length}${extra}`;
+  }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   v24.10 — actualizarEtiquetaImagen()
+   Valida el rol antes de modificar. Solo admin/médico.
+   ═══════════════════════════════════════════════════════════ */
+function actualizarEtiquetaImagen(i, valor) {
+  // ═══ VALIDACIÓN DE ROL ═══
+  const rol = window.usuarioActual?.rol;
+  if (rol !== "admin" && rol !== "medico") {
+    console.warn("[Gallery] Intento de edición denegado. Rol:", rol);
+    showStatus("Solo médicos y administradores pueden editar etiquetas", "error");
+
+    // Revertir el input al valor original
+    const g = document.getElementById("gallery");
+    if (g) renderGallery();
+    return;
+  }
+
+  if (i < 0 || i >= capturedImageTags.length) return;
+
+  const etiquetaAnterior = capturedImageTags[i];
+  capturedImageTags[i] = String(valor || "").trim();
+
+  console.log(`[Gallery] Etiqueta imagen ${i + 1}: "${etiquetaAnterior}" → "${capturedImageTags[i]}"`);
+
+  // ═══ Si el caso ya está guardado, regenerar informe de imágenes ═══
+  if (window._casoActual?.case_id) {
+    if (typeof regenerarInformeConEtiquetas === "function") {
+      regenerarInformeConEtiquetas(window._casoActual.case_id).catch(e => {
+        console.warn("[Gallery] No se pudo regenerar informe:", e);
+      });
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   v24.10 — regenerarInformeConEtiquetas()
+   Sincroniza las etiquetas nuevas con el HTML del informe
+   guardado en artifacts.
+   ═══════════════════════════════════════════════════════════ */
+async function regenerarInformeConEtiquetas(caseId) {
+  if (!caseId) return;
+
+  try {
+    const caso = await obtenerCasoDB(caseId);
+    if (!caso) {
+      console.warn("[regenerarInformeConEtiquetas] Caso no encontrado:", caseId);
+      return;
+    }
+
+    // Actualizar imágenes del caso con las nuevas etiquetas
+    if (caso.acquisition?.imagenes?.length) {
+      caso.acquisition.imagenes.forEach((img, i) => {
+        if (capturedImageTags[i]) {
+          if (typeof img === "string") {
+            caso.acquisition.imagenes[i] = { url: img, tag: capturedImageTags[i] };
+          } else {
+            img.tag = capturedImageTags[i];
+          }
+        }
+      });
+    }
+
+    caso.updated_at = new Date().toISOString();
+    await guardarCasoDB(caso);
+
+    // Regenerar HTML de imágenes
+    const fecha = caso.encounter?.fecha || new Date().toISOString().slice(0, 10);
+    const htmlImagenes = renderPaginasImagenes(null, fecha, caseId, caso);
+
+    await guardarArtifactDB({
+      artifact_id: caseId + ":imagenes",
+      case_id: caseId,
+      tipo: "imagenes",
+      html: htmlImagenes,
+      created_at: new Date().toISOString()
+    });
+
+    // Refrescar el DOM si el informe está visible
+    const cont = document.getElementById("report-imagenes-pagina");
+    if (cont && cont.parentElement) {
+      cont.parentElement.innerHTML = htmlImagenes;
+    }
+
+    showStatus("✓ Informe de imágenes actualizado", "success");
+    console.log("[regenerarInformeConEtiquetas] ✓", caseId);
+
+  } catch (e) {
+    console.error("[regenerarInformeConEtiquetas]", e);
+  }
+}
+
+// Exponer globalmente
+window.actualizarEtiquetaImagen = actualizarEtiquetaImagen;
+window.regenerarInformeConEtiquetas = regenerarInformeConEtiquetas;
 function removeImage(i) { capturedImages.splice(i, 1); capturedImageTags.splice(i, 1); renderGallery(); }
 
 const PROMPTS_STORAGE_KEY = "ecoradai234_prompts_custom";
