@@ -9313,7 +9313,7 @@ function handleFiles(files) {
   const t = TAMIZAJES_REGISTRY.obtener(estudioActual);
   const arr = t?.captura?.etiquetas_imagenes || ["Vista 1", "Vista 2", "Vista 3", "Vista 4", "Vista 5", "Vista 6"];
   Array.from(files).forEach(file => {
-    if (capturedImages.length >= 8) { showStatus("Máximo 8 imágenes", "warning"); return; }
+  if (capturedImages.length >= 10) { showStatus("Máximo 10 imágenes", "warning"); return; }
     if (file.size > 20 * 1024 * 1024) { showStatus("Imagen muy grande", "warning"); return; }
     const reader = new FileReader();
     reader.onload = function (e) {
